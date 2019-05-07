@@ -1063,7 +1063,7 @@ string ASMOperand::toString(DXBCFile *dxbc, ToString flags) const
           }
         }
 
-        if(cbuffer)
+        if(cbuffer && false)
         {
           // if the second index is constant then this is easy enough, we just find the matching
           // cbuffer variable and use its name, possibly rebasing the swizzle.
@@ -2666,7 +2666,7 @@ string toString(const uint32_t values[], uint32_t numComps)
         StringFormat::snprintf(buf, 63, "0x%08x", vi[0]);
     }
     else
-      StringFormat::snprintf(buf, 63, "%f", vf[0]);
+      StringFormat::snprintf(buf, 63, "%.20f", vf[0]);
 
     str += buf;
 

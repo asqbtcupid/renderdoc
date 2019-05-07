@@ -872,8 +872,37 @@ void PipelineStateViewer::MakeShaderVariablesHLSL(bool cbufferContents,
         struct_defs += def + contents + lit("};\n\n");
       }
     }
-
-    struct_contents += lit("\t%1 %2").arg(v.type.descriptor.name).arg(v.name);
+	else
+	{
+		if (v.type.descriptor.name != "float"
+			&&v.type.descriptor.name != "float2"
+			&&v.type.descriptor.name != "float3"
+			&&v.type.descriptor.name != "float4"
+			&&v.type.descriptor.name != "float4x4"
+			&&v.type.descriptor.name != "int"
+			&&v.type.descriptor.name != "int2"
+			&&v.type.descriptor.name != "int3"
+			&&v.type.descriptor.name != "int4"
+			&&v.type.descriptor.name != "uint"
+			&&v.type.descriptor.name != "uint2"
+			&&v.type.descriptor.name != "uint3"
+			&&v.type.descriptor.name != "uint4"
+			)
+		{
+			continue;
+// 			QString def = lit("struct %1 {\n").arg(v.type.descriptor.name);
+// 
+// 			if (!struct_defs.contains(def))
+// 			{
+// 				QString contents;
+// 				struct_defs += def + contents + lit("};\n\n");
+// 			}
+		}
+	}
+	if(v.type.descriptor.elements > 1)
+		struct_contents += lit("\t%1 %2[%3]").arg(v.type.descriptor.name).arg(v.name).arg(v.type.descriptor.elements);
+	else
+		struct_contents += lit("\t%1 %2").arg(v.type.descriptor.name).arg(v.name);
 
     if((v.byteOffset % 4) != 0)
       qWarning() << "Variable " << QString(v.name) << " is not DWORD aligned";

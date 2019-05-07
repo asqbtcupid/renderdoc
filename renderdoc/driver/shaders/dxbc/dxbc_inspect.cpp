@@ -418,7 +418,8 @@ CBufferVariableType DXBCFile::ParseRDEFType(RDEFHeader *h, char *chunkContents, 
       v.name = chunkContents + members[j].nameOffset;
       v.type = ParseRDEFType(h, chunkContents, members[j].typeOffset);
       v.descriptor.offset = members[j].memberOffset;
-
+	  if (int32_t(v.descriptor.offset) < 0)
+		  continue;
       ret.descriptor.bytesize += v.type.descriptor.bytesize;
 
       // N/A
@@ -799,6 +800,7 @@ DXBCFile::DXBCFile(const void *ByteCode, size_t ByteCodeLength)
           v.descriptor.name = v.name;
           // v.descriptor.bytesize = var->size; // size with cbuffer padding
           v.descriptor.offset = var->startOffset;
+
           v.descriptor.flags = var->flags;
 
           v.descriptor.startTexture = (uint32_t)-1;
@@ -808,7 +810,15 @@ DXBCFile::DXBCFile(const void *ByteCode, size_t ByteCodeLength)
 
           v.type = ParseRDEFType(h, chunkContents, var->typeOffset);
 
-          cb.variables.push_back(v);
+		  if ((int32_t)(v.descriptor.offset) >= 0)
+		  {
+			  cb.variables.push_back(v);
+		  }
+		  else
+		  {
+			  RDCASSERT(false);
+
+		  }
         }
 
         string cname = cb.name;

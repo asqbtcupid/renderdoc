@@ -139,7 +139,7 @@ static void FlattenSingleVariable(uint32_t byteOffset, const std::string &basena
     outvars[outIdx].isStruct = false;
     outvars[outIdx].columns += v.columns;
 
-    RDCASSERT(outvars[outIdx].columns <= 4, outvars[outIdx].columns);
+//     RDCASSERT(outvars[outIdx].columns <= 4, outvars[outIdx].columns);
 
     memcpy(&outvars[outIdx].value.uv[outComp], &v.value.uv[0], sizeof(uint32_t) * v.columns);
   }

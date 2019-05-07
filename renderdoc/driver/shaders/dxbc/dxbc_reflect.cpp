@@ -181,7 +181,7 @@ static void MakeResourceList(bool srv, DXBC::DXBCFile *dxbc, const vector<DXBC::
       }
     }
 
-    res.bindPoint = (int32_t)i;
+    res.bindPoint = (int32_t)r.reg;
 
     Bindpoint map;
     map.arraySize = r.bindCount == 0 ? ~0U : r.bindCount;
@@ -262,7 +262,7 @@ void MakeShaderReflection(DXBC::DXBCFile *dxbc, ShaderReflection *refl,
     cb.name = dxbc->m_CBuffers[i].name;
     cb.bufferBacked = true;
     cb.byteSize = dxbc->m_CBuffers[i].descriptor.byteSize;
-    cb.bindPoint = (int32_t)i;
+    cb.bindPoint = (int32_t)dxbc->m_CBuffers[i].reg;
 
     Bindpoint map;
     map.arraySize = 1;
@@ -286,7 +286,7 @@ void MakeShaderReflection(DXBC::DXBCFile *dxbc, ShaderReflection *refl,
     ShaderSampler &s = refl->samplers[i];
 
     s.name = dxbc->m_Samplers[i].name;
-    s.bindPoint = (int32_t)i;
+    s.bindPoint = (int32_t)dxbc->m_Samplers[i].reg;
 
     Bindpoint map;
     map.arraySize = 1;
