@@ -26,7 +26,7 @@
 #include "gl_driver.h"
 #include <algorithm>
 #include "common/common.h"
-#include "driver/shaders/spirv/spirv_common.h"
+#include "driver/shaders/spirv/spirv_compile.h"
 #include "jpeg-compressor/jpge.h"
 #include "serialise/rdcfile.h"
 #include "strings/string_utils.h"
@@ -65,6 +65,7 @@ void WrappedOpenGL::BuildGLExtensions()
   m_GLExtensions.push_back("GL_ARB_enhanced_layouts");
   m_GLExtensions.push_back("GL_ARB_ES2_compatibility");
   m_GLExtensions.push_back("GL_ARB_ES3_1_compatibility");
+  m_GLExtensions.push_back("GL_ARB_ES3_2_compatibility");
   m_GLExtensions.push_back("GL_ARB_ES3_compatibility");
   m_GLExtensions.push_back("GL_ARB_explicit_attrib_location");
   m_GLExtensions.push_back("GL_ARB_explicit_uniform_location");
@@ -283,7 +284,6 @@ void WrappedOpenGL::BuildGLExtensions()
   * GL_KHR_texture_compression_astc_ldr <- could be difficult. Maybe falls into the category of
   'only
                                            support if it's supported on replaying driver'?
-  * GL_ARB_ES3_2_compatibility
   * GL_ARB_gpu_shader_int64
   * GL_ARB_sample_locations
   * GL_ARB_texture_filter_minmax
@@ -612,6 +612,10 @@ void WrappedOpenGL::CreateReplayBackbuffer(const GLInitParams &params, ResourceI
 
   WrappedOpenGL &drv = *this;
 
+  GLuint unpackbuf = 0;
+  GL.glGetIntegerv(eGL_PIXEL_UNPACK_BUFFER_BINDING, (GLint *)&unpackbuf);
+  GL.glBindBuffer(eGL_PIXEL_UNPACK_BUFFER, 0);
+
   drv.glGenFramebuffers(1, &fbo);
   drv.glBindFramebuffer(eGL_FRAMEBUFFER, fbo);
 
@@ -671,6 +675,8 @@ void WrappedOpenGL::CreateReplayBackbuffer(const GLInitParams &params, ResourceI
         depthfmt = eGL_DEPTH32F_STENCIL8;
       else if(params.depthBits == 24)
         depthfmt = eGL_DEPTH24_STENCIL8;
+      else if(params.depthBits == 0)
+        depthfmt = eGL_STENCIL_INDEX8;
       else
         RDCERR("Unexpected combination of depth & stencil bits: %d & %d", params.depthBits,
                params.stencilBits);
@@ -704,7 +710,9 @@ void WrappedOpenGL::CreateReplayBackbuffer(const GLInitParams &params, ResourceI
                               GetBaseFormat(depthfmt), GetDataType(depthfmt), NULL);
     }
 
-    if(stencil)
+    if(stencil && params.depthBits == 0)
+      drv.glFramebufferTexture2D(eGL_FRAMEBUFFER, eGL_STENCIL_ATTACHMENT, target, depth, 0);
+    else if(stencil)
       drv.glFramebufferTexture2D(eGL_FRAMEBUFFER, eGL_DEPTH_STENCIL_ATTACHMENT, target, depth, 0);
     else
       drv.glFramebufferTexture2D(eGL_FRAMEBUFFER, eGL_DEPTH_ATTACHMENT, target, depth, 0);
@@ -764,6 +772,8 @@ void WrappedOpenGL::CreateReplayBackbuffer(const GLInitParams &params, ResourceI
       GetReplay()->GetResourceDesc(depthId).initialisationChunks.push_back(m_InitChunkIndex);
     }
   }
+
+  GL.glBindBuffer(eGL_PIXEL_UNPACK_BUFFER, unpackbuf);
 }
 
 std::string WrappedOpenGL::GetChunkName(uint32_t idx)
@@ -1186,7 +1196,7 @@ void WrappedOpenGL::ActivateContext(GLWindowingData winData)
         RDCLOG("Activating new GL context: %s / %s / %s", GL.glGetString(eGL_VENDOR),
                GL.glGetString(eGL_RENDERER), GL.glGetString(eGL_VERSION));
 
-      const vector<string> &globalExts = IsGLES ? m_GLESExtensions : m_GLExtensions;
+      const std::vector<std::string> &globalExts = IsGLES ? m_GLESExtensions : m_GLExtensions;
 
       if(HasExt[KHR_debug] && GL.glDebugMessageCallback &&
          RenderDoc::Inst().GetCaptureOptions().apiValidation)
@@ -1195,7 +1205,7 @@ void WrappedOpenGL::ActivateContext(GLWindowingData winData)
         GL.glEnable(eGL_DEBUG_OUTPUT_SYNCHRONOUS);
       }
 
-      vector<string> implExts;
+      std::vector<std::string> implExts;
 
       int ctxVersion = 0;
       bool ctxGLES = false;
@@ -1213,7 +1223,7 @@ void WrappedOpenGL::ActivateContext(GLWindowingData winData)
       }
       else if(GL.glGetString)
       {
-        string implExtString = (const char *)GL.glGetString(eGL_EXTENSIONS);
+        std::string implExtString = (const char *)GL.glGetString(eGL_EXTENSIONS);
 
         split(implExtString, implExts, ' ');
       }
@@ -1228,8 +1238,8 @@ void WrappedOpenGL::ActivateContext(GLWindowingData winData)
       {
         for(size_t i = 0, j = 0; i < implExts.size() && j < globalExts.size();)
         {
-          const string &a = implExts[i];
-          const string &b = globalExts[j];
+          const std::string &a = implExts[i];
+          const std::string &b = globalExts[j];
 
           if(a == b)
           {
@@ -1419,7 +1429,7 @@ void WrappedOpenGL::ActivateContext(GLWindowingData winData)
 
 struct ReplacementSearch
 {
-  bool operator()(const pair<ResourceId, Replacement> &a, ResourceId b) { return a.first < b; }
+  bool operator()(const rdcpair<ResourceId, Replacement> &a, ResourceId b) { return a.first < b; }
 };
 
 void WrappedOpenGL::ReplaceResource(ResourceId from, ResourceId to)
@@ -1438,6 +1448,9 @@ void WrappedOpenGL::ReplaceResource(ResourceId from, ResourceId to)
       {
         ResourceId progsrcid = it->first;
         ProgramData &progdata = it->second;
+
+        PerStageReflections stages;
+        FillReflectionArray(it->first, stages);
 
         // see if the shader is used
         for(int i = 0; i < 6; i++)
@@ -1501,8 +1514,11 @@ void WrappedOpenGL::ReplaceResource(ResourceId from, ResourceId to)
             }
             else
             {
+              PerStageReflections dstStages;
+              FillReflectionArray(progdstid, dstStages);
+
               // copy uniforms
-              CopyProgramUniforms(progsrc, progdst);
+              CopyProgramUniforms(stages, progsrc, dstStages, progdst);
 
               ResourceId origsrcid = GetResourceManager()->GetOriginalID(progsrcid);
 
@@ -1515,7 +1531,7 @@ void WrappedOpenGL::ReplaceResource(ResourceId from, ResourceId to)
                                    from, ReplacementSearch());
               m_DependentReplacements.insert(
                   insertPos,
-                  std::make_pair(from, Replacement(origsrcid, ProgramRes(GetCtx(), progdst))));
+                  make_rdcpair(from, Replacement(origsrcid, ProgramRes(GetCtx(), progdst))));
             }
 
             break;
@@ -1572,7 +1588,7 @@ void WrappedOpenGL::ReplaceResource(ResourceId from, ResourceId to)
                                  from, ReplacementSearch());
             m_DependentReplacements.insert(
                 insertPos,
-                std::make_pair(from, Replacement(origsrcid, ProgramPipeRes(GetCtx(), pipedst))));
+                make_rdcpair(from, Replacement(origsrcid, ProgramPipeRes(GetCtx(), pipedst))));
           }
         }
       }
@@ -1673,8 +1689,6 @@ void WrappedOpenGL::SwapBuffers(void *windowHandle)
 
   m_FrameCounter++;    // first present becomes frame #1, this function is at the end of the frame
 
-  GetResourceManager()->FlushPendingDirty();
-
   ContextData &ctxdata = GetCtxData();
 
   // we only handle context-window associations here as it's too common to
@@ -1737,7 +1751,8 @@ void WrappedOpenGL::SwapBuffers(void *windowHandle)
       int flags = activeWindow ? RenderDoc::eOverlay_ActiveWindow : 0;
       if(ctxdata.Legacy())
         flags |= RenderDoc::eOverlay_CaptureDisabled;
-      string overlayText = RenderDoc::Inst().GetOverlayText(GetDriverType(), m_FrameCounter, flags);
+      std::string overlayText =
+          RenderDoc::Inst().GetOverlayText(GetDriverType(), m_FrameCounter, flags);
 
       if(ctxdata.Legacy())
       {
@@ -1747,7 +1762,9 @@ void WrappedOpenGL::SwapBuffers(void *windowHandle)
       }
       else if(!ctxdata.isCore)
       {
-        overlayText += "WARNING: Non-core context in use. Compatibility profile not supported.\n";
+        overlayText +=
+            "WARNING: Core profile not explicitly requested. Compatibility profile is not "
+            "supported.\n";
       }
 
       if(activeWindow && m_FailedFrame > 0)
@@ -1995,6 +2012,10 @@ bool WrappedOpenGL::EndFrameCapture(void *dev, void *wnd)
         SERIALISE_ELEMENT(fbo);
       }
 
+      RDCDEBUG("Forcing inclusion of views");
+
+      GetResourceManager()->Force_ReferenceViews();
+
       RDCDEBUG("Inserting Resource Serialisers");
 
       GetResourceManager()->InsertReferencedChunks(ser);
@@ -2014,7 +2035,7 @@ bool WrappedOpenGL::EndFrameCapture(void *dev, void *wnd)
       {
         RDCDEBUG("Accumulating context resource list");
 
-        map<int32_t, Chunk *> recordlist;
+        std::map<int32_t, Chunk *> recordlist;
         m_ContextRecord->Insert(recordlist);
 
         for(auto it = m_ContextData.begin(); it != m_ContextData.end(); ++it)
@@ -2352,14 +2373,6 @@ void WrappedOpenGL::CleanupCapture()
   {
     CleanupResourceRecord(it->second.m_ContextDataRecord, true);
   }
-
-  for(auto it = m_MissingTracks.begin(); it != m_MissingTracks.end(); ++it)
-  {
-    if(GetResourceManager()->HasResourceRecord(*it))
-      GetResourceManager()->MarkDirtyResource(*it);
-  }
-
-  m_MissingTracks.clear();
 }
 
 void WrappedOpenGL::FreeCaptureData()
@@ -2615,7 +2628,7 @@ void WrappedOpenGL::DebugSnoop(GLenum source, GLenum type, GLuint id, GLenum sev
 
       msg.eventId = 0;
       msg.messageID = id;
-      msg.description = string(message, message + length);
+      msg.description = std::string(message, message + length);
       msg.source = MessageSource::API;
 
       switch(severity)
@@ -2880,8 +2893,7 @@ bool WrappedOpenGL::ProcessChunk(ReadSerialiser &ser, GLChunk chunk)
     }
     else if(system == SystemChunk::InitialContents)
     {
-      return GetResourceManager()->Serialise_InitialState(ser, ResourceId(),
-                                                          GLResource(MakeNullResource));
+      return GetResourceManager()->Serialise_InitialState(ser, ResourceId(), NULL, NULL);
     }
     else if(system == SystemChunk::CaptureScope)
     {
@@ -2926,7 +2938,7 @@ bool WrappedOpenGL::ProcessChunk(ReadSerialiser &ser, GLChunk chunk)
     {
       ResourceId vao, fbo;
       SERIALISE_ELEMENT(vao).Hidden();
-      SERIALISE_ELEMENT(fbo).Named("FBO 0 ID");
+      SERIALISE_ELEMENT(fbo).Named("FBO 0 ID"_lit);
 
       SERIALISE_CHECK_READ_ERRORS();
 
@@ -3627,6 +3639,7 @@ bool WrappedOpenGL::ProcessChunk(ReadSerialiser &ser, GLChunk chunk)
     case GLChunk::glPolygonOffsetClamp: return Serialise_glPolygonOffsetClamp(ser, 0, 0, 0);
     case GLChunk::glPrimitiveBoundingBoxEXT:
     case GLChunk::glPrimitiveBoundingBoxOES:
+    case GLChunk::glPrimitiveBoundingBoxARB:
     case GLChunk::glPrimitiveBoundingBox:
       return Serialise_glPrimitiveBoundingBox(ser, 0, 0, 0, 0, 0, 0, 0, 0);
 
@@ -4573,7 +4586,7 @@ ReplayStatus WrappedOpenGL::ContextReplayLog(CaptureState readType, uint32_t sta
     // we don't have duplicate uses
     for(auto it = m_ResourceUses.begin(); it != m_ResourceUses.end(); ++it)
     {
-      vector<EventUsage> &v = it->second;
+      std::vector<EventUsage> &v = it->second;
       std::sort(v.begin(), v.end());
       v.erase(std::unique(v.begin(), v.end()), v.end());
     }
@@ -4964,18 +4977,22 @@ void WrappedOpenGL::AddEvent()
   m_CurEvents.push_back(apievent);
 
   if(IsLoading(m_State))
-    m_Events.push_back(apievent);
+  {
+    m_Events.resize(apievent.eventId + 1);
+    m_Events[apievent.eventId] = apievent;
+  }
 }
 
 const APIEvent &WrappedOpenGL::GetEvent(uint32_t eventId)
 {
-  for(const APIEvent &e : m_Events)
-  {
-    if(e.eventId >= eventId)
-      return e;
-  }
+  // start at where the requested eventId would be
+  size_t idx = eventId;
 
-  return m_Events.back();
+  // find the next valid event (some may be skipped)
+  while(idx < m_Events.size() - 1 && m_Events[idx].eventId == 0)
+    idx++;
+
+  return m_Events[RDCMIN(idx, m_Events.size() - 1)];
 }
 
 const DrawcallDescription *WrappedOpenGL::GetDrawcall(uint32_t eventId)

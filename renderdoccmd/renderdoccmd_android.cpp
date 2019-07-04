@@ -41,10 +41,6 @@ extern "C" {
 #include <android/log.h>
 #define ANDROID_LOG(...) __android_log_print(ANDROID_LOG_INFO, "renderdoccmd", __VA_ARGS__);
 
-using std::string;
-using std::vector;
-using std::istringstream;
-
 struct android_app *android_state;
 pthread_t cmdthread_handle = 0;
 
@@ -378,7 +374,7 @@ void DisplayRendererPreview(IReplayController *renderer, TextureDisplay &display
 // Returns the renderdoccmd arguments passed via am start
 // Examples: am start ... -e renderdoccmd "remoteserver"
 // -e renderdoccmd "replay /sdcard/capture.rdc"
-vector<string> getRenderdoccmdArgs()
+std::vector<std::string> getRenderdoccmdArgs()
 {
   JNIEnv *env;
   android_state->activity->vm->AttachCurrentThread(&env, 0);
@@ -396,15 +392,15 @@ vector<string> getRenderdoccmdArgs()
   jstring jsParam1 =
       (jstring)env->CallObjectMethod(intent, gseid, env->NewStringUTF("renderdoccmd"));
 
-  vector<string> ret;
+  std::vector<std::string> ret;
   if(jsParam1)    // Check if arg value found
   {
     ret.push_back("renderdoccmd");
     const char *param1 = env->GetStringUTFChars(jsParam1, 0);
-    istringstream iss(param1);
+    std::istringstream iss(param1);
     while(iss)
     {
-      string sub;
+      std::string sub;
       iss >> sub;
       ret.push_back(sub);
     }
@@ -416,7 +412,7 @@ vector<string> getRenderdoccmdArgs()
 
 void *cmdthread(void *)
 {
-  vector<string> args = getRenderdoccmdArgs();
+  std::vector<std::string> args = getRenderdoccmdArgs();
   if(args.size())
   {
     ANDROID_LOG("Entering cmd thread");

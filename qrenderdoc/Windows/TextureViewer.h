@@ -27,6 +27,7 @@
 #include <QFrame>
 #include <QMenu>
 #include <QMouseEvent>
+#include <QTime>
 #include "Code/Interface/QRDInterface.h"
 
 namespace Ui
@@ -194,7 +195,7 @@ private slots:
   void thumb_clicked(QMouseEvent *);
   void thumb_doubleClicked(QMouseEvent *);
   void texContextItem_triggered();
-  void showDisabled_triggered();
+  void showUnused_triggered();
   void showEmpty_triggered();
 
   void zoomOption_returnPressed();
@@ -241,8 +242,8 @@ private:
 
   ResourcePreview *UI_CreateThumbnail(ThumbnailStrip *strip);
   void UI_CreateThumbnails();
-  void InitResourcePreview(ResourcePreview *prev, ResourceId id, CompType typeHint, bool force,
-                           Following &follow, const QString &bindName, const QString &slotName);
+  void InitResourcePreview(ResourcePreview *prev, BoundResource res, bool force, Following &follow,
+                           const QString &bindName, const QString &slotName);
 
   void InitStageResourcePreviews(ShaderStage stage, const rdcarray<ShaderResource> &resourceDetails,
                                  const rdcarray<Bindpoint> &mapping,
@@ -305,7 +306,7 @@ private:
   int m_PrevHighestMip = -1;
 
   bool m_ShowEmpty = false;
-  bool m_ShowDisabled = false;
+  bool m_ShowUnused = false;
 
   bool m_Visualise = false;
   bool m_NoRangePaint = false;
@@ -322,15 +323,21 @@ private:
 
   TextureSave m_SaveConfig;
 
+  bool m_NeedCustomReload = false;
+
   TextureDescription *m_CachedTexture;
   Following m_Following = Following::Default;
   QMap<ResourceId, TexSettings> m_TextureSettings;
+
+  QTime m_CustomShaderTimer;
+  int m_CustomShaderWriteTime = 0;
 
   QFileSystemWatcher *m_Watcher = NULL;
   QStringList m_CustomShadersBusy;
   QMap<QString, ResourceId> m_CustomShaders;
   QMap<QString, IShaderViewer *> m_CustomShaderEditor;
 
+  bool canCompileCustomShader(ShaderEncoding encoding);
   void reloadCustomShaders(const QString &filter);
 
   TextureDisplay m_TexDisplay;

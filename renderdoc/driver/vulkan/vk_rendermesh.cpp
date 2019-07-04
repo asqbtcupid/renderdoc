@@ -91,7 +91,7 @@ MeshDisplayPipelines VulkanDebugManager::CacheMeshDisplayPipelines(VkPipelineLay
   if(cache.pipes[(uint32_t)SolidShade::NoSolid] != VK_NULL_HANDLE)
     return cache;
 
-  const VkLayerDispatchTable *vt = ObjDisp(m_Device);
+  const VkDevDispatchTable *vt = ObjDisp(m_Device);
   VkResult vkr = VK_SUCCESS;
 
   // should we try and evict old pipelines from the cache here?
@@ -340,7 +340,7 @@ MeshDisplayPipelines VulkanDebugManager::CacheMeshDisplayPipelines(VkPipelineLay
   stages[2].stage = VK_SHADER_STAGE_GEOMETRY_BIT;
   pipeInfo.stageCount = 3;
 
-  if(stages[2].module != VK_NULL_HANDLE)
+  if(stages[2].module != VK_NULL_HANDLE && ia.topology != VK_PRIMITIVE_TOPOLOGY_POINT_LIST)
   {
     vkr = vt->CreateGraphicsPipelines(Unwrap(m_Device), VK_NULL_HANDLE, 1, &pipeInfo, NULL,
                                       &cache.pipes[MeshDisplayPipelines::ePipe_Lit]);
@@ -356,7 +356,7 @@ MeshDisplayPipelines VulkanDebugManager::CacheMeshDisplayPipelines(VkPipelineLay
   return cache;
 }
 
-void VulkanReplay::RenderMesh(uint32_t eventId, const vector<MeshFormat> &secondaryDraws,
+void VulkanReplay::RenderMesh(uint32_t eventId, const std::vector<MeshFormat> &secondaryDraws,
                               const MeshDisplay &cfg)
 {
   if(cfg.position.vertexResourceId == ResourceId() || cfg.position.numIndices == 0)
@@ -370,12 +370,12 @@ void VulkanReplay::RenderMesh(uint32_t eventId, const vector<MeshFormat> &second
 
   // if the swapchain failed to create, do nothing. We will try to recreate it
   // again in CheckResizeOutputWindow (once per render 'frame')
-  if(outw.swap == VK_NULL_HANDLE)
+  if(outw.m_WindowSystem != WindowingSystem::Headless && outw.swap == VK_NULL_HANDLE)
     return;
 
   VkDevice dev = m_pDriver->GetDev();
   VkCommandBuffer cmd = m_pDriver->GetNextCmd();
-  const VkLayerDispatchTable *vt = ObjDisp(dev);
+  const VkDevDispatchTable *vt = ObjDisp(dev);
 
   VkResult vkr = VK_SUCCESS;
 
@@ -585,7 +585,12 @@ void VulkanReplay::RenderMesh(uint32_t eventId, const vector<MeshFormat> &second
     {
       default:
       case SolidShade::Solid: pipe = cache.pipes[MeshDisplayPipelines::ePipe_SolidDepth]; break;
-      case SolidShade::Lit: pipe = cache.pipes[MeshDisplayPipelines::ePipe_Lit]; break;
+      case SolidShade::Lit:
+        pipe = cache.pipes[MeshDisplayPipelines::ePipe_Lit];
+        // point list topologies don't have lighting obvious, just render them as solid
+        if(pipe == VK_NULL_HANDLE)
+          pipe = cache.pipes[MeshDisplayPipelines::ePipe_SolidDepth];
+        break;
       case SolidShade::Secondary: pipe = cache.pipes[MeshDisplayPipelines::ePipe_Secondary]; break;
     }
 
@@ -881,16 +886,16 @@ void VulkanReplay::RenderMesh(uint32_t eventId, const vector<MeshFormat> &second
     FloatVector activeVertex;
 
     // primitive this vert is a part of (red prim, optional)
-    vector<FloatVector> activePrim;
+    std::vector<FloatVector> activePrim;
 
     // for patch lists, to show other verts in patch (green dots, optional)
     // for non-patch lists, we use the activePrim and adjacentPrimVertices
     // to show what other verts are related
-    vector<FloatVector> inactiveVertices;
+    std::vector<FloatVector> inactiveVertices;
 
     // adjacency (line or tri, strips or lists) (green prims, optional)
     // will be N*M long, N adjacent prims of M verts each. M = primSize below
-    vector<FloatVector> adjacentPrimVertices;
+    std::vector<FloatVector> adjacentPrimVertices;
 
     helper.topology = Topology::TriangleList;
     uint32_t primSize = 3;    // number of verts per primitive

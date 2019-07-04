@@ -24,7 +24,7 @@
 
 #include "gl_test.h"
 
-struct GL_Entry_Points : OpenGLGraphicsTest
+TEST(GL_Entry_Points, OpenGLGraphicsTest)
 {
   static constexpr const char *Description =
       "Test that RenderDoc correctly lists the different function call aliases used.";
@@ -59,10 +59,10 @@ void main()
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create context, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     GLuint vao = MakeVAO();
@@ -76,7 +76,6 @@ void main()
     glEnableVertexAttribArray(0);
 
     GLuint program = MakeProgram(vertex, pixel);
-    glObjectLabel(GL_PROGRAM, program, -1, "Full program");
 
     while(Running())
     {
@@ -93,14 +92,15 @@ void main()
       glDrawArrays(GL_TRIANGLES, 0, 3);
 
       glViewport(100, 0, GLsizei(100), GLsizei(100));
+      glUniform1ui(glGetUniformLocation(program, "path"), 1);
       setMarker("Second Test");
-      glUniform1uiEXT(glGetUniformLocation(program, "path"), 1);
+      glVertexAttribBinding(1, 1);
       glProgramUniform4f(program, glGetUniformLocation(program, "a"), 0.0f, 1.0f, 1.0f, 1.0f);
       glDrawArrays(GL_TRIANGLES, 0, 3);
 
       glViewport(200, 0, GLsizei(100), GLsizei(100));
       setMarker("Third Test");
-      glMemoryBarrierEXT(GL_COMMAND_BARRIER_BIT);
+      glVertexArrayAttribBinding(vao, 1, 1);
       glUniform4f(glGetUniformLocation(program, "a"), 1.0f, 1.0f, 0.0f, 1.0f);
       glDrawArrays(GL_TRIANGLES, 0, 3);
 
@@ -111,4 +111,4 @@ void main()
   }
 };
 
-REGISTER_TEST(GL_Entry_Points);
+REGISTER_TEST();

@@ -24,7 +24,7 @@
 
 #include "gl_test.h"
 
-struct GL_Overlay_Test : OpenGLGraphicsTest
+TEST(GL_Overlay_Test, OpenGLGraphicsTest)
 {
   static constexpr const char *Description =
       "Makes a couple of draws that show off all the overlays in some way";
@@ -73,10 +73,10 @@ void main()
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create context, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     GLuint vao = MakeVAO();
@@ -157,7 +157,6 @@ void main()
     glEnableVertexAttribArray(2);
 
     GLuint program = MakeProgram(common + vertex, common + pixel);
-    glObjectLabel(GL_PROGRAM, program, -1, "Full program");
 
     GLuint fbo = MakeFBO();
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
@@ -230,4 +229,4 @@ void main()
   }
 };
 
-REGISTER_TEST(GL_Overlay_Test);
+REGISTER_TEST();

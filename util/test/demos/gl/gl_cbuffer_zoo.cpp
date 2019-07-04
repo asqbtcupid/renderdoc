@@ -24,7 +24,7 @@
 
 #include "gl_test.h"
 
-struct GL_CBuffer_Zoo : OpenGLGraphicsTest
+TEST(GL_CBuffer_Zoo, OpenGLGraphicsTest)
 {
   static constexpr const char *Description =
       "Tests every kind of constant that can be in a cbuffer to make sure it's decoded "
@@ -303,7 +303,7 @@ void main()
   blah += n[0] + o[0] + p.x;
   blah += q[0].x + r[0].x + s[0].x + t[0].x + u[0].x + v[0].x + w[0].x + x[0].x + y[0].x + z;
   blah += multiarray[0][0].x + ac[0][0] + ad[0][0] + ae[0][0][0] + af[0][0][0];
-  blah += A.z + B.x + C.y + D[0][1] + E[2] + F[1][0][1].y;
+  blah += A.z + B.x + C.y + D[0][1] + E[2] + F[1][0][0].y + F[1][0][1].y;
   blah += G[0].a.b + G[1].a.b + G[1].b[3].w + G[1].c[3].a.y;
   blah *= vertIn.uv.z;
   Color = blah + test + vec4(0.1f, 0.0f, 0.0f, 0.0f);
@@ -311,10 +311,10 @@ void main()
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create context, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     GLuint vao = MakeVAO();
@@ -334,7 +334,6 @@ void main()
     glEnableVertexAttribArray(2);
 
     GLuint program = MakeProgram(common + vertex, common + pixel);
-    glObjectLabel(GL_PROGRAM, program, -1, "Full program");
 
     Vec4f cbufferdata[684];
 
@@ -561,4 +560,4 @@ void main()
   }
 };
 
-REGISTER_TEST(GL_CBuffer_Zoo);
+REGISTER_TEST();

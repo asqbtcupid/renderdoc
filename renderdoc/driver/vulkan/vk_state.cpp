@@ -56,37 +56,6 @@ VulkanRenderState::VulkanRenderState(WrappedVulkan *driver, VulkanCreationInfo *
   RDCEraseEl(conditionalRendering);
 }
 
-VulkanRenderState &VulkanRenderState::operator=(const VulkanRenderState &o)
-{
-  views = o.views;
-  scissors = o.scissors;
-  lineWidth = o.lineWidth;
-  bias = o.bias;
-  memcpy(blendConst, o.blendConst, sizeof(blendConst));
-  mindepth = o.mindepth;
-  maxdepth = o.maxdepth;
-  front = o.front;
-  back = o.back;
-  memcpy(pushconsts, o.pushconsts, sizeof(pushconsts));
-  renderPass = o.renderPass;
-  subpass = o.subpass;
-  framebuffer = o.framebuffer;
-  renderArea = o.renderArea;
-
-  compute.pipeline = o.compute.pipeline;
-  compute.descSets = o.compute.descSets;
-
-  graphics.pipeline = o.graphics.pipeline;
-  graphics.descSets = o.graphics.descSets;
-
-  ibuffer = o.ibuffer;
-  vbuffers = o.vbuffers;
-
-  conditionalRendering = o.conditionalRendering;
-
-  return *this;
-}
-
 void VulkanRenderState::BeginRenderPassAndApplyState(VkCommandBuffer cmd, PipelineBinding binding)
 {
   RDCASSERT(renderPass != ResourceId());
@@ -111,48 +80,6 @@ void VulkanRenderState::BeginRenderPassAndApplyState(VkCommandBuffer cmd, Pipeli
   ObjDisp(cmd)->CmdBeginRenderPass(Unwrap(cmd), &rpbegin, VK_SUBPASS_CONTENTS_INLINE);
 
   BindPipeline(cmd, binding, true);
-
-  if(ibuffer.buf != ResourceId())
-    ObjDisp(cmd)->CmdBindIndexBuffer(
-        Unwrap(cmd), Unwrap(GetResourceManager()->GetCurrentHandle<VkBuffer>(ibuffer.buf)),
-        ibuffer.offs, ibuffer.bytewidth == 4 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16);
-
-  for(size_t i = 0; i < vbuffers.size(); i++)
-  {
-    if(vbuffers[i].buf == ResourceId())
-      continue;
-
-    ObjDisp(cmd)->CmdBindVertexBuffers(
-        Unwrap(cmd), (uint32_t)i, 1,
-        UnwrapPtr(GetResourceManager()->GetCurrentHandle<VkBuffer>(vbuffers[i].buf)),
-        &vbuffers[i].offs);
-  }
-
-  for(size_t i = 0; i < xfbbuffers.size(); i++)
-  {
-    if(xfbbuffers[i].buf == ResourceId())
-      continue;
-
-    ObjDisp(cmd)->CmdBindTransformFeedbackBuffersEXT(
-        Unwrap(cmd), (uint32_t)i, 1,
-        UnwrapPtr(GetResourceManager()->GetCurrentHandle<VkBuffer>(xfbbuffers[i].buf)),
-        &xfbbuffers[i].offs, &xfbbuffers[i].size);
-  }
-
-  if(!xfbcounters.empty())
-  {
-    std::vector<VkBuffer> buffers;
-    std::vector<VkDeviceSize> offsets;
-
-    for(size_t i = 0; i < xfbcounters.size(); i++)
-    {
-      buffers.push_back(Unwrap(GetResourceManager()->GetCurrentHandle<VkBuffer>(xfbcounters[i].buf)));
-      offsets.push_back(xfbcounters[i].offs);
-    }
-
-    ObjDisp(cmd)->CmdBeginTransformFeedbackEXT(
-        Unwrap(cmd), firstxfbcounter, (uint32_t)xfbcounters.size(), buffers.data(), offsets.data());
-  }
 
   if(IsConditionalRenderingEnabled())
   {
@@ -216,7 +143,7 @@ void VulkanRenderState::BindPipeline(VkCommandBuffer cmd, PipelineBinding bindin
     ResourceId pipeLayoutId = m_CreationInfo->m_Pipeline[graphics.pipeline].layout;
     VkPipelineLayout layout = GetResourceManager()->GetCurrentHandle<VkPipelineLayout>(pipeLayoutId);
 
-    const vector<VkPushConstantRange> &pushRanges =
+    const std::vector<VkPushConstantRange> &pushRanges =
         m_CreationInfo->m_PipelineLayout[pipeLayoutId].pushRanges;
 
     bool dynamicStates[VkDynamicCount] = {0};
@@ -282,7 +209,7 @@ void VulkanRenderState::BindPipeline(VkCommandBuffer cmd, PipelineBinding bindin
                                      pushRanges[i].offset, pushRanges[i].size,
                                      pushconsts + pushRanges[i].offset);
 
-    const vector<ResourceId> &descSetLayouts =
+    const std::vector<ResourceId> &descSetLayouts =
         m_CreationInfo->m_PipelineLayout[pipeLayoutId].descSetLayouts;
 
     // only iterate over the desc sets that this layout actually uses, not all that were bound
@@ -353,6 +280,49 @@ void VulkanRenderState::BindPipeline(VkCommandBuffer cmd, PipelineBinding bindin
         RDCWARN("Descriptor set is not bound but pipeline layout expects one");
       }
     }
+
+    if(ibuffer.buf != ResourceId())
+      ObjDisp(cmd)->CmdBindIndexBuffer(
+          Unwrap(cmd), Unwrap(GetResourceManager()->GetCurrentHandle<VkBuffer>(ibuffer.buf)),
+          ibuffer.offs, ibuffer.bytewidth == 4 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16);
+
+    for(size_t i = 0; i < vbuffers.size(); i++)
+    {
+      if(vbuffers[i].buf == ResourceId())
+        continue;
+
+      ObjDisp(cmd)->CmdBindVertexBuffers(
+          Unwrap(cmd), (uint32_t)i, 1,
+          UnwrapPtr(GetResourceManager()->GetCurrentHandle<VkBuffer>(vbuffers[i].buf)),
+          &vbuffers[i].offs);
+    }
+
+    for(size_t i = 0; i < xfbbuffers.size(); i++)
+    {
+      if(xfbbuffers[i].buf == ResourceId())
+        continue;
+
+      ObjDisp(cmd)->CmdBindTransformFeedbackBuffersEXT(
+          Unwrap(cmd), (uint32_t)i, 1,
+          UnwrapPtr(GetResourceManager()->GetCurrentHandle<VkBuffer>(xfbbuffers[i].buf)),
+          &xfbbuffers[i].offs, &xfbbuffers[i].size);
+    }
+
+    if(!xfbcounters.empty())
+    {
+      std::vector<VkBuffer> buffers;
+      std::vector<VkDeviceSize> offsets;
+
+      for(size_t i = 0; i < xfbcounters.size(); i++)
+      {
+        buffers.push_back(
+            Unwrap(GetResourceManager()->GetCurrentHandle<VkBuffer>(xfbcounters[i].buf)));
+        offsets.push_back(xfbcounters[i].offs);
+      }
+
+      ObjDisp(cmd)->CmdBeginTransformFeedbackEXT(
+          Unwrap(cmd), firstxfbcounter, (uint32_t)xfbcounters.size(), buffers.data(), offsets.data());
+    }
   }
 
   if(compute.pipeline != ResourceId() && binding == BindCompute)
@@ -364,7 +334,7 @@ void VulkanRenderState::BindPipeline(VkCommandBuffer cmd, PipelineBinding bindin
     ResourceId pipeLayoutId = m_CreationInfo->m_Pipeline[compute.pipeline].layout;
     VkPipelineLayout layout = GetResourceManager()->GetCurrentHandle<VkPipelineLayout>(pipeLayoutId);
 
-    const vector<VkPushConstantRange> &pushRanges =
+    const std::vector<VkPushConstantRange> &pushRanges =
         m_CreationInfo->m_PipelineLayout[pipeLayoutId].pushRanges;
 
     // only set push constant ranges that the layout uses
@@ -373,7 +343,7 @@ void VulkanRenderState::BindPipeline(VkCommandBuffer cmd, PipelineBinding bindin
                                      pushRanges[i].offset, pushRanges[i].size,
                                      pushconsts + pushRanges[i].offset);
 
-    const vector<ResourceId> &descSetLayouts =
+    const std::vector<ResourceId> &descSetLayouts =
         m_CreationInfo->m_PipelineLayout[pipeLayoutId].descSetLayouts;
 
     for(size_t i = 0; i < descSetLayouts.size(); i++)
@@ -462,7 +432,7 @@ void VulkanRenderState::BindDescriptorSet(const DescSetLayout &descLayout, VkCom
       push.descriptorType = bind.descriptorType;
       push.descriptorCount = bind.descriptorCount;
 
-      DescriptorSetSlot *slots = setInfo.currentBindings[b];
+      DescriptorSetBindingElement *slots = setInfo.currentBindings[b];
 
       if(push.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER ||
          push.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER)

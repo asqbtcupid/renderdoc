@@ -59,219 +59,262 @@ VulkanGraphicsTest::VulkanGraphicsTest()
   features.depthClamp = true;
 }
 
-bool VulkanGraphicsTest::Init(int argc, char **argv)
+namespace
 {
-  // parse parameters here to override parameters
-  GraphicsTest::Init(argc, argv);
+bool volk = false;
+bool spv = false;
+VkInstance inst = VK_NULL_HANDLE;
+VkPhysicalDevice selectedPhys = VK_NULL_HANDLE;
+std::vector<const char *> enabledInstExts;
+std::vector<const char *> enabledLayers;
+};
 
-  if(volkInitialize() != VK_SUCCESS)
+void VulkanGraphicsTest::Prepare(int argc, char **argv)
+{
+  GraphicsTest::Prepare(argc, argv);
+
+  static bool prepared = false;
+
+  if(!prepared)
   {
-    TEST_ERROR("Couldn't init vulkan");
-    return false;
-  }
+    prepared = true;
 
-  if(!SpvCompilationSupported())
-  {
-    TEST_ERROR("glslc must be in PATH to run vulkan tests");
-    return false;
-  }
+    volk = (volkInitialize() == VK_SUCCESS);
 
-  instExts.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
+    spv = SpvCompilationSupported();
+
+    if(volk && spv)
+    {
+      enabledInstExts.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
 
 #if defined(WIN32)
-  instExts.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
+      enabledInstExts.push_back(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
 #else
-  instExts.push_back(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
+      enabledInstExts.push_back(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
 
-  X11Window::Init();
+      X11Window::Init();
 #endif
 
-  if(debugDevice)
-    instExts.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-  else
-    optInstExts.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+      std::vector<const char *> optInstExts;
 
-  std::vector<const char *> layers;
+      // this is used by so many sub extensions, initialise it if we can.
+      optInstExts.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
 
-  std::vector<VkLayerProperties> supportedLayers;
-  CHECK_VKR(vkh::enumerateInstanceLayerProperties(supportedLayers));
+      // enable debug utils when possible
+      optInstExts.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
-  if(debugDevice)
-  {
-    for(const VkLayerProperties &layer : supportedLayers)
-    {
-      if(!strcmp(layer.layerName, "VK_LAYER_LUNARG_standard_validation"))
+      std::vector<VkLayerProperties> supportedLayers;
+      CHECK_VKR(vkh::enumerateInstanceLayerProperties(supportedLayers));
+
+      if(debugDevice)
       {
-        layers.push_back(layer.layerName);
-        break;
-      }
-    }
-  }
-
-  std::vector<VkExtensionProperties> supportedExts;
-  CHECK_VKR(vkh::enumerateInstanceExtensionProperties(supportedExts, NULL));
-
-  for(const char *search : instExts)
-  {
-    bool found = false;
-    for(VkExtensionProperties &ext : supportedExts)
-    {
-      if(!strcmp(ext.extensionName, search))
-      {
-        found = true;
-        break;
-      }
-    }
-
-    if(!found)
-    {
-      TEST_ERROR("Required instance extension '%s' missing", search);
-      return false;
-    }
-  }
-
-  // add any optional extensions that are supported
-  for(const char *search : optInstExts)
-  {
-    bool found = false;
-    for(VkExtensionProperties &ext : supportedExts)
-    {
-      if(!strcmp(ext.extensionName, search))
-      {
-        found = true;
-        break;
-      }
-    }
-
-    if(found)
-      instExts.push_back(search);
-  }
-
-  vkh::ApplicationInfo app("RenderDoc autotesting", VK_MAKE_VERSION(1, 0, 0),
-                           "RenderDoc autotesting", VK_MAKE_VERSION(1, 0, 0), VK_API_VERSION_1_0);
-
-  CHECK_VKR(vkCreateInstance(vkh::InstanceCreateInfo(app, layers, instExts), NULL, &instance));
-
-  volkLoadInstance((VkInstance)instance);
-
-  if(debugDevice)
-  {
-    CHECK_VKR(vkCreateDebugUtilsMessengerEXT(
-        instance, vkh::DebugUtilsMessengerCreateInfoEXT(
-                      &vulkanCallback, NULL, VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-                                                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT),
-        NULL, &debugUtilsMessenger));
-  }
-
-  std::vector<VkPhysicalDevice> physDevices;
-  CHECK_VKR(vkh::enumeratePhysicalDevices(physDevices, instance));
-
-  if(physDevices.empty())
-  {
-    TEST_ERROR("No vulkan devices available");
-    return false;
-  }
-
-  std::vector<VkPhysicalDeviceProperties> physProps;
-  for(VkPhysicalDevice p : physDevices)
-  {
-    VkPhysicalDeviceProperties props;
-    vkGetPhysicalDeviceProperties(p, &props);
-    physProps.push_back(props);
-  }
-
-  // default to the first discrete card
-  for(size_t i = 0; i < physDevices.size(); i++)
-  {
-    if(physProps[i].deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
-    {
-      phys = physDevices[i];
-      break;
-    }
-  }
-
-  // if none found, default to first
-  if(phys == VK_NULL_HANDLE)
-    phys = physDevices[0];
-
-  // allow command line override
-  for(int i = 0; i < argc; i++)
-  {
-    if(!strcmp(argv[i], "--gpu") && i + 1 < argc)
-    {
-      std::string needle = strlower(argv[i + 1]);
-
-      const bool nv = (needle == "nv" || needle == "nvidia");
-      const bool amd = (needle == "amd");
-      const bool intel = (needle == "intel");
-
-      for(size_t p = 0; p < physDevices.size(); p++)
-      {
-        std::string haystack = strlower(physProps[p].deviceName);
-
-        if(haystack.find(needle) != std::string::npos || (nv && physProps[p].vendorID == 0x10DE) ||
-           (amd && physProps[p].vendorID == 0x1002) || (intel && physProps[p].vendorID == 0x8086))
+        for(const VkLayerProperties &layer : supportedLayers)
         {
-          phys = physDevices[p];
-          break;
+          if(!strcmp(layer.layerName, "VK_LAYER_LUNARG_standard_validation"))
+          {
+            enabledLayers.push_back("VK_LAYER_LUNARG_standard_validation");
+            break;
+          }
         }
       }
 
-      break;
+      std::vector<VkExtensionProperties> supportedExts;
+      CHECK_VKR(vkh::enumerateInstanceExtensionProperties(supportedExts, NULL));
+
+      // strip any extensions that are not supported
+      for(auto it = enabledInstExts.begin(); it != enabledInstExts.end();)
+      {
+        bool found = false;
+        for(VkExtensionProperties &ext : supportedExts)
+        {
+          if(!strcmp(ext.extensionName, *it))
+          {
+            found = true;
+            break;
+          }
+        }
+
+        if(found)
+        {
+          ++it;
+        }
+        else
+        {
+          DEBUG_BREAK();
+          it = enabledInstExts.erase(it);
+        }
+      }
+
+      // add any optional extensions that are supported
+      for(const char *search : optInstExts)
+      {
+        bool found = false;
+        for(VkExtensionProperties &ext : supportedExts)
+        {
+          if(!strcmp(ext.extensionName, search))
+          {
+            found = true;
+            break;
+          }
+        }
+
+        if(found)
+          enabledInstExts.push_back(search);
+      }
+
+      vkh::ApplicationInfo app("RenderDoc autotesting", VK_MAKE_VERSION(1, 0, 0),
+                               "RenderDoc autotesting", VK_MAKE_VERSION(1, 0, 0), VK_API_VERSION_1_0);
+
+      VkResult vkr = vkCreateInstance(vkh::InstanceCreateInfo(app, enabledLayers, enabledInstExts),
+                                      NULL, &inst);
+
+      if(vkr == VK_SUCCESS)
+      {
+        volkLoadInstance((VkInstance)inst);
+
+        std::vector<VkPhysicalDevice> physDevices;
+        CHECK_VKR(vkh::enumeratePhysicalDevices(physDevices, inst));
+
+        std::vector<VkPhysicalDeviceProperties> physProps;
+        for(VkPhysicalDevice p : physDevices)
+        {
+          VkPhysicalDeviceProperties props;
+          vkGetPhysicalDeviceProperties(p, &props);
+          physProps.push_back(props);
+        }
+
+        // default to the first discrete card
+        for(size_t i = 0; i < physDevices.size(); i++)
+        {
+          if(physProps[i].deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+          {
+            selectedPhys = physDevices[i];
+            break;
+          }
+        }
+
+        // if none found, default to first
+        if(selectedPhys == VK_NULL_HANDLE && !physDevices.empty())
+          selectedPhys = physDevices[0];
+
+        // allow command line override
+        for(int i = 0; i < argc; i++)
+        {
+          if(!strcmp(argv[i], "--gpu") && i + 1 < argc)
+          {
+            std::string needle = strlower(argv[i + 1]);
+
+            const bool nv = (needle == "nv" || needle == "nvidia");
+            const bool amd = (needle == "amd");
+            const bool intel = (needle == "intel");
+
+            for(size_t p = 0; p < physDevices.size(); p++)
+            {
+              std::string haystack = strlower(physProps[p].deviceName);
+
+              if(haystack.find(needle) != std::string::npos ||
+                 (nv && physProps[p].vendorID == 0x10DE) || (amd && physProps[p].vendorID == 0x1002) ||
+                 (intel && physProps[p].vendorID == 0x8086))
+              {
+                selectedPhys = physDevices[p];
+                break;
+              }
+            }
+
+            break;
+          }
+        }
+      }
     }
   }
 
-  std::vector<VkQueueFamilyProperties> queueProps;
-  vkh::getQueueFamilyProperties(queueProps, phys);
+  instance = inst;
+  phys = selectedPhys;
+  instExts = enabledInstExts;
 
-  VkQueueFlags required = VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT;
+  if(!volk)
+    Avail = "volk did not initialise - vulkan library is not available";
+  else if(!spv)
+    Avail = InternalSpvCompiler()
+                ? "Internal SPIR-V compiler did not initialise"
+                : "Couldn't find 'glslc' in PATH - required for SPIR-V compilation";
+  else if(instance == VK_NULL_HANDLE)
+    Avail = "Vulkan instance did not initialise";
+  else if(phys == VK_NULL_HANDLE)
+    Avail = "Couldn't find vulkan physical device";
 
-  for(uint32_t q = 0; q < queueProps.size(); q++)
-  {
-    VkQueueFlags flags = queueProps[q].queueFlags;
-    if((flags & required) == required)
-    {
-      queueFamilyIndex = q;
-      break;
-    }
-  }
-
-  if(queueFamilyIndex == ~0U)
-  {
-    TEST_ERROR("No graphics/compute queues available");
-    return false;
-  }
-
-  mainWindow = MakeWindow(screenWidth, screenHeight, "Autotesting");
-
-  VkResult vkr = (VkResult)CreateSurface(mainWindow, &surface);
-
-  if(vkr != VK_SUCCESS)
-  {
-    TEST_ERROR("Error creating surface: %s", vkh::result_str(vkr));
-    return false;
-  };
+  if(!Avail.empty())
+    return;
 
   devExts.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 
   VkPhysicalDeviceFeatures supported;
   vkGetPhysicalDeviceFeatures(phys, &supported);
 
-  const VkBool32 *enabledBegin = (VkBool32 *)&features;
-  const VkBool32 *enabledEnd = enabledBegin + sizeof(features);
-
-  const VkBool32 *supportedBegin = (VkBool32 *)&features;
-
-  for(; enabledBegin != enabledEnd; ++enabledBegin, ++supportedBegin)
-  {
-    if(*enabledBegin && !*supportedBegin)
-    {
-      TEST_ERROR("Feature enabled that isn't supported");
-      return false;
-    }
+#define CHECK_FEATURE(a)                                                  \
+  if(features.a && !supported.a)                                          \
+  {                                                                       \
+    Avail = "Required physical device feature '" #a "' is not supported"; \
+    return;                                                               \
   }
 
-  supportedExts.clear();
+  CHECK_FEATURE(robustBufferAccess);
+  CHECK_FEATURE(fullDrawIndexUint32);
+  CHECK_FEATURE(imageCubeArray);
+  CHECK_FEATURE(independentBlend);
+  CHECK_FEATURE(geometryShader);
+  CHECK_FEATURE(tessellationShader);
+  CHECK_FEATURE(sampleRateShading);
+  CHECK_FEATURE(dualSrcBlend);
+  CHECK_FEATURE(logicOp);
+  CHECK_FEATURE(multiDrawIndirect);
+  CHECK_FEATURE(drawIndirectFirstInstance);
+  CHECK_FEATURE(depthClamp);
+  CHECK_FEATURE(depthBiasClamp);
+  CHECK_FEATURE(fillModeNonSolid);
+  CHECK_FEATURE(depthBounds);
+  CHECK_FEATURE(wideLines);
+  CHECK_FEATURE(largePoints);
+  CHECK_FEATURE(alphaToOne);
+  CHECK_FEATURE(multiViewport);
+  CHECK_FEATURE(samplerAnisotropy);
+  CHECK_FEATURE(textureCompressionETC2);
+  CHECK_FEATURE(textureCompressionASTC_LDR);
+  CHECK_FEATURE(textureCompressionBC);
+  CHECK_FEATURE(occlusionQueryPrecise);
+  CHECK_FEATURE(pipelineStatisticsQuery);
+  CHECK_FEATURE(vertexPipelineStoresAndAtomics);
+  CHECK_FEATURE(fragmentStoresAndAtomics);
+  CHECK_FEATURE(shaderTessellationAndGeometryPointSize);
+  CHECK_FEATURE(shaderImageGatherExtended);
+  CHECK_FEATURE(shaderStorageImageExtendedFormats);
+  CHECK_FEATURE(shaderStorageImageMultisample);
+  CHECK_FEATURE(shaderStorageImageReadWithoutFormat);
+  CHECK_FEATURE(shaderStorageImageWriteWithoutFormat);
+  CHECK_FEATURE(shaderUniformBufferArrayDynamicIndexing);
+  CHECK_FEATURE(shaderSampledImageArrayDynamicIndexing);
+  CHECK_FEATURE(shaderStorageBufferArrayDynamicIndexing);
+  CHECK_FEATURE(shaderStorageImageArrayDynamicIndexing);
+  CHECK_FEATURE(shaderClipDistance);
+  CHECK_FEATURE(shaderCullDistance);
+  CHECK_FEATURE(shaderFloat64);
+  CHECK_FEATURE(shaderInt64);
+  CHECK_FEATURE(shaderInt16);
+  CHECK_FEATURE(shaderResourceResidency);
+  CHECK_FEATURE(shaderResourceMinLod);
+  CHECK_FEATURE(sparseBinding);
+  CHECK_FEATURE(sparseResidencyBuffer);
+  CHECK_FEATURE(sparseResidencyImage2D);
+  CHECK_FEATURE(sparseResidencyImage3D);
+  CHECK_FEATURE(sparseResidency2Samples);
+  CHECK_FEATURE(sparseResidency4Samples);
+  CHECK_FEATURE(sparseResidency8Samples);
+  CHECK_FEATURE(sparseResidency16Samples);
+  CHECK_FEATURE(sparseResidencyAliased);
+  CHECK_FEATURE(variableMultisampleRate);
+  CHECK_FEATURE(inheritedQueries);
+
+  std::vector<VkExtensionProperties> supportedExts;
   CHECK_VKR(vkh::enumerateDeviceExtensionProperties(supportedExts, phys, NULL));
 
   for(const char *search : devExts)
@@ -289,7 +332,7 @@ bool VulkanGraphicsTest::Init(int argc, char **argv)
     if(!found)
     {
       // try the layers we're enabling
-      for(const char *layer : layers)
+      for(const char *layer : enabledLayers)
       {
         std::vector<VkExtensionProperties> layerExts;
         CHECK_VKR(vkh::enumerateDeviceExtensionProperties(layerExts, phys, layer));
@@ -309,11 +352,58 @@ bool VulkanGraphicsTest::Init(int argc, char **argv)
 
       if(!found)
       {
-        TEST_ERROR("Required device extension '%s' missing", search);
-        return false;
+        Avail = "Required device extension '";
+        Avail += search;
+        Avail += "' is not supported";
+        return;
       }
     }
   }
+}
+
+bool VulkanGraphicsTest::Init()
+{
+  // parse parameters here to override parameters
+  if(!GraphicsTest::Init())
+    return false;
+
+  if(debugDevice)
+  {
+    CHECK_VKR(vkCreateDebugUtilsMessengerEXT(
+        instance, vkh::DebugUtilsMessengerCreateInfoEXT(
+                      &vulkanCallback, NULL, VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                                                 VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT),
+        NULL, &debugUtilsMessenger));
+  }
+
+  std::vector<VkQueueFamilyProperties> queueProps;
+  vkh::getQueueFamilyProperties(queueProps, phys);
+
+  VkQueueFlags required = VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT;
+
+  // if no queue has been selected, find it now
+  if(queueFamilyIndex == ~0U)
+  {
+    for(uint32_t q = 0; q < queueProps.size(); q++)
+    {
+      VkQueueFlags flags = queueProps[q].queueFlags;
+      if((flags & required) == required)
+      {
+        queueFamilyIndex = q;
+        queueCount = 1;
+        break;
+      }
+    }
+  }
+
+  if(queueFamilyIndex == ~0U)
+  {
+    TEST_ERROR("No graphics/compute queues available");
+    return false;
+  }
+
+  std::vector<VkExtensionProperties> supportedExts;
+  CHECK_VKR(vkh::enumerateDeviceExtensionProperties(supportedExts, phys, NULL));
 
   // add any optional extensions that are supported
   for(const char *search : optDevExts)
@@ -332,26 +422,22 @@ bool VulkanGraphicsTest::Init(int argc, char **argv)
       devExts.push_back(search);
   }
 
-  CHECK_VKR(vkCreateDevice(phys,
-                           vkh::DeviceCreateInfo({vkh::DeviceQueueCreateInfo(queueFamilyIndex, 1)},
-                                                 layers, devExts, features)
-                               .next(devInfoNext),
-                           NULL, &device));
+  CHECK_VKR(vkCreateDevice(
+      phys, vkh::DeviceCreateInfo({vkh::DeviceQueueCreateInfo(queueFamilyIndex, queueCount)},
+                                  enabledLayers, devExts, features)
+                .next(devInfoNext),
+      NULL, &device));
 
   volkLoadDevice(device);
 
   vkGetDeviceQueue(device, queueFamilyIndex, 0, &queue);
+  mainWindow = MakeWindow(screenWidth, screenHeight, "Autotesting");
 
-  CHECK_VKR(vkCreateSemaphore(device, vkh::SemaphoreCreateInfo(), NULL, &renderStartSemaphore));
-  CHECK_VKR(vkCreateSemaphore(device, vkh::SemaphoreCreateInfo(), NULL, &renderEndSemaphore));
-
-  CHECK_VKR(vkCreateCommandPool(
-      device, vkh::CommandPoolCreateInfo(VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT), NULL,
-      &cmdPool));
-
-  createSwap();
-
-  acquireImage();
+  if(!mainWindow->Initialised())
+  {
+    TEST_ERROR("Error creating surface");
+    return false;
+  };
 
   VmaVulkanFunctions funcs = {
       vkGetPhysicalDeviceProperties,
@@ -377,41 +463,28 @@ bool VulkanGraphicsTest::Init(int argc, char **argv)
   VmaAllocatorCreateInfo allocInfo = {};
   allocInfo.physicalDevice = phys;
   allocInfo.device = device;
-  allocInfo.frameInUseCount = uint32_t(swapImages.size() - 1);
+  allocInfo.frameInUseCount = 4;
   allocInfo.pVulkanFunctions = &funcs;
 
   vmaCreateAllocator(&allocInfo, &allocator);
 
+  VkPhysicalDeviceProperties physProps;
+  vkGetPhysicalDeviceProperties(phys, &physProps);
+
+  TEST_LOG("Running Vulkan test on %s", physProps.deviceName);
+
   return true;
 }
 
-bool VulkanGraphicsTest::IsSupported()
-{
-  if(volkGetInstanceVersion() > 0)
-    return true;
-
-  static bool glslcChecked = false;
-  static bool glslcSupported = false;
-
-  if(!glslcChecked)
-  {
-    glslcChecked = true;
-    glslcSupported = SpvCompilationSupported();
-  }
-
-  if(!glslcSupported)
-    return false;
-
-  return volkInitialize() == VK_SUCCESS;
-}
-
-GraphicsWindow *VulkanGraphicsTest::MakeWindow(int width, int height, const char *title)
+VulkanWindow *VulkanGraphicsTest::MakeWindow(int width, int height, const char *title)
 {
 #if defined(WIN32)
-  return new Win32Window(width, height, title);
+  GraphicsWindow *platWin = new Win32Window(width, height, title);
 #else
-  return new X11Window(width, height, title);
+  GraphicsWindow *platWin = new X11Window(width, height, title);
 #endif
+
+  return new VulkanWindow(this, platWin);
 }
 
 void VulkanGraphicsTest::Shutdown()
@@ -421,9 +494,6 @@ void VulkanGraphicsTest::Shutdown()
   if(device)
   {
     vkDeviceWaitIdle(device);
-
-    for(VkFence fence : fences)
-      vkDestroyFence(device, fence, NULL);
 
     for(VkShaderModule shader : shaders)
       vkDestroyShaderModule(device, shader, NULL);
@@ -452,24 +522,16 @@ void VulkanGraphicsTest::Shutdown()
     for(VkDescriptorSetLayout layout : setlayouts)
       vkDestroyDescriptorSetLayout(device, layout, NULL);
 
-    vkDestroyCommandPool(device, cmdPool, NULL);
-    vkDestroySemaphore(device, renderStartSemaphore, NULL);
-    vkDestroySemaphore(device, renderEndSemaphore, NULL);
-
-    destroySwap();
+    delete mainWindow;
 
     vkDestroyDevice(device, NULL);
   }
 
   if(debugUtilsMessenger)
     vkDestroyDebugUtilsMessengerEXT(instance, debugUtilsMessenger, NULL);
-  if(surface)
-    vkDestroySurfaceKHR(instance, surface, NULL);
 
   if(instance)
     vkDestroyInstance(instance, NULL);
-
-  delete mainWindow;
 }
 
 bool VulkanGraphicsTest::Running()
@@ -481,9 +543,12 @@ bool VulkanGraphicsTest::Running()
 }
 
 VkImage VulkanGraphicsTest::StartUsingBackbuffer(VkCommandBuffer cmd, VkAccessFlags nextUse,
-                                                 VkImageLayout layout)
+                                                 VkImageLayout layout, VulkanWindow *window)
 {
-  VkImage img = swapImages[swapIndex];
+  if(window == NULL)
+    window = mainWindow;
+
+  VkImage img = window->GetImage();
 
   vkh::cmdPipelineBarrier(
       cmd, {
@@ -494,9 +559,12 @@ VkImage VulkanGraphicsTest::StartUsingBackbuffer(VkCommandBuffer cmd, VkAccessFl
 }
 
 void VulkanGraphicsTest::FinishUsingBackbuffer(VkCommandBuffer cmd, VkAccessFlags prevUse,
-                                               VkImageLayout layout)
+                                               VkImageLayout layout, VulkanWindow *window)
 {
-  VkImage img = swapImages[swapIndex];
+  if(window == NULL)
+    window = mainWindow;
+
+  VkImage img = window->GetImage();
 
   vkh::cmdPipelineBarrier(cmd, {
                                    vkh::ImageMemoryBarrier(prevUse, VK_ACCESS_MEMORY_READ_BIT, layout,
@@ -505,74 +573,27 @@ void VulkanGraphicsTest::FinishUsingBackbuffer(VkCommandBuffer cmd, VkAccessFlag
 }
 
 void VulkanGraphicsTest::Submit(int index, int totalSubmits, const std::vector<VkCommandBuffer> &cmds,
-                                const std::vector<VkCommandBuffer> &seccmds)
+                                const std::vector<VkCommandBuffer> &seccmds, VulkanWindow *window,
+                                VkQueue q)
 {
-  VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+  if(window == NULL)
+    window = mainWindow;
 
-  VkSubmitInfo submit = vkh::SubmitInfo(cmds);
+  if(q == VK_NULL_HANDLE)
+    q = queue;
 
-  if(index == 0)
-  {
-    submit.waitSemaphoreCount = 1;
-    submit.pWaitDstStageMask = &waitStage;
-    submit.pWaitSemaphores = &renderStartSemaphore;
-  }
-
-  if(index == totalSubmits - 1)
-  {
-    submit.signalSemaphoreCount = 1;
-    submit.pSignalSemaphores = &renderEndSemaphore;
-  }
-
-  VkFence fence;
-  CHECK_VKR(vkCreateFence(device, vkh::FenceCreateInfo(), NULL, &fence));
-
-  fences.insert(fence);
-
-  for(const VkCommandBuffer &cmd : cmds)
-    pendingCommandBuffers[0].push_back(std::make_pair(cmd, fence));
-
-  for(const VkCommandBuffer &cmd : seccmds)
-    pendingCommandBuffers[1].push_back(std::make_pair(cmd, fence));
-
-  vkQueueSubmit(queue, 1, &submit, fence);
+  window->Submit(index, totalSubmits, cmds, seccmds, q);
 }
 
-void VulkanGraphicsTest::Present()
+void VulkanGraphicsTest::Present(VulkanWindow *window, VkQueue q)
 {
-  VkResult vkr = vkQueuePresentKHR(queue, vkh::PresentInfoKHR(swap, swapIndex, &renderEndSemaphore));
+  if(!window)
+    window = mainWindow;
 
-  if(vkr == VK_SUBOPTIMAL_KHR || vkr == VK_ERROR_OUT_OF_DATE_KHR)
-    resize();
+  if(q == VK_NULL_HANDLE)
+    q = queue;
 
-  vkQueueWaitIdle(queue);
-
-  std::set<VkFence> doneFences;
-
-  for(int level = 0; level < VK_COMMAND_BUFFER_LEVEL_RANGE_SIZE; level++)
-  {
-    for(auto it = pendingCommandBuffers[level].begin(); it != pendingCommandBuffers[level].end();)
-    {
-      if(vkGetFenceStatus(device, it->second) == VK_SUCCESS)
-      {
-        freeCommandBuffers[level].push_back(it->first);
-        doneFences.insert(it->second);
-        it = pendingCommandBuffers[level].erase(it);
-      }
-      else
-      {
-        ++it;
-      }
-    }
-  }
-
-  for(auto it = doneFences.begin(); it != doneFences.end(); ++it)
-  {
-    vkDestroyFence(device, *it, NULL);
-    fences.erase(*it);
-  }
-
-  acquireImage();
+  window->Present(q);
 }
 
 VkPipelineShaderStageCreateInfo VulkanGraphicsTest::CompileShaderModule(
@@ -602,15 +623,24 @@ VkPipelineShaderStageCreateInfo VulkanGraphicsTest::CompileShaderModule(
   return vkh::PipelineShaderStageCreateInfo(ret, vkstage[(int)stage], entry_point);
 }
 
-VkCommandBuffer VulkanGraphicsTest::GetCommandBuffer(VkCommandBufferLevel level)
+VkCommandBuffer VulkanGraphicsTest::GetCommandBuffer(VkCommandBufferLevel level, VulkanWindow *window)
+{
+  if(window == NULL)
+    window = mainWindow;
+
+  return window->GetCommandBuffer(level);
+}
+
+VkCommandBuffer VulkanWindow::GetCommandBuffer(VkCommandBufferLevel level)
 {
   std::vector<VkCommandBuffer> &buflist = freeCommandBuffers[level];
 
   if(buflist.empty())
   {
     buflist.resize(4);
-    CHECK_VKR(vkAllocateCommandBuffers(device, vkh::CommandBufferAllocateInfo(cmdPool, 4, level),
-                                       &buflist[0]));
+
+    CHECK_VKR(vkAllocateCommandBuffers(
+        m_Test->device, vkh::CommandBufferAllocateInfo(cmdPool, 4, level), &buflist[0]));
   }
 
   VkCommandBuffer ret = buflist.back();
@@ -786,27 +816,88 @@ VkDescriptorSetLayout VulkanGraphicsTest::createDescriptorSetLayout(
   return ret;
 }
 
-void VulkanGraphicsTest::resize()
+VulkanWindow::VulkanWindow(VulkanGraphicsTest *test, GraphicsWindow *win)
 {
-  destroySwap();
+  m_Test = test;
+  m_Win = win;
 
-  createSwap();
+  {
+    std::lock_guard<std::mutex> lock(m_Test->mutex);
 
-  for(const std::function<void()> &cb : resizeCallbacks)
-    cb();
+    CHECK_VKR(vkCreateCommandPool(
+        m_Test->device, vkh::CommandPoolCreateInfo(VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT),
+        NULL, &cmdPool));
+
+    CHECK_VKR(
+        vkCreateSemaphore(m_Test->device, vkh::SemaphoreCreateInfo(), NULL, &renderStartSemaphore));
+    CHECK_VKR(
+        vkCreateSemaphore(m_Test->device, vkh::SemaphoreCreateInfo(), NULL, &renderEndSemaphore));
+
+#if defined(WIN32)
+    VkWin32SurfaceCreateInfoKHR createInfo;
+
+    createInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+    createInfo.pNext = NULL;
+    createInfo.flags = 0;
+    createInfo.hwnd = ((Win32Window *)win)->wnd;
+    createInfo.hinstance = GetModuleHandleA(NULL);
+
+    vkCreateWin32SurfaceKHR(m_Test->instance, &createInfo, NULL, &surface);
+#else
+    VkXcbSurfaceCreateInfoKHR createInfo;
+
+    createInfo.sType = VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR;
+    createInfo.pNext = NULL;
+    createInfo.flags = 0;
+    createInfo.connection = ((X11Window *)win)->xcb.connection;
+    createInfo.window = ((X11Window *)win)->xcb.window;
+
+    vkCreateXcbSurfaceKHR(m_Test->instance, &createInfo, NULL, &surface);
+#endif
+  }
+
+  CreateSwapchain();
+
+  Acquire();
 }
 
-bool VulkanGraphicsTest::createSwap()
+VulkanWindow::~VulkanWindow()
 {
+  DestroySwapchain();
+
+  {
+    vkDestroySemaphore(m_Test->device, renderStartSemaphore, NULL);
+    vkDestroySemaphore(m_Test->device, renderEndSemaphore, NULL);
+
+    vkDestroyCommandPool(m_Test->device, cmdPool, NULL);
+
+    for(VkFence fence : fences)
+      vkDestroyFence(m_Test->device, fence, NULL);
+
+    if(surface)
+      vkDestroySurfaceKHR(m_Test->instance, surface, NULL);
+  }
+
+  delete m_Win;
+}
+
+bool VulkanWindow::CreateSwapchain()
+{
+  std::lock_guard<std::mutex> lock(m_Test->mutex);
+
+  if(surface == VK_NULL_HANDLE)
+    return false;
+
   VkResult vkr = VK_SUCCESS;
 
-  VkSurfaceFormatKHR format = {};
+  VkSurfaceFormatKHR surfaceFormat = {};
 
   std::vector<VkSurfaceFormatKHR> formats;
-  CHECK_VKR(vkh::getSurfaceFormatsKHR(formats, phys, surface));
+  CHECK_VKR(vkh::getSurfaceFormatsKHR(formats, m_Test->phys, surface));
 
   VkBool32 support = VK_FALSE;
-  CHECK_VKR(vkGetPhysicalDeviceSurfaceSupportKHR(phys, queueFamilyIndex, surface, &support));
+  CHECK_VKR(vkGetPhysicalDeviceSurfaceSupportKHR(m_Test->phys, m_Test->queueFamilyIndex, surface,
+                                                 &support));
   TEST_ASSERT(support, "Presentation is not supported on surface");
 
   if(vkr != VK_SUCCESS || formats.empty())
@@ -815,27 +906,27 @@ bool VulkanGraphicsTest::createSwap()
     return false;
   }
 
-  format = formats[0];
+  surfaceFormat = formats[0];
 
   for(const VkSurfaceFormatKHR &f : formats)
   {
     if(f.format == VK_FORMAT_B8G8R8A8_SRGB && f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
     {
-      format = f;
+      surfaceFormat = f;
       break;
     }
   }
 
-  if(format.format == VK_FORMAT_UNDEFINED)
+  if(surfaceFormat.format == VK_FORMAT_UNDEFINED)
   {
-    format.format = VK_FORMAT_B8G8R8A8_SRGB;
-    format.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+    surfaceFormat.format = VK_FORMAT_B8G8R8A8_SRGB;
+    surfaceFormat.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
   }
 
-  swapFormat = format.format;
+  format = surfaceFormat.format;
 
   std::vector<VkPresentModeKHR> modes;
-  CHECK_VKR(vkh::getSurfacePresentModesKHR(modes, phys, surface));
+  CHECK_VKR(vkh::getSurfacePresentModesKHR(modes, m_Test->phys, surface));
 
   VkPresentModeKHR mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
 
@@ -845,7 +936,7 @@ bool VulkanGraphicsTest::createSwap()
   uint32_t width = 1, height = 1;
 
   VkSurfaceCapabilitiesKHR capabilities;
-  CHECK_VKR(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(phys, surface, &capabilities));
+  CHECK_VKR(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_Test->phys, surface, &capabilities));
 
   width = capabilities.currentExtent.width;
 
@@ -861,87 +952,154 @@ bool VulkanGraphicsTest::createSwap()
   scissor = vkh::Rect2D({0, 0}, {width, height});
 
   CHECK_VKR(vkCreateSwapchainKHR(
-      device, vkh::SwapchainCreateInfoKHR(
-                  surface, mode, format, {width, height},
-                  VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT),
+      m_Test->device, vkh::SwapchainCreateInfoKHR(
+                          surface, mode, surfaceFormat, {width, height},
+                          VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT),
       NULL, &swap));
 
-  CHECK_VKR(vkh::getSwapchainImagesKHR(swapImages, device, swap));
+  CHECK_VKR(vkh::getSwapchainImagesKHR(imgs, m_Test->device, swap));
 
-  if(swapRenderPass == VK_NULL_HANDLE)
+  if(rp == VK_NULL_HANDLE)
   {
     vkh::RenderPassCreator renderPassCreateInfo;
 
     renderPassCreateInfo.attachments.push_back(
-        vkh::AttachmentDescription(swapFormat, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL));
+        vkh::AttachmentDescription(format, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL));
 
     renderPassCreateInfo.addSubpass({VkAttachmentReference({0, VK_IMAGE_LAYOUT_GENERAL})});
 
-    swapRenderPass = createRenderPass(renderPassCreateInfo);
+    rp = m_Test->createRenderPass(renderPassCreateInfo);
   }
 
-  swapImageViews.resize(swapImages.size());
-  for(size_t i = 0; i < swapImages.size(); i++)
+  imgviews.resize(imgs.size());
+  for(size_t i = 0; i < imgs.size(); i++)
   {
-    CHECK_VKR(vkCreateImageView(
-        device, vkh::ImageViewCreateInfo(swapImages[i], VK_IMAGE_VIEW_TYPE_2D, format.format), NULL,
-        &swapImageViews[i]));
+    CHECK_VKR(vkCreateImageView(m_Test->device,
+                                vkh::ImageViewCreateInfo(imgs[i], VK_IMAGE_VIEW_TYPE_2D, format),
+                                NULL, &imgviews[i]));
   }
-  swapFramebuffers.resize(swapImages.size());
-  for(size_t i = 0; i < swapImageViews.size(); i++)
-    swapFramebuffers[i] = createFramebuffer(
-        vkh::FramebufferCreateInfo(swapRenderPass, {swapImageViews[i]}, scissor.extent));
+  fbs.resize(imgs.size());
+  for(size_t i = 0; i < imgviews.size(); i++)
+    fbs[i] = m_Test->createFramebuffer(vkh::FramebufferCreateInfo(rp, {imgviews[i]}, scissor.extent));
 
   return true;
 }
 
-void VulkanGraphicsTest::destroySwap()
+void VulkanWindow::Acquire()
 {
-  vkDeviceWaitIdle(device);
+  if(swap == VK_NULL_HANDLE)
+    return;
 
-  for(size_t i = 0; i < swapImages.size(); i++)
-    vkDestroyImageView(device, swapImageViews[i], NULL);
-
-  vkDestroySwapchainKHR(device, swap, NULL);
-}
-
-void VulkanGraphicsTest::acquireImage()
-{
-  VkResult vkr = vkAcquireNextImageKHR(device, swap, UINT64_MAX, renderStartSemaphore,
-                                       VK_NULL_HANDLE, &swapIndex);
+  VkResult vkr = vkAcquireNextImageKHR(m_Test->device, swap, UINT64_MAX, renderStartSemaphore,
+                                       VK_NULL_HANDLE, &imgIndex);
 
   if(vkr == VK_SUBOPTIMAL_KHR || vkr == VK_ERROR_OUT_OF_DATE_KHR)
   {
-    resize();
+    DestroySwapchain();
+    CreateSwapchain();
 
-    vkr = vkAcquireNextImageKHR(device, swap, UINT64_MAX, renderStartSemaphore, VK_NULL_HANDLE,
-                                &swapIndex);
+    vkr = vkAcquireNextImageKHR(m_Test->device, swap, UINT64_MAX, renderStartSemaphore,
+                                VK_NULL_HANDLE, &imgIndex);
   }
 }
 
-VkResult VulkanGraphicsTest::CreateSurface(GraphicsWindow *win, VkSurfaceKHR *outSurf)
+void VulkanWindow::Submit(int index, int totalSubmits, const std::vector<VkCommandBuffer> &cmds,
+                          const std::vector<VkCommandBuffer> &seccmds, VkQueue q)
 {
-#if defined(WIN32)
-  VkWin32SurfaceCreateInfoKHR createInfo;
+  VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 
-  createInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-  createInfo.pNext = NULL;
-  createInfo.flags = 0;
-  createInfo.hwnd = ((Win32Window *)win)->wnd;
-  createInfo.hinstance = GetModuleHandleA(NULL);
+  VkSubmitInfo submit = vkh::SubmitInfo(cmds);
 
-  return vkCreateWin32SurfaceKHR(instance, &createInfo, NULL, outSurf);
-#else
-  VkXcbSurfaceCreateInfoKHR createInfo;
+  if(index == 0)
+  {
+    submit.waitSemaphoreCount = 1;
+    submit.pWaitDstStageMask = &waitStage;
+    submit.pWaitSemaphores = &renderStartSemaphore;
+  }
 
-  createInfo.sType = VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR;
-  createInfo.pNext = NULL;
-  createInfo.flags = 0;
-  createInfo.connection = ((X11Window *)win)->xcb.connection;
-  createInfo.window = ((X11Window *)win)->xcb.window;
+  if(index == totalSubmits - 1)
+  {
+    submit.signalSemaphoreCount = 1;
+    submit.pSignalSemaphores = &renderEndSemaphore;
+  }
 
-  return vkCreateXcbSurfaceKHR(instance, &createInfo, NULL, outSurf);
-#endif
+  VkFence fence;
+  CHECK_VKR(vkCreateFence(m_Test->device, vkh::FenceCreateInfo(), NULL, &fence));
+
+  fences.insert(fence);
+
+  for(const VkCommandBuffer &cmd : cmds)
+    pendingCommandBuffers[0].push_back(std::make_pair(cmd, fence));
+
+  for(const VkCommandBuffer &cmd : seccmds)
+    pendingCommandBuffers[1].push_back(std::make_pair(cmd, fence));
+
+  vkQueueSubmit(q, 1, &submit, fence);
+}
+
+void VulkanWindow::Present(VkQueue queue)
+{
+  if(swap == VK_NULL_HANDLE)
+    return;
+
+  VkResult vkr = vkQueuePresentKHR(queue, vkh::PresentInfoKHR(swap, imgIndex, &renderEndSemaphore));
+
+  if(vkr == VK_SUBOPTIMAL_KHR || vkr == VK_ERROR_OUT_OF_DATE_KHR)
+  {
+    DestroySwapchain();
+    CreateSwapchain();
+  }
+
+  std::set<VkFence> doneFences;
+
+  for(int level = 0; level < VK_COMMAND_BUFFER_LEVEL_RANGE_SIZE; level++)
+  {
+    for(auto it = pendingCommandBuffers[level].begin(); it != pendingCommandBuffers[level].end();)
+    {
+      if(vkGetFenceStatus(m_Test->device, it->second) == VK_SUCCESS)
+      {
+        freeCommandBuffers[level].push_back(it->first);
+        doneFences.insert(it->second);
+        it = pendingCommandBuffers[level].erase(it);
+      }
+      else
+      {
+        ++it;
+      }
+    }
+  }
+
+  for(auto it = doneFences.begin(); it != doneFences.end(); ++it)
+  {
+    vkDestroyFence(m_Test->device, *it, NULL);
+    fences.erase(*it);
+  }
+
+  Acquire();
+}
+
+void VulkanWindow::DestroySwapchain()
+{
+  std::lock_guard<std::mutex> lock(m_Test->mutex);
+
+  vkDeviceWaitIdle(m_Test->device);
+
+  for(size_t i = 0; i < imgs.size(); i++)
+    vkDestroyImageView(m_Test->device, imgviews[i], NULL);
+
+  vkDestroySwapchainKHR(m_Test->device, swap, NULL);
+}
+
+void VulkanGraphicsTest::getPhysFeatures2(void *nextStruct)
+{
+  for(const char *ext : enabledInstExts)
+  {
+    if(!strcmp(ext, VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME))
+    {
+      vkGetPhysicalDeviceFeatures2KHR(phys, vkh::PhysicalDeviceFeatures2KHR().next(nextStruct));
+      return;
+    }
+  }
 }
 
 template <>

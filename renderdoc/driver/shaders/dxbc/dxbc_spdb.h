@@ -32,11 +32,6 @@
 #include <vector>
 #include "dxbc_disassemble.h"
 
-using std::vector;
-using std::pair;
-using std::string;
-using std::map;
-
 namespace DXBC
 {
 class PageMapping
@@ -69,7 +64,7 @@ public:
 
 private:
   const byte *direct;
-  vector<byte> contiguous;
+  std::vector<byte> contiguous;
 };
 
 struct FileHeaderPage
@@ -177,8 +172,8 @@ struct DBIModule
   int32_t niCompiler;
 
   // invalid when this is read in-place!
-  string moduleName;
-  string objectName;
+  std::string moduleName;
+  std::string objectName;
 };
 
 struct CompilandDetails
@@ -194,7 +189,7 @@ struct CompilandDetails
   } FrontendVersion, BackendVersion;
 
   // invalid when this is read in-place!
-  string CompilerSig;
+  std::string CompilerSig;
 };
 
 struct FileChecksum
@@ -235,7 +230,7 @@ struct Function
 struct PDBStream
 {
   uint32_t byteLength;
-  vector<uint32_t> pageIndices;
+  std::vector<uint32_t> pageIndices;
 };
 
 struct LocalRange

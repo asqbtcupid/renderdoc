@@ -24,7 +24,7 @@
 
 #include "gl_test.h"
 
-struct SPIRV_Shader : OpenGLGraphicsTest
+TEST(GL_SPIRV_Shader, OpenGLGraphicsTest)
 {
   static constexpr const char *Description = "Draws using a SPIR-V shader pipeline.";
 
@@ -41,7 +41,7 @@ layout(location = 2) out vec2 oUV;
 
 layout(location = 2) uniform vec4 offset;
 layout(location = 8) uniform vec4 scale;
-layout(location = 13) uniform vec4 UVscroll;
+layout(location = 13) uniform vec2 UVscroll;
 
 void main()
 {
@@ -72,12 +72,12 @@ void main()
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  int main()
   {
     debugDevice = true;
 
     // initialise, create window, create context, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     if(!SpvCompilationSupported())
@@ -134,7 +134,6 @@ void main()
     glBindBufferBase(GL_UNIFORM_BUFFER, 1, fsbuf);
 
     GLuint glslprogram = MakeProgram(vertex, pixel);
-    glObjectLabel(GL_PROGRAM, glslprogram, -1, "Full program");
 
     GLuint spirvprogram = MakeProgram();
 
@@ -222,6 +221,21 @@ void main()
       float col[] = {0.4f, 0.5f, 0.6f, 1.0f};
       glClearBufferfv(GL_COLOR, 0, col);
 
+      GLsizei w = GLsizei(screenWidth) >> 1;
+      GLsizei h = GLsizei(screenHeight) >> 1;
+
+      glBindVertexArray(vao);
+
+      glViewport(0, 0, w, h);
+
+      glUseProgram(glslprogram);
+      glDrawArrays(GL_TRIANGLES, 0, 3);
+
+      glViewport(w, 0, w, h);
+
+      glUseProgram(spirvprogram);
+      glDrawArrays(GL_TRIANGLES, 0, 3);
+
       vsdata.UVscroll.x += 0.01f;
       vsdata.UVscroll.y += 0.02f;
 
@@ -236,20 +250,18 @@ void main()
         // UVscroll location 13
         glUniform4fv(2, 1, &vsdata.offset.x);
         glUniform4fv(8, 1, &vsdata.scale.x);
-        glUniform4fv(13, 1, &vsdata.UVscroll.x);
+        glUniform2fv(13, 1, &vsdata.UVscroll.x);
 
         // tint location 7
         glUniform4fv(7, 1, &fsdata.x);
       }
 
-      glBindVertexArray(vao);
-
-      glViewport(0, 0, GLsizei(screenWidth) >> 1, GLsizei(screenHeight));
+      glViewport(0, h, w, h);
 
       glUseProgram(glslprogram);
       glDrawArrays(GL_TRIANGLES, 0, 3);
 
-      glViewport(GLsizei(screenWidth) >> 1, 0, GLsizei(screenWidth) >> 1, GLsizei(screenHeight));
+      glViewport(w, h, w, h);
 
       glUseProgram(spirvprogram);
       glDrawArrays(GL_TRIANGLES, 0, 3);
@@ -261,4 +273,4 @@ void main()
   }
 };
 
-REGISTER_TEST(SPIRV_Shader);
+REGISTER_TEST();

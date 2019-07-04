@@ -24,7 +24,7 @@
 
 #include "d3d12_test.h"
 
-struct D3D12_CBuffer_Zoo : D3D12GraphicsTest
+TEST(D3D12_CBuffer_Zoo, D3D12GraphicsTest)
 {
   static constexpr const char *Description =
       "Tests every kind of constant that can be in a cbuffer to make sure it's decoded "
@@ -259,10 +259,10 @@ float4 main() : SV_Target0
     float3_1 root_d;
   };
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create device, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     ID3DBlobPtr vsblob = Compile(D3DDefaultVertex, "main", "vs_5_0");
@@ -356,4 +356,4 @@ float4 main() : SV_Target0
   }
 };
 
-REGISTER_TEST(D3D12_CBuffer_Zoo);
+REGISTER_TEST();

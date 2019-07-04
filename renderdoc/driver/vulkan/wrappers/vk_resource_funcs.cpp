@@ -253,7 +253,7 @@ bool WrappedVulkan::Serialise_vkAllocateMemory(SerialiserType &ser, VkDevice dev
   SERIALISE_ELEMENT(device);
   SERIALISE_ELEMENT_LOCAL(AllocateInfo, *pAllocateInfo);
   SERIALISE_ELEMENT_OPT(pAllocator);
-  SERIALISE_ELEMENT_LOCAL(Memory, GetResID(*pMemory)).TypedAs("VkDeviceMemory");
+  SERIALISE_ELEMENT_LOCAL(Memory, GetResID(*pMemory)).TypedAs("VkDeviceMemory"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -512,6 +512,7 @@ void WrappedVulkan::vkFreeMemory(VkDevice device, VkDeviceMemory memory,
   }
 
   m_ForcedReferences.erase(GetResID(memory));
+  m_CreationInfo.erase(GetResID(memory));
 
   GetResourceManager()->ReleaseWrappedResource(memory);
 
@@ -605,7 +606,7 @@ bool WrappedVulkan::Serialise_vkUnmapMemory(SerialiserType &ser, VkDevice device
 
   // not using SERIALISE_ELEMENT_ARRAY so we can deliberately avoid allocation - we serialise
   // directly into upload memory
-  ser.Serialise("MapData", MapData, MapSize, SerialiserFlags::NoFlags);
+  ser.Serialise("MapData"_lit, MapData, MapSize, SerialiserFlags::NoFlags);
 
   if(IsReplayingAndReading() && MapData && memory != VK_NULL_HANDLE)
     ObjDisp(device)->UnmapMemory(Unwrap(device), Unwrap(memory));
@@ -731,7 +732,7 @@ bool WrappedVulkan::Serialise_vkFlushMappedMemoryRanges(SerialiserType &ser, VkD
 
   // not using SERIALISE_ELEMENT_ARRAY so we can deliberately avoid allocation - we serialise
   // directly into upload memory
-  ser.Serialise("MappedData", MappedData, memRangeSize, SerialiserFlags::NoFlags);
+  ser.Serialise("MappedData"_lit, MappedData, memRangeSize, SerialiserFlags::NoFlags);
 
   if(IsReplayingAndReading() && MappedData && MemRange.memory != VK_NULL_HANDLE)
     ObjDisp(device)->UnmapMemory(Unwrap(device), Unwrap(MemRange.memory));
@@ -917,17 +918,7 @@ VkResult WrappedVulkan::vkBindBufferMemory(VkDevice device, VkBuffer buffer, VkD
       AddForcedReference(GetResID(memory), eFrameRef_ReadBeforeWrite);
 
       // the memory is immediately dirty because we have no way of tracking writes to it
-      bool capframe = false;
-
-      {
-        SCOPED_LOCK(m_CapTransitionLock);
-        capframe = IsActiveCapturing(m_State);
-      }
-
-      if(capframe)
-        GetResourceManager()->MarkPendingDirty(GetResID(memory));
-      else
-        GetResourceManager()->MarkDirtyResource(GetResID(memory));
+      GetResourceManager()->MarkDirtyResource(GetResID(memory));
     }
   }
 
@@ -961,6 +952,8 @@ bool WrappedVulkan::Serialise_vkBindImageMemory(SerialiserType &ser, VkDevice de
 
     ObjDisp(device)->BindImageMemory(Unwrap(device), Unwrap(image), Unwrap(memory), memoryOffset);
 
+    m_ImageLayouts[GetResID(image)].memoryBound = true;
+
     GetReplay()->GetResourceDesc(memOrigId).derivedResources.push_back(resOrigId);
     GetReplay()->GetResourceDesc(resOrigId).parentResources.push_back(memOrigId);
 
@@ -992,6 +985,14 @@ VkResult WrappedVulkan::vkBindImageMemory(VkDevice device, VkImage image, VkDevi
 
       chunk = scope.Get();
     }
+
+    ImageLayouts *layout = NULL;
+    {
+      SCOPED_LOCK(m_ImageLayoutsLock);
+      layout = &m_ImageLayouts[GetResID(image)];
+    }
+
+    layout->memoryBound = true;
 
     // memory object bindings are immutable and must happen before creation or use,
     // so this can always go into the record, even if a resource is created and bound
@@ -1026,7 +1027,7 @@ bool WrappedVulkan::Serialise_vkCreateBuffer(SerialiserType &ser, VkDevice devic
   SERIALISE_ELEMENT(device);
   SERIALISE_ELEMENT_LOCAL(CreateInfo, *pCreateInfo);
   SERIALISE_ELEMENT_OPT(pAllocator);
-  SERIALISE_ELEMENT_LOCAL(Buffer, GetResID(*pBuffer)).TypedAs("VkBuffer");
+  SERIALISE_ELEMENT_LOCAL(Buffer, GetResID(*pBuffer)).TypedAs("VkBuffer"_lit);
   // unused at the moment, just for user information
   SERIALISE_ELEMENT(memoryRequirements);
 
@@ -1171,18 +1172,7 @@ VkResult WrappedVulkan::vkCreateBuffer(VkDevice device, const VkBufferCreateInfo
         // buffers are always bound opaquely and in arbitrary divisions, sparse residency
         // only means not all the buffer needs to be bound, which is not that interesting for
         // our purposes. We just need to make sure sparse buffers are dirty.
-
-        bool capframe = false;
-
-        {
-          SCOPED_LOCK(m_CapTransitionLock);
-          capframe = IsActiveCapturing(m_State);
-        }
-
-        if(capframe)
-          GetResourceManager()->MarkPendingDirty(id);
-        else
-          GetResourceManager()->MarkDirtyResource(id);
+        GetResourceManager()->MarkDirtyResource(id);
       }
 
       if(isSparse || isExternal)
@@ -1257,7 +1247,7 @@ bool WrappedVulkan::Serialise_vkCreateBufferView(SerialiserType &ser, VkDevice d
   SERIALISE_ELEMENT(device);
   SERIALISE_ELEMENT_LOCAL(CreateInfo, *pCreateInfo);
   SERIALISE_ELEMENT_OPT(pAllocator);
-  SERIALISE_ELEMENT_LOCAL(View, GetResID(*pView)).TypedAs("VkBufferView");
+  SERIALISE_ELEMENT_LOCAL(View, GetResID(*pView)).TypedAs("VkBufferView"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -1374,7 +1364,7 @@ bool WrappedVulkan::Serialise_vkCreateImage(SerialiserType &ser, VkDevice device
   SERIALISE_ELEMENT(device);
   SERIALISE_ELEMENT_LOCAL(CreateInfo, *pCreateInfo);
   SERIALISE_ELEMENT_OPT(pAllocator);
-  SERIALISE_ELEMENT_LOCAL(Image, GetResID(*pImage)).TypedAs("VkImage");
+  SERIALISE_ELEMENT_LOCAL(Image, GetResID(*pImage)).TypedAs("VkImage"_lit);
   // unused at the moment, just for user information
   SERIALISE_ELEMENT(memoryRequirements);
 
@@ -1477,13 +1467,11 @@ bool WrappedVulkan::Serialise_vkCreateImage(SerialiserType &ser, VkDevice device
       range.layerCount = CreateInfo.arrayLayers;
 
       ImageLayouts &layouts = m_ImageLayouts[live];
+      layouts.imageInfo = ImageInfo(CreateInfo);
+
       layouts.subresourceStates.clear();
 
-      layouts.layerCount = CreateInfo.arrayLayers;
-      layouts.sampleCount = (int)CreateInfo.samples;
-      layouts.levelCount = CreateInfo.mipLevels;
-      layouts.extent = CreateInfo.extent;
-      layouts.format = CreateInfo.format;
+      layouts.initialLayout = CreateInfo.initialLayout;
 
       range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
       if(IsDepthOnlyFormat(CreateInfo.format))
@@ -1494,7 +1482,7 @@ bool WrappedVulkan::Serialise_vkCreateImage(SerialiserType &ser, VkDevice device
         range.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
 
       layouts.subresourceStates.push_back(ImageRegionState(
-          VK_QUEUE_FAMILY_IGNORED, range, UNKNOWN_PREV_IMG_LAYOUT, VK_IMAGE_LAYOUT_UNDEFINED));
+          VK_QUEUE_FAMILY_IGNORED, range, UNKNOWN_PREV_IMG_LAYOUT, CreateInfo.initialLayout));
     }
 
     const char *prefix = "Image";
@@ -1629,8 +1617,17 @@ VkResult WrappedVulkan::vkCreateImage(VkDevice device, const VkImageCreateInfo *
       VkResourceRecord *record = GetResourceManager()->AddResourceRecord(*pImage);
       record->AddChunk(chunk);
 
+      record->resInfo = new ResourceInfo();
+      ResourceInfo &resInfo = *record->resInfo;
+      resInfo.imageInfo = ImageInfo(*pCreateInfo);
+
+      // pre-populate memory requirements
+      ObjDisp(device)->GetImageMemoryRequirements(Unwrap(device), Unwrap(*pImage), &resInfo.memreqs);
+
       bool isSparse = (pCreateInfo->flags & (VK_IMAGE_CREATE_SPARSE_BINDING_BIT |
                                              VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT)) != 0;
+
+      bool isLinear = (pCreateInfo->tiling == VK_IMAGE_TILING_LINEAR);
 
       bool isExternal = false;
 
@@ -1652,25 +1649,14 @@ VkResult WrappedVulkan::vkCreateImage(VkDevice device, const VkImageCreateInfo *
       // sparse and external images are considered dirty from creation. For sparse images this is
       // so that we can serialise the tracked page table, for external images this is so we can be
       // sure to fetch their contents even if we don't see any writes.
-      if(isSparse || isExternal)
+      //
+      // We also dirty linear images since we may not get another chance - if they are bound to
+      // host-visible memory they may only be updated via memory maps, and we want to be sure to
+      // correctly copy their initial contents out rather than relying on memory contents (which may
+      // not be valid to map from/into if the image isn't in GENERAL layout).
+      if(isSparse || isExternal || isLinear)
       {
-        record->resInfo = new ResourceInfo();
-
-        bool capframe = false;
-
-        {
-          SCOPED_LOCK(m_CapTransitionLock);
-          capframe = IsActiveCapturing(m_State);
-        }
-
-        if(capframe)
-          GetResourceManager()->MarkPendingDirty(id);
-        else
-          GetResourceManager()->MarkDirtyResource(id);
-
-        // pre-populate memory requirements
-        ObjDisp(device)->GetImageMemoryRequirements(Unwrap(device), Unwrap(*pImage),
-                                                    &record->resInfo->memreqs);
+        GetResourceManager()->MarkDirtyResource(id);
 
         // for external images, try creating a non-external version and take the worst case of
         // memory requirements, in case the non-external one (as we will replay it) needs more
@@ -1697,16 +1683,15 @@ VkResult WrappedVulkan::vkCreateImage(VkDevice device, const VkImageCreateInfo *
             if(mrq.size > 0)
             {
               RDCDEBUG("External image requires %llu bytes at %llu alignment, in %x memory types",
-                       record->resInfo->memreqs.size, record->resInfo->memreqs.alignment,
-                       record->resInfo->memreqs.memoryTypeBits);
+                       resInfo.memreqs.size, resInfo.memreqs.alignment,
+                       resInfo.memreqs.memoryTypeBits);
               RDCDEBUG(
                   "Non-external version requires %llu bytes at %llu alignment, in %x memory types",
                   mrq.size, mrq.alignment, mrq.memoryTypeBits);
 
-              record->resInfo->memreqs.size = RDCMAX(record->resInfo->memreqs.size, mrq.size);
-              record->resInfo->memreqs.alignment =
-                  RDCMAX(record->resInfo->memreqs.size, mrq.alignment);
-              record->resInfo->memreqs.memoryTypeBits &= mrq.memoryTypeBits;
+              resInfo.memreqs.size = RDCMAX(resInfo.memreqs.size, mrq.size);
+              resInfo.memreqs.alignment = RDCMAX(resInfo.memreqs.size, mrq.alignment);
+              resInfo.memreqs.memoryTypeBits &= mrq.memoryTypeBits;
             }
           }
           else
@@ -1732,22 +1717,20 @@ VkResult WrappedVulkan::vkCreateImage(VkDevice device, const VkImageCreateInfo *
 
           RDCASSERT(numreqs > 0);
 
-          record->resInfo->pagedim = reqs[0].formatProperties.imageGranularity;
-          record->resInfo->imgdim = pCreateInfo->extent;
-          record->resInfo->imgdim.width /= record->resInfo->pagedim.width;
-          record->resInfo->imgdim.height /= record->resInfo->pagedim.height;
-          record->resInfo->imgdim.depth /= record->resInfo->pagedim.depth;
+          resInfo.pagedim = reqs[0].formatProperties.imageGranularity;
+          resInfo.imgdim = pCreateInfo->extent;
+          resInfo.imgdim.width /= resInfo.pagedim.width;
+          resInfo.imgdim.height /= resInfo.pagedim.height;
+          resInfo.imgdim.depth /= resInfo.pagedim.depth;
 
-          uint32_t numpages = record->resInfo->imgdim.width * record->resInfo->imgdim.height *
-                              record->resInfo->imgdim.depth;
+          uint32_t numpages = resInfo.imgdim.width * resInfo.imgdim.height * resInfo.imgdim.depth;
 
           for(uint32_t i = 0; i < numreqs; i++)
           {
             // assume all page sizes are the same for all aspects
-            RDCASSERT(
-                record->resInfo->pagedim.width == reqs[i].formatProperties.imageGranularity.width &&
-                record->resInfo->pagedim.height == reqs[i].formatProperties.imageGranularity.height &&
-                record->resInfo->pagedim.depth == reqs[i].formatProperties.imageGranularity.depth);
+            RDCASSERT(resInfo.pagedim.width == reqs[i].formatProperties.imageGranularity.width &&
+                      resInfo.pagedim.height == reqs[i].formatProperties.imageGranularity.height &&
+                      resInfo.pagedim.depth == reqs[i].formatProperties.imageGranularity.depth);
 
             int a = 0;
             for(a = 0; a < NUM_VK_IMAGE_ASPECTS; a++)
@@ -1756,7 +1739,7 @@ VkResult WrappedVulkan::vkCreateImage(VkDevice device, const VkImageCreateInfo *
                 break;
             }
 
-            record->resInfo->pages[a] = new pair<VkDeviceMemory, VkDeviceSize>[numpages];
+            resInfo.pages[a] = new rdcpair<VkDeviceMemory, VkDeviceSize>[numpages];
           }
         }
         else
@@ -1783,13 +1766,9 @@ VkResult WrappedVulkan::vkCreateImage(VkDevice device, const VkImageCreateInfo *
       SCOPED_LOCK(m_ImageLayoutsLock);
       layout = &m_ImageLayouts[id];
     }
+    layout->imageInfo = ImageInfo(*pCreateInfo);
 
-    layout->layerCount = pCreateInfo->arrayLayers;
-    layout->levelCount = pCreateInfo->mipLevels;
-    layout->sampleCount = (int)pCreateInfo->samples;
-    layout->extent = pCreateInfo->extent;
-    layout->format = pCreateInfo->format;
-
+    layout->initialLayout = pCreateInfo->initialLayout;
     layout->subresourceStates.clear();
 
     range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -1801,7 +1780,7 @@ VkResult WrappedVulkan::vkCreateImage(VkDevice device, const VkImageCreateInfo *
       range.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
 
     layout->subresourceStates.push_back(ImageRegionState(
-        VK_QUEUE_FAMILY_IGNORED, range, UNKNOWN_PREV_IMG_LAYOUT, VK_IMAGE_LAYOUT_UNDEFINED));
+        VK_QUEUE_FAMILY_IGNORED, range, UNKNOWN_PREV_IMG_LAYOUT, pCreateInfo->initialLayout));
   }
 
   return ret;
@@ -1818,7 +1797,7 @@ bool WrappedVulkan::Serialise_vkCreateImageView(SerialiserType &ser, VkDevice de
   SERIALISE_ELEMENT(device);
   SERIALISE_ELEMENT_LOCAL(CreateInfo, *pCreateInfo);
   SERIALISE_ELEMENT_OPT(pAllocator);
-  SERIALISE_ELEMENT_LOCAL(View, GetResID(*pView)).TypedAs("VkImageView");
+  SERIALISE_ELEMENT_LOCAL(View, GetResID(*pView)).TypedAs("VkImageView"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -1907,6 +1886,7 @@ VkResult WrappedVulkan::vkCreateImageView(VkDevice device, const VkImageViewCrea
       record->baseResourceMem = imageRecord->baseResource;
       record->resInfo = imageRecord->resInfo;
       record->viewRange = pCreateInfo->subresourceRange;
+      record->viewRange.setViewType(pCreateInfo->viewType);
     }
     else
     {
@@ -2005,17 +1985,7 @@ VkResult WrappedVulkan::vkBindBufferMemory2(VkDevice device, uint32_t bindInfoCo
         AddForcedReference(GetResID(pBindInfos[i].memory), eFrameRef_ReadBeforeWrite);
 
         // the memory is immediately dirty because we have no way of tracking writes to it
-        bool capframe = false;
-
-        {
-          SCOPED_LOCK(m_CapTransitionLock);
-          capframe = IsActiveCapturing(m_State);
-        }
-
-        if(capframe)
-          GetResourceManager()->MarkPendingDirty(GetResID(pBindInfos[i].memory));
-        else
-          GetResourceManager()->MarkDirtyResource(GetResID(pBindInfos[i].memory));
+        GetResourceManager()->MarkDirtyResource(GetResID(pBindInfos[i].memory));
       }
     }
   }
@@ -2051,6 +2021,8 @@ bool WrappedVulkan::Serialise_vkBindImageMemory2(SerialiserType &ser, VkDevice d
 
       if(!ok)
         return false;
+
+      m_ImageLayouts[GetResID(bindInfo.image)].memoryBound = true;
 
       GetReplay()->GetResourceDesc(memOrigId).derivedResources.push_back(resOrigId);
       GetReplay()->GetResourceDesc(resOrigId).parentResources.push_back(memOrigId);
@@ -2092,6 +2064,14 @@ VkResult WrappedVulkan::vkBindImageMemory2(VkDevice device, uint32_t bindInfoCou
 
         chunk = scope.Get();
       }
+
+      ImageLayouts *layout = NULL;
+      {
+        SCOPED_LOCK(m_ImageLayoutsLock);
+        layout = &m_ImageLayouts[imgrecord->GetResourceID()];
+      }
+
+      layout->memoryBound = true;
 
       // memory object bindings are immutable and must happen before creation or use,
       // so this can always go into the record, even if a resource is created and bound

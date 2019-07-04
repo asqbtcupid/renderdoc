@@ -25,9 +25,11 @@
 #pragma once
 
 #include "common/wrapped_pool.h"
+#include "core/bit_flag_iterator.h"
 #include "core/intervals.h"
 #include "core/resource_manager.h"
 #include "vk_common.h"
+#include "vk_dispatch_defs.h"
 #include "vk_hookset_defs.h"
 
 struct VkResourceRecord;
@@ -233,7 +235,7 @@ struct WrappedVkInstance : WrappedVkDispRes
   WrappedVkInstance(VkInstance obj, ResourceId objId) : WrappedVkDispRes(obj, objId) {}
   typedef VkInstance InnerType;
   ALLOCATE_WITH_WRAPPED_POOL(WrappedVkInstance);
-  typedef VkLayerInstanceDispatchTableExtended DispatchTableType;
+  typedef VkInstDispatchTable DispatchTableType;
   enum
   {
     UseInstanceDispatchTable = true,
@@ -248,7 +250,7 @@ struct WrappedVkPhysicalDevice : WrappedVkDispRes
   WrappedVkPhysicalDevice(VkPhysicalDevice obj, ResourceId objId) : WrappedVkDispRes(obj, objId) {}
   typedef VkPhysicalDevice InnerType;
   ALLOCATE_WITH_WRAPPED_POOL(WrappedVkPhysicalDevice);
-  typedef VkLayerInstanceDispatchTableExtended DispatchTableType;
+  typedef VkInstDispatchTable DispatchTableType;
   enum
   {
     UseInstanceDispatchTable = true,
@@ -263,7 +265,7 @@ struct WrappedVkDevice : WrappedVkDispRes
   WrappedVkDevice(VkDevice obj, ResourceId objId) : WrappedVkDispRes(obj, objId) {}
   typedef VkDevice InnerType;
   ALLOCATE_WITH_WRAPPED_POOL(WrappedVkDevice);
-  typedef VkLayerDispatchTableExtended DispatchTableType;
+  typedef VkDevDispatchTable DispatchTableType;
   enum
   {
     UseInstanceDispatchTable = false,
@@ -278,7 +280,7 @@ struct WrappedVkQueue : WrappedVkDispRes
   WrappedVkQueue(VkQueue obj, ResourceId objId) : WrappedVkDispRes(obj, objId) {}
   typedef VkQueue InnerType;
   ALLOCATE_WITH_WRAPPED_POOL(WrappedVkQueue);
-  typedef VkLayerDispatchTableExtended DispatchTableType;
+  typedef VkDevDispatchTable DispatchTableType;
   enum
   {
     UseInstanceDispatchTable = false,
@@ -295,7 +297,7 @@ struct WrappedVkCommandBuffer : WrappedVkDispRes
   static const int AllocPoolCount = 32 * 1024;
   static const int AllocPoolMaxByteSize = 2 * 1024 * 1024;
   ALLOCATE_WITH_WRAPPED_POOL(WrappedVkCommandBuffer, AllocPoolCount, AllocPoolMaxByteSize);
-  typedef VkLayerDispatchTableExtended DispatchTableType;
+  typedef VkDevDispatchTable DispatchTableType;
   enum
   {
     UseInstanceDispatchTable = false,
@@ -874,9 +876,56 @@ struct SwapchainInfo
     VkImageView view;
     VkFramebuffer fb;
   };
-  vector<SwapImage> images;
+  std::vector<SwapImage> images;
   uint32_t lastPresent;
 };
+
+struct ImageInfo
+{
+  int layerCount = 0;
+  int levelCount = 0;
+  int sampleCount = 0;
+  VkExtent3D extent = {0, 0, 0};
+  VkFormat format = VK_FORMAT_UNDEFINED;
+  ImageInfo() {}
+  ImageInfo(VkFormat format, VkExtent3D extent, int levelCount, int layerCount, int sampleCount)
+      : format(format),
+        extent(extent),
+        levelCount(levelCount),
+        layerCount(layerCount),
+        sampleCount(sampleCount)
+  {
+  }
+  ImageInfo(const VkImageCreateInfo &ci)
+      : layerCount(ci.arrayLayers),
+        levelCount(ci.mipLevels),
+        sampleCount((int)ci.samples),
+        extent(ci.extent),
+        format(ci.format)
+  {
+    // The Vulkan spec Valid Usage for `VkImageCreateInfo` specifies that the height and depth of 1D
+    // images, and the depth of 2D images must equal 1. We need to ensure this holds, even if the
+    // application is invalid, since we rely on `depth>1` to detect 3D images and correctly handle
+    // 2D views of 3D images.
+    if(ci.imageType == VK_IMAGE_TYPE_1D)
+    {
+      extent.height = extent.depth = 1;
+    }
+    else if(ci.imageType == VK_IMAGE_TYPE_2D)
+    {
+      extent.depth = 1;
+    }
+  }
+  ImageInfo(const SwapchainInfo &swapInfo)
+      : layerCount(swapInfo.arraySize), levelCount(1), sampleCount(1), format(swapInfo.format)
+  {
+    extent.width = swapInfo.extent.width;
+    extent.height = swapInfo.extent.height;
+    extent.depth = 1;
+  }
+};
+
+DECLARE_REFLECTION_STRUCT(ImageInfo);
 
 // these structs are allocated for images and buffers, then pointed to (non-owning) by views
 struct ResourceInfo
@@ -889,7 +938,7 @@ struct ResourceInfo
   }
 
   // for buffers or non-sparse-resident images (bound with opaque mappings)
-  vector<VkSparseMemoryBind> opaquemappings;
+  std::vector<VkSparseMemoryBind> opaquemappings;
 
   VkMemoryRequirements memreqs;
 
@@ -900,7 +949,9 @@ struct ResourceInfo
   VkExtent3D pagedim;
   // pagetable per image aspect (some may be NULL) color, depth, stencil, metadata
   // in order of width first, then height, then depth
-  pair<VkDeviceMemory, VkDeviceSize> *pages[NUM_VK_IMAGE_ASPECTS];
+  rdcpair<VkDeviceMemory, VkDeviceSize> *pages[NUM_VK_IMAGE_ASPECTS];
+
+  ImageInfo imageInfo;
 
   bool IsSparse() const { return pages[0] != NULL; }
   void Update(uint32_t numBindings, const VkSparseMemoryBind *pBindings);
@@ -908,6 +959,7 @@ struct ResourceInfo
 };
 
 struct MemRefs;
+struct ImgRefs;
 
 struct CmdBufferRecordingInfo
 {
@@ -917,22 +969,23 @@ struct CmdBufferRecordingInfo
   VkResourceRecord *framebuffer = NULL;
   VkResourceRecord *allocRecord = NULL;
 
-  vector<pair<ResourceId, ImageRegionState> > imgbarriers;
+  std::vector<rdcpair<ResourceId, ImageRegionState> > imgbarriers;
 
   // sparse resources referenced by this command buffer (at submit time
   // need to go through the sparse mapping and reference all memory)
-  set<ResourceInfo *> sparse;
+  std::set<ResourceInfo *> sparse;
 
   // a list of all resources dirtied by this command buffer
-  set<ResourceId> dirtied;
+  std::set<ResourceId> dirtied;
 
   // a list of descriptor sets that are bound at any point in this command buffer
   // used to look up all the frame refs per-desc set and apply them on queue
   // submit with latest binding refs.
-  set<VkDescriptorSet> boundDescSets;
+  std::set<VkDescriptorSet> boundDescSets;
 
-  vector<VkResourceRecord *> subcmds;
+  std::vector<VkResourceRecord *> subcmds;
 
+  std::map<ResourceId, ImgRefs> imgFrameRefs;
   std::map<ResourceId, MemRefs> memFrameRefs;
 
   // AdvanceFrame/Present should be called after this buffer is submitted
@@ -955,7 +1008,7 @@ struct DescriptorSetData
 
   // descriptor set bindings for this descriptor set. Filled out on
   // create from the layout.
-  vector<DescriptorSetSlot *> descBindings;
+  std::vector<DescriptorSetBindingElement *> descBindings;
 
   // lock protecting bindFrameRefs and bindMemRefs
   Threading::CriticalSection refLock;
@@ -966,8 +1019,9 @@ struct DescriptorSetData
   // the refcount has the high-bit set if this resource has sparse
   // mapping information
   static const uint32_t SPARSE_REF_BIT = 0x80000000;
-  map<ResourceId, pair<uint32_t, FrameRefType> > bindFrameRefs;
-  map<ResourceId, MemRefs> bindMemRefs;
+  std::map<ResourceId, rdcpair<uint32_t, FrameRefType> > bindFrameRefs;
+  std::map<ResourceId, MemRefs> bindMemRefs;
+  std::map<ResourceId, ImgRefs> bindImgRefs;
 };
 
 struct PipelineLayoutData
@@ -1005,6 +1059,263 @@ struct AttachmentInfo
   // used to apply the barrier in EndRenderPass
   VkImageMemoryBarrier barrier;
 };
+
+struct ImageRange
+{
+  ImageRange() {}
+  ImageRange(const VkImageSubresourceRange &range)
+      : aspectMask(range.aspectMask),
+        baseMipLevel(range.baseMipLevel),
+        levelCount(range.levelCount),
+        baseArrayLayer(range.baseArrayLayer),
+        layerCount(range.layerCount)
+  {
+  }
+  ImageRange(const VkImageSubresourceLayers &range)
+      : aspectMask(range.aspectMask),
+        baseMipLevel(range.mipLevel),
+        levelCount(1),
+        baseArrayLayer(range.baseArrayLayer),
+        layerCount(range.layerCount)
+  {
+  }
+  ImageRange(const VkBufferImageCopy &range)
+      : aspectMask(range.imageSubresource.aspectMask),
+        baseMipLevel(range.imageSubresource.mipLevel),
+        levelCount(1),
+        baseArrayLayer(range.imageSubresource.baseArrayLayer),
+        layerCount(range.imageSubresource.layerCount),
+        offset(range.imageOffset),
+        extent(range.imageExtent)
+  {
+  }
+  inline operator VkImageSubresourceRange() const
+  {
+    return {aspectMask, baseMipLevel, levelCount, baseArrayLayer, layerCount};
+  }
+  VkImageAspectFlags aspectMask = VK_IMAGE_ASPECT_FLAG_BITS_MAX_ENUM;
+  uint32_t baseMipLevel = 0;
+  uint32_t levelCount = VK_REMAINING_MIP_LEVELS;
+  uint32_t baseArrayLayer = 0;
+  uint32_t layerCount = VK_REMAINING_ARRAY_LAYERS;
+  VkOffset3D offset = {0, 0, 0};
+  VkExtent3D extent = {~0u, ~0u, ~0u};
+  VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_MAX_ENUM;
+};
+
+typedef BitFlagIterator<VkImageAspectFlagBits, VkImageAspectFlags, int32_t> ImageAspectFlagIter;
+
+VkImageAspectFlags FormatImageAspects(VkFormat fmt);
+
+struct ImgRefs
+{
+  std::vector<FrameRefType> rangeRefs;
+  WrappedVkRes *initializedLiveRes = NULL;
+  ImageInfo imageInfo;
+  VkImageAspectFlags aspectMask;
+
+  bool areAspectsSplit = false;
+  bool areLevelsSplit = false;
+  bool areLayersSplit = false;
+
+  int GetAspectCount() const;
+
+  ImgRefs() : initializedLiveRes(NULL) {}
+  inline ImgRefs(const ImageInfo &imageInfo)
+      : rangeRefs(1, eFrameRef_None),
+        imageInfo(imageInfo),
+        aspectMask(FormatImageAspects(imageInfo.format))
+  {
+    if(imageInfo.extent.depth > 1)
+      // Depth slices of 3D views are treated as array layers
+      this->imageInfo.layerCount = imageInfo.extent.depth;
+  }
+  int AspectIndex(VkImageAspectFlagBits aspect) const;
+  int SubresourceIndex(int aspectIndex, int level, int layer) const;
+  inline FrameRefType SubresourceRef(int aspectIndex, int level, int layer) const
+  {
+    return rangeRefs[SubresourceIndex(aspectIndex, level, layer)];
+  }
+  inline InitReqType SubresourceInitReq(int aspectIndex, int level, int layer) const
+  {
+    return InitReq(SubresourceRef(aspectIndex, level, layer));
+  }
+  inline InitReqType SubresourceInitReq(int aspectIndex, int level, int layer, bool initialized) const
+  {
+    return InitReq(SubresourceRef(aspectIndex, level, layer));
+  }
+  std::vector<rdcpair<VkImageSubresourceRange, InitReqType> > SubresourceRangeInitReqs(
+      VkImageSubresourceRange range) const;
+  void Split(bool splitAspects, bool splitLevels, bool splitLayers);
+  template <typename Compose>
+  FrameRefType Update(ImageRange range, FrameRefType refType, Compose comp);
+  inline FrameRefType Update(const ImageRange &range, FrameRefType refType)
+  {
+    return Update(range, refType, ComposeFrameRefs);
+  }
+  template <typename Compose>
+  FrameRefType Merge(const ImgRefs &other, Compose comp);
+  inline FrameRefType Merge(const ImgRefs &other) { return Merge(other, ComposeFrameRefs); }
+};
+
+DECLARE_REFLECTION_STRUCT(ImgRefs);
+
+template <class SerialiserType>
+void DoSerialise(SerialiserType &ser, ImgRefs &el)
+{
+  SERIALISE_MEMBER(rangeRefs);
+  SERIALISE_MEMBER(imageInfo);
+  SERIALISE_MEMBER(aspectMask);
+  SERIALISE_MEMBER(areAspectsSplit);
+  SERIALISE_MEMBER(areLevelsSplit);
+  SERIALISE_MEMBER(areLayersSplit);
+}
+
+struct ImgRefsPair
+{
+  ResourceId image;
+  ImgRefs imgRefs;
+};
+
+DECLARE_REFLECTION_STRUCT(ImgRefsPair);
+
+template <class SerialiserType>
+void DoSerialise(SerialiserType &ser, ImgRefsPair &el)
+{
+  SERIALISE_MEMBER(image);
+  SERIALISE_MEMBER(imgRefs);
+}
+
+template <typename Compose>
+FrameRefType ImgRefs::Update(ImageRange range, FrameRefType refType, Compose comp)
+{
+  range.extent.width = RDCMIN(range.extent.width, imageInfo.extent.width - range.offset.x);
+  range.extent.height = RDCMIN(range.extent.height, imageInfo.extent.height - range.offset.y);
+
+  if(imageInfo.extent.depth > 1 && range.viewType != VK_IMAGE_VIEW_TYPE_2D &&
+     range.viewType != VK_IMAGE_VIEW_TYPE_2D_ARRAY)
+  {
+    // The Vulkan spec allows 2D `VkImageView`s of 3D `VkImage`s--the depth slices of the images are
+    // interpreted as array layers in the 2D view. Note that the spec does not allow 3D images to
+    // have array layers, so 3D images always have exactly 1 array layer when not accessed using a
+    // 2D view.
+    //
+    // `ImgRefs` treats the depth slices of 3D images as array layers (as if accessed through a 2D
+    // view). When a 3D image is accessed without a 2D view, we need to translate the Z axis into
+    // array layer indices.
+
+    range.extent.depth = RDCMIN(range.extent.depth, imageInfo.extent.depth - range.offset.z);
+    range.baseArrayLayer = range.offset.z;
+    range.layerCount = range.extent.depth;
+  }
+  else if(range.layerCount == VK_REMAINING_ARRAY_LAYERS)
+  {
+    range.layerCount = imageInfo.layerCount - range.baseArrayLayer;
+  }
+
+  if(range.levelCount == VK_REMAINING_MIP_LEVELS)
+    range.levelCount = imageInfo.levelCount - range.baseMipLevel;
+
+  if(refType == eFrameRef_CompleteWrite &&
+     (range.offset.x != 0 || range.offset.y != 0 || range.extent.width != imageInfo.extent.width ||
+      range.extent.height != imageInfo.extent.height))
+    // Complete write, but only to part of the image.
+    // We don't track writes at the pixel level, so turn this into a partial write
+    refType = eFrameRef_PartialWrite;
+
+  if(range.aspectMask != aspectMask)
+  {
+    if(range.aspectMask & VK_IMAGE_ASPECT_COLOR_BIT)
+    {
+      // For multi-planar images, the color aspect can be an alias for the plane aspects
+      range.aspectMask |=
+          (VK_IMAGE_ASPECT_PLANE_0_BIT | VK_IMAGE_ASPECT_PLANE_1_BIT | VK_IMAGE_ASPECT_PLANE_2_BIT) &
+          aspectMask;
+    }
+    range.aspectMask &= aspectMask;
+  }
+
+  Split(range.aspectMask != aspectMask,
+        range.baseMipLevel != 0 || (int)range.levelCount != imageInfo.levelCount,
+        range.baseArrayLayer != 0 || (int)range.layerCount != imageInfo.layerCount);
+
+  std::vector<VkImageAspectFlags> splitAspects;
+  if(areAspectsSplit)
+  {
+    for(auto aspectIt = ImageAspectFlagIter::begin(aspectMask);
+        aspectIt != ImageAspectFlagIter::end(); ++aspectIt)
+    {
+      splitAspects.push_back(*aspectIt);
+    }
+  }
+  else
+  {
+    splitAspects.push_back(aspectMask);
+  }
+
+  int splitLevelCount = 1;
+  int levelEnd = 1;
+  if(areLevelsSplit)
+  {
+    splitLevelCount = imageInfo.levelCount;
+    levelEnd = (int)(range.baseMipLevel + range.levelCount);
+  }
+
+  int splitLayerCount = 1;
+  int layerEnd = 1;
+  if(areLayersSplit)
+  {
+    splitLayerCount = imageInfo.layerCount;
+    layerEnd = (int)(range.baseArrayLayer + range.layerCount);
+  }
+
+  FrameRefType maxRefType = eFrameRef_None;
+  for(int aspectIndex = 0; aspectIndex < (int)splitAspects.size(); ++aspectIndex)
+  {
+    VkImageAspectFlags aspect = splitAspects[aspectIndex];
+    if((aspect & range.aspectMask) == 0)
+      continue;
+    for(int level = (int)range.baseMipLevel; level < levelEnd; ++level)
+    {
+      for(int layer = (int)range.baseArrayLayer; layer < layerEnd; ++layer)
+      {
+        int index = (aspectIndex * splitLevelCount + level) * splitLayerCount + layer;
+        rangeRefs[index] = comp(rangeRefs[index], refType);
+        maxRefType = RDCMAX(maxRefType, rangeRefs[index]);
+      }
+    }
+  }
+  return maxRefType;
+}
+
+template <typename Compose>
+FrameRefType ImgRefs::Merge(const ImgRefs &other, Compose comp)
+{
+  Split(other.areAspectsSplit, other.areLevelsSplit, other.areLayersSplit);
+
+  int splitAspectCount = 1;
+  if(areAspectsSplit)
+    splitAspectCount = GetAspectCount();
+
+  int splitLevelCount = areLevelsSplit ? imageInfo.levelCount : 1;
+
+  int splitLayerCount = areLayersSplit ? imageInfo.layerCount : 1;
+
+  FrameRefType maxRefType = eFrameRef_None;
+  for(int aspectIndex = 0; aspectIndex < splitAspectCount; ++aspectIndex)
+  {
+    for(int level = 0; level < splitLevelCount; ++level)
+    {
+      for(int layer = 0; layer < splitLayerCount; ++layer)
+      {
+        int index = SubresourceIndex(aspectIndex, level, layer);
+        rangeRefs[index] = comp(rangeRefs[index], other.SubresourceRef(aspectIndex, level, layer));
+        maxRefType = RDCMAX(maxRefType, rangeRefs[index]);
+      }
+    }
+  }
+  return maxRefType;
+}
 
 struct MemRefs
 {
@@ -1054,6 +1365,20 @@ FrameRefType MemRefs::Merge(MemRefs &other, Compose comp)
   return maxRefType;
 }
 
+struct ImageLayouts;
+
+template <typename Compose>
+FrameRefType MarkImageReferenced(std::map<ResourceId, ImgRefs> &imgRefs, ResourceId img,
+                                 const ImageInfo &imageInfo, const ImageRange &range,
+                                 FrameRefType refType, Compose comp);
+
+inline FrameRefType MarkImageReferenced(std::map<ResourceId, ImgRefs> &imgRefs, ResourceId img,
+                                        const ImageInfo &imageInfo, const ImageRange &range,
+                                        FrameRefType refType)
+{
+  return MarkImageReferenced(imgRefs, img, imageInfo, range, refType, ComposeFrameRefs);
+}
+
 template <typename Compose>
 FrameRefType MarkMemoryReferenced(std::map<ResourceId, MemRefs> &memRefs, ResourceId mem,
                                   VkDeviceSize offset, VkDeviceSize size, FrameRefType refType,
@@ -1064,7 +1389,7 @@ FrameRefType MarkMemoryReferenced(std::map<ResourceId, MemRefs> &memRefs, Resour
   auto refs = memRefs.find(mem);
   if(refs == memRefs.end())
   {
-    memRefs.insert(std::make_pair(mem, MemRefs(offset, size, refType)));
+    memRefs.insert(std::pair<ResourceId, MemRefs>(mem, MemRefs(offset, size, refType)));
     return refType;
   }
   else
@@ -1113,6 +1438,7 @@ public:
     cmdInfo->imgbarriers.swap(bakedCommands->cmdInfo->imgbarriers);
     cmdInfo->subcmds.swap(bakedCommands->cmdInfo->subcmds);
     cmdInfo->sparse.swap(bakedCommands->cmdInfo->sparse);
+    cmdInfo->imgFrameRefs.swap(bakedCommands->cmdInfo->imgFrameRefs);
     cmdInfo->memFrameRefs.swap(bakedCommands->cmdInfo->memFrameRefs);
   }
 
@@ -1123,7 +1449,7 @@ public:
       RDCERR("Unexpected NULL resource ID being added as a bind frame ref");
       return;
     }
-    pair<uint32_t, FrameRefType> &p = descInfo->bindFrameRefs[id];
+    rdcpair<uint32_t, FrameRefType> &p = descInfo->bindFrameRefs[id];
     if((p.first & ~DescriptorSetData::SPARSE_REF_BIT) == 0)
     {
       p.second = ref;
@@ -1138,6 +1464,39 @@ public:
     }
   }
 
+  void AddImgFrameRef(VkResourceRecord *view, FrameRefType refType)
+  {
+    AddBindFrameRef(view->GetResourceID(), eFrameRef_Read,
+                    view->resInfo && view->resInfo->IsSparse());
+    if(view->baseResourceMem != ResourceId())
+      AddBindFrameRef(view->baseResourceMem, eFrameRef_Read, false);
+
+    rdcpair<uint32_t, FrameRefType> &p = descInfo->bindFrameRefs[view->baseResource];
+    if((p.first & ~DescriptorSetData::SPARSE_REF_BIT) == 0)
+    {
+      descInfo->bindImgRefs.erase(view->baseResource);
+      p.first = 1;
+      p.second = eFrameRef_None;
+    }
+    else
+    {
+      p.first++;
+    }
+
+    ImageRange imgRange;
+    imgRange.aspectMask = view->viewRange.aspectMask;
+    imgRange.baseMipLevel = view->viewRange.baseMipLevel;
+    imgRange.levelCount = view->viewRange.levelCount;
+    imgRange.baseArrayLayer = view->viewRange.baseArrayLayer;
+    imgRange.layerCount = view->viewRange.layerCount;
+    imgRange.viewType = view->viewRange.viewType();
+
+    FrameRefType maxRef = MarkImageReferenced(descInfo->bindImgRefs, view->baseResource,
+                                              view->resInfo->imageInfo, imgRange, refType);
+
+    p.second = std::max(p.second, maxRef);
+  }
+
   void AddMemFrameRef(ResourceId mem, VkDeviceSize offset, VkDeviceSize size, FrameRefType refType)
   {
     if(mem == ResourceId())
@@ -1145,7 +1504,7 @@ public:
       RDCERR("Unexpected NULL resource ID being added as a bind frame ref");
       return;
     }
-    pair<uint32_t, FrameRefType> &p = descInfo->bindFrameRefs[mem];
+    rdcpair<uint32_t, FrameRefType> &p = descInfo->bindFrameRefs[mem];
     if((p.first & ~DescriptorSetData::SPARSE_REF_BIT) == 0)
     {
       descInfo->bindMemRefs.erase(mem);
@@ -1210,12 +1569,14 @@ public:
 
   void MarkMemoryFrameReferenced(ResourceId mem, VkDeviceSize offset, VkDeviceSize size,
                                  FrameRefType refType);
+  void MarkImageFrameReferenced(VkResourceRecord *img, const ImageRange &range, FrameRefType refType);
+  void MarkImageViewFrameReferenced(VkResourceRecord *view, const ImageRange &range,
+                                    FrameRefType refType);
   void MarkBufferFrameReferenced(VkResourceRecord *buf, VkDeviceSize offset, VkDeviceSize size,
                                  FrameRefType refType);
   void MarkBufferImageCopyFrameReferenced(VkResourceRecord *buf, VkResourceRecord *img,
-                                          const ImageLayouts &layout, uint32_t regionCount,
-                                          const VkBufferImageCopy *regions, FrameRefType bufRefType,
-                                          FrameRefType imgRefType);
+                                          uint32_t regionCount, const VkBufferImageCopy *regions,
+                                          FrameRefType bufRefType, FrameRefType imgRefType);
   void MarkBufferViewFrameReferenced(VkResourceRecord *buf, FrameRefType refType);
   // these are all disjoint, so only a record of the right type will have each
   // Note some of these need to be deleted in the constructor, so we check the
@@ -1241,7 +1602,7 @@ public:
   // pointer to either the pool this item is allocated from, or the children allocated
   // from this pool. Protected by the chunk lock
   VkResourceRecord *pool;
-  vector<VkResourceRecord *> pooledChildren;
+  std::vector<VkResourceRecord *> pooledChildren;
 
   // we only need a couple of bytes to store the view's range,
   // so just pack/unpack into bitfields
@@ -1254,6 +1615,7 @@ public:
       levelCount = 1;
       baseArrayLayer = 0;
       layerCount = 1;
+      packedViewType = 7;
     }
 
     ViewRange &operator=(const VkImageSubresourceRange &range)
@@ -1296,6 +1658,27 @@ public:
       return ret;
     }
 
+    inline VkImageViewType viewType() const
+    {
+      if(packedViewType <= VK_IMAGE_VIEW_TYPE_END_RANGE)
+        return (VkImageViewType)packedViewType;
+      else
+        return VK_IMAGE_VIEW_TYPE_MAX_ENUM;
+    }
+
+    inline void setViewType(VkImageViewType t)
+    {
+      if(t <= VK_IMAGE_VIEW_TYPE_END_RANGE)
+        packedViewType = t;
+      else
+        packedViewType = 7;
+    }
+
+    // View type (VkImageViewType).
+    // Values <= 6, fits in 3 bits; 7 encodes an unknown/uninitialized view type.
+    // Stored as uint32_t instead of VkImageViewType to prevent signed extension.
+    uint32_t packedViewType : 3;
+
     // only need 4 bits for the aspects
     uint32_t aspectMask : 4;
 
@@ -1319,16 +1702,11 @@ public:
 
 struct ImageLayouts
 {
-  ImageLayouts() : layerCount(1), levelCount(1), sampleCount(1), format(VK_FORMAT_UNDEFINED)
-  {
-    extent.width = extent.height = extent.depth = 1;
-  }
-
   uint32_t queueFamilyIndex = 0;
-  vector<ImageRegionState> subresourceStates;
-  int layerCount, levelCount, sampleCount;
-  VkExtent3D extent;
-  VkFormat format;
+  std::vector<ImageRegionState> subresourceStates;
+  bool memoryBound = false;
+  VkImageLayout initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  ImageInfo imageInfo;
 };
 
 DECLARE_REFLECTION_STRUCT(ImageLayouts);
@@ -1344,6 +1722,7 @@ bool IsUIntFormat(VkFormat f);
 bool IsDoubleFormat(VkFormat f);
 bool IsSIntFormat(VkFormat f);
 bool IsYUVFormat(VkFormat f);
+VkImageAspectFlags FormatImageAspects(VkFormat f);
 
 uint32_t GetYUVPlaneCount(VkFormat f);
 uint32_t GetYUVNumRows(VkFormat f, uint32_t height);
@@ -1356,3 +1735,18 @@ void GetYUVShaderParameters(VkFormat f, Vec4u &YUVDownsampleRate, Vec4u &YUVACha
 uint32_t GetByteSize(uint32_t Width, uint32_t Height, uint32_t Depth, VkFormat Format, uint32_t mip);
 uint32_t GetPlaneByteSize(uint32_t Width, uint32_t Height, uint32_t Depth, VkFormat Format,
                           uint32_t mip, uint32_t plane);
+
+template <typename Compose>
+FrameRefType MarkImageReferenced(std::map<ResourceId, ImgRefs> &imgRefs, ResourceId img,
+                                 const ImageInfo &imageInfo, const ImageRange &range,
+                                 FrameRefType refType, Compose comp)
+{
+  if(refType == eFrameRef_None)
+    return refType;
+  auto refs = imgRefs.find(img);
+  if(refs == imgRefs.end())
+  {
+    refs = imgRefs.insert(std::make_pair(img, ImgRefs(imageInfo))).first;
+  }
+  return refs->second.Update(range, refType, comp);
+}

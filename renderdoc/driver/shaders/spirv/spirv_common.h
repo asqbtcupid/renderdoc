@@ -25,210 +25,144 @@
 #pragma once
 
 #include <stdint.h>
-#include <string>
-#include <utility>
 #include <vector>
 #include "3rdparty/glslang/SPIRV/spirv.hpp"
-#include "3rdparty/glslang/glslang/Include/ResourceLimits.h"
 #include "api/replay/renderdoc_replay.h"
 
-using std::string;
-using std::vector;
-
-enum class SPIRVShaderStage
+namespace rdcspv
 {
-  Vertex,
-  TessControl,
-  TessEvaluation,
-  Geometry,
-  Fragment,
-  Compute,
-  Invalid,
+// length of 1 word in the top 16-bits, OpNop = 0 in the lower 16-bits
+static constexpr uint32_t OpNopWord = 0x00010000U;
+
+struct Id
+{
+  constexpr inline Id() : id(0) {}
+  // only allow explicit functions to cast to/from uint32_t
+  constexpr static inline Id fromWord(uint32_t i) { return Id(i); }
+  inline uint32_t value() const { return id; }
+  constexpr inline explicit operator bool() const { return id != 0; }
+  constexpr inline bool operator==(const Id o) const { return id == o.id; }
+  constexpr inline bool operator!=(const Id o) const { return id != o.id; }
+  constexpr inline bool operator<(const Id o) const { return id < o.id; }
+  constexpr inline bool operator==(const uint32_t o) const { return id == o; }
+  constexpr inline bool operator!=(const uint32_t o) const { return id != o; }
+  constexpr inline bool operator<(const uint32_t o) const { return id < o; }
+private:
+  constexpr inline Id(uint32_t i) : id(i) {}
+  uint32_t id;
 };
 
-enum class SPIRVSourceLanguage
+class Operation;
+
+class Iter
 {
-  Unknown,
-  OpenGLGLSL,
-  VulkanGLSL,
-  VulkanHLSL,
-};
-
-struct SPIRVCompilationSettings
-{
-  SPIRVCompilationSettings(SPIRVSourceLanguage l, SPIRVShaderStage s) : stage(s), lang(l) {}
-  SPIRVCompilationSettings() = default;
-
-  SPIRVShaderStage stage = SPIRVShaderStage::Invalid;
-  SPIRVSourceLanguage lang = SPIRVSourceLanguage::Unknown;
-  std::string entryPoint;
-};
-
-void InitSPIRVCompiler();
-void ShutdownSPIRVCompiler();
-
-struct SPVInstruction;
-
-enum class GraphicsAPI : uint32_t;
-enum class ShaderStage : uint32_t;
-enum class ShaderBuiltin : uint32_t;
-struct ShaderReflection;
-struct ShaderBindpointMapping;
-
-ShaderBuiltin BuiltInToSystemAttribute(ShaderStage stage, const spv::BuiltIn el);
-
-// extra information that goes along with a ShaderReflection that has extra information for SPIR-V
-// patching
-struct SPIRVPatchData
-{
-  struct InterfaceAccess
+public:
+  // constructors
+  Iter() = default;
+  Iter(std::vector<uint32_t> &w, size_t o) : words(&w), offset(o) {}
+  // increment to the next op
+  Iter operator++(int)
   {
-    // ID of the base variable
-    uint32_t ID;
-
-    // ID of the struct parent of this variable
-    uint32_t structID;
-
-    // the access chain of indices
-    std::vector<uint32_t> accessChain;
-
-    // is this input/output part of a matrix
-    bool isMatrix = false;
-
-    // this is an element of an array that's been exploded after [0].
-    // i.e. this is false for non-arrays, and false for element [0] in an array, then true for
-    // elements [1], [2], [3], etc..
-    bool isArraySubsequentElement = false;
-  };
-
-  // matches the input/output signature array, with details of where to fetch the output from in the
-  // SPIR-V.
-  std::vector<InterfaceAccess> inputs;
-  std::vector<InterfaceAccess> outputs;
-
-  // the output topology for tessellation and geometry shaders
-  Topology outTopo = Topology::Unknown;
-};
-
-struct SPVModule
-{
-  SPVModule();
-  ~SPVModule();
-
-  vector<uint32_t> spirv;
-
-  struct
+    Iter ret = *this;
+    operator++();
+    return ret;
+  }
+  Iter operator++()
   {
-    uint8_t major, minor;
-  } moduleVersion;
-  uint32_t generator;
+    do
+    {
+      offset += cur() >> spv::WordCountShift;
+      // silently skip nops
+    } while(*this && opcode() == spv::OpNop);
 
-  spv::SourceLanguage sourceLang;
-  uint32_t sourceVer;
+    return *this;
+  }
+  bool operator==(const Iter &it) const = delete;
+  bool operator!=(const Iter &it) const = delete;
+  bool operator<(const Iter &it) const { return words == it.words && offset < it.offset; }
+  // utility functions
+  explicit operator bool() const { return words != NULL && offset < words->size(); }
+  uint32_t &operator*() { return cur(); }
+  const uint32_t &operator*() const { return cur(); }
+  spv::Op opcode() { return spv::Op(cur() & spv::OpCodeMask); }
+  uint32_t &word(size_t idx) { return words->at(offset + idx); }
+  const uint32_t &word(size_t idx) const { return words->at(offset + idx); }
+  size_t offs() const { return offset; }
+  size_t size() const { return cur() >> spv::WordCountShift; }
+  // replace part of this operation with NOPs and update the length. Cannot completely erase the
+  // operation, or expand it
+  void nopRemove(size_t idx, size_t count = 0);
+  // completely remove the operation and replace with NOPs
+  void nopRemove();
 
-  std::string cmdline;
-  vector<std::pair<string, string>> sourceFiles;
-
-  vector<string> extensions;
-
-  vector<spv::Capability> capabilities;
-
-  vector<SPVInstruction *>
-      operations;    // all operations (including those that don't generate an ID)
-
-  vector<SPVInstruction *> ids;    // pointers indexed by ID
-
-  vector<SPVInstruction *> sourceexts;       // source extensions
-  vector<SPVInstruction *> entries;          // entry points
-  vector<SPVInstruction *> globals;          // global variables
-  vector<SPVInstruction *> specConstants;    // specialization constants
-  vector<SPVInstruction *> funcs;            // functions
-  vector<SPVInstruction *> structs;          // struct types
-
-  SPVInstruction *GetByID(uint32_t id);
-  string Disassemble(const string &entryPoint);
-
-  std::vector<std::string> EntryPoints() const;
-  ShaderStage StageForEntry(const string &entryPoint) const;
-
-  void MakeReflection(GraphicsAPI sourceAPI, ShaderStage stage, const string &entryPoint,
-                      ShaderReflection &reflection, ShaderBindpointMapping &mapping,
-                      SPIRVPatchData &patchData) const;
+private:
+  friend class Operation;
+  inline uint32_t &cur() { return words->at(offset); }
+  inline const uint32_t &cur() const { return words->at(offset); }
+  std::vector<uint32_t>::iterator it() { return words->begin() + offset; }
+  std::vector<uint32_t>::const_iterator it() const { return words->cbegin() + offset; }
+  size_t offset = 0;
+  std::vector<uint32_t> *words = NULL;
 };
 
-string CompileSPIRV(const SPIRVCompilationSettings &settings, const vector<string> &sources,
-                    vector<uint32_t> &spirv);
-void ParseSPIRV(uint32_t *spirv, size_t spirvLength, SPVModule &module);
-
-static const uint32_t SpecializationConstantBindSet = 1234567;
-
-struct SpecConstant
+class Operation
 {
-  uint32_t specID;
-  std::vector<byte> data;
+public:
+  // constructor of a synthetic operation, from an operation & subsequent words, calculates the
+  // length then constructs the first word with opcode + length.
+  Operation(spv::Op op, const std::vector<uint32_t> &data)
+  {
+    words.push_back(MakeHeader(op, data.size() + 1));
+    words.insert(words.begin() + 1, data.begin(), data.end());
+
+    iter = Iter(words, 0);
+  }
+
+  Operation(const Operation &op)
+  {
+    words = op.words;
+
+    iter = Iter(words, 0);
+  }
+
+  static Operation copy(Iter it)
+  {
+    Operation ret(it);
+
+    ret.words.insert(ret.words.begin(), it.it(), it.it() + it.size());
+    ret.iter = Iter(ret.words, 0);
+
+    return ret;
+  }
+
+  // constructor that takes existing words from elsewhere and just references it.
+  // Since this is iterator based, normal iteration invalidation rules apply, if you modify earlier
+  // in the SPIR-V this operation will become invalid.
+  Operation(Iter it) : iter(it) {}
+  uint32_t &operator[](size_t idx) { return iter.word(idx); }
+  const uint32_t &operator[](size_t idx) const { return iter.word(idx); }
+  size_t size() const { return iter.size(); }
+  // insert the words for this op into the destination vector
+  void appendTo(std::vector<uint32_t> &dest) const { dest.insert(dest.end(), begin(), end()); }
+  void insertInto(std::vector<uint32_t> &dest, size_t offset) const
+  {
+    dest.insert(dest.begin() + offset, begin(), end());
+  }
+  inline static uint32_t MakeHeader(spv::Op op, size_t WordCount)
+  {
+    return (uint32_t(op) & spv::OpCodeMask) | (uint16_t(WordCount) << spv::WordCountShift);
+  }
+
+private:
+  std::vector<uint32_t>::const_iterator begin() const { return iter.it(); }
+  std::vector<uint32_t>::const_iterator end() const { return iter.it() + size(); }
+  // everything is based around this iterator, which may point into our local storage or to external
+  // storage.
+  Iter iter;
+
+  // may not be used, if we refer to an external iterator
+  std::vector<uint32_t> words;
 };
+};    // namespace rdcspv
 
-void FillSpecConstantVariables(const rdcarray<ShaderConstant> &invars,
-                               rdcarray<ShaderVariable> &outvars,
-                               const std::vector<SpecConstant> &specInfo);
-
-namespace glslang
-{
-class TShader;
-class TProgram;
-};
-
-glslang::TShader *CompileShaderForReflection(SPIRVShaderStage stage,
-                                             const std::vector<std::string> &sources);
-glslang::TProgram *LinkProgramForReflection(const std::vector<glslang::TShader *> &shaders);
-
-extern TBuiltInResource DefaultResources;
-
-enum class ReflectionInterface
-{
-  Input,
-  Output,
-  Uniform,
-  UniformBlock,
-  ShaderStorageBlock,
-  AtomicCounterBuffer,
-  BufferVariable,
-};
-
-enum class ReflectionProperty
-{
-  ActiveResources,
-  BufferBinding,
-  TopLevelArrayStride,
-  BlockIndex,
-  ArraySize,
-  IsRowMajor,
-  NumActiveVariables,
-  BufferDataSize,
-  NameLength,
-  Type,
-  LocationComponent,
-  ReferencedByVertexShader,
-  ReferencedByTessControlShader,
-  ReferencedByTessEvaluationShader,
-  ReferencedByGeometryShader,
-  ReferencedByFragmentShader,
-  ReferencedByComputeShader,
-  Internal_Binding,
-  AtomicCounterBufferIndex,
-  Offset,
-  ArrayStride,
-  MatrixStride,
-  Location,
-};
-
-void glslangGetProgramInterfaceiv(glslang::TProgram *program, ReflectionInterface programInterface,
-                                  ReflectionProperty pname, int32_t *params);
-
-void glslangGetProgramResourceiv(glslang::TProgram *program, ReflectionInterface programInterface,
-                                 uint32_t index, const std::vector<ReflectionProperty> &props,
-                                 int32_t bufSize, int32_t *length, int32_t *params);
-uint32_t glslangGetProgramResourceIndex(glslang::TProgram *program, const char *name);
-
-const char *glslangGetProgramResourceName(glslang::TProgram *program,
-                                          ReflectionInterface programInterface, uint32_t index);
+DECLARE_STRINGISE_TYPE(rdcspv::Id);

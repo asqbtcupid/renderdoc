@@ -65,7 +65,7 @@ endif()
 
 # version setting variables. See renderdoc/api/replay/version.h
 
-set(BUILD_VERSION_HASH "" CACHE STRING "The current git commit hash. See GIT_COMMIT_HASH in renderdoc/api/replay/version.cpp")
+set(BUILD_VERSION_HASH "" CACHE STRING "The current git commit hash. See renderdoc/replay/version.cpp")
 option(BUILD_VERSION_STABLE "If this is a stable build. See RENDERDOC_STABLE_BUILD in renderdoc/api/replay/version.h" OFF)
 set(BUILD_VERSION_DIST_NAME "" CACHE STRING "The name of the distribution. See DISTRIBUTION_NAME in renderdoc/api/replay/version.h")
 set(BUILD_VERSION_DIST_VER "" CACHE STRING "The distribution-specific version number. See DISTRIBUTION_VERSION in renderdoc/api/replay/version.h")
@@ -134,7 +134,26 @@ endfunction(get_git_hash)
 # get git commit hash
 get_git_hash(GIT_COMMIT_HASH)
 string(STRIP ${GIT_COMMIT_HASH} GIT_COMMIT_HASH)
-add_definitions(-DGIT_COMMIT_HASH="${GIT_COMMIT_HASH}")
+
+if(EXISTS "${CMAKE_SOURCE_DIR}/.git/HEAD")
+    # Use configure_file to force a re-configure if the HEAD file changes. That means changing branch.
+    # The re-configure will pick up a new git commit hash above, if it exists and is valid.
+    # This will be slightly redundant if BUILD_VERSION_HASH is specified but that is not a case we expect to care about.
+    configure_file("${CMAKE_SOURCE_DIR}/.git/HEAD" "${CMAKE_BINARY_DIR}/git_HEAD" COPYONLY)
+
+    # in addition, if HEAD is a ref, do the same on the file it's pointing to (since HEAD won't change for commits to the current branch)
+    # if we change branch then this will correspondingly 
+    file(READ ${CMAKE_SOURCE_DIR}/.git/HEAD HEAD_CONTENTS)
+    string(STRIP "${HEAD_CONTENTS}" HEAD_CONTENTS)
+
+    if("${HEAD_CONTENTS}" MATCHES "ref: ")
+        string(REPLACE "ref: " "" REF_LOCATION "${HEAD_CONTENTS}")
+
+        if(EXISTS "${CMAKE_SOURCE_DIR}/.git/${REF_LOCATION}")
+            configure_file("${CMAKE_SOURCE_DIR}/.git/${REF_LOCATION}" "${CMAKE_BINARY_DIR}/git_ref" COPYONLY)
+        endif()
+    endif()
+endif()
 
 project(RenderDoc CXX C)
 
@@ -169,23 +188,25 @@ endif()
 
 message(STATUS "Calculating version")
 
-execute_process(
-    COMMAND awk "{ if (/_MAJOR [0-9]/) { print $3 } }" renderdoc/api/replay/version.h
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    OUTPUT_VARIABLE RENDERDOC_VERSION_MAJOR
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-  )
+file(READ ${CMAKE_SOURCE_DIR}/renderdoc/api/replay/version.h VERSION_CONTENTS)
 
-execute_process(
-    COMMAND awk "{ if (/_MINOR [0-9]/) { print $3 } }" renderdoc/api/replay/version.h
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    OUTPUT_VARIABLE RENDERDOC_VERSION_MINOR
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-  )
+string(REGEX MATCH "_MAJOR [0-9]+" MAJOR_VERSION_LINE "${VERSION_CONTENTS}")
+string(REGEX MATCH "[0-9]+" RENDERDOC_VERSION_MAJOR "${MAJOR_VERSION_LINE}")
+
+string(REGEX MATCH "_MINOR [0-9]+" MINOR_VERSION_LINE "${VERSION_CONTENTS}")
+string(REGEX MATCH "[0-9]+" RENDERDOC_VERSION_MINOR "${MINOR_VERSION_LINE}")
 
 set(RENDERDOC_VERSION "${RENDERDOC_VERSION_MAJOR}.${RENDERDOC_VERSION_MINOR}")
 
 message(STATUS "Building RenderDoc version ${RENDERDOC_VERSION}")
+
+if(RENDERDOC_VERSION_MAJOR STREQUAL "")
+    message(FATAL_ERROR "Couldn't calculate major version")
+endif()
+
+if(RENDERDOC_VERSION_MINOR STREQUAL "")
+    message(FATAL_ERROR "Couldn't calculate minor version")
+endif()
 
 if(APPLE)
     message(STATUS "Disabling GLES driver on apple")
@@ -239,8 +260,16 @@ if(ENABLE_VULKAN)
     add_definitions(-DRENDERDOC_SUPPORT_VULKAN)
 endif()
 
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
+string(TOLOWER "${CMAKE_BUILD_TYPE}" cmake_build_type_lower)
+
+set(RELEASE_MODE 0)
+
+if(cmake_build_type_lower STREQUAL "release" OR
+   cmake_build_type_lower STREQUAL "relwithdebinfo" OR
+   cmake_build_type_lower STREQUAL "minsizerel")
     add_definitions(-D_RELEASE)
+    message(STATUS "Building RenderDoc in Release mode: ${CMAKE_BUILD_TYPE}")
+    set(RELEASE_MODE 1)
 endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -274,7 +303,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         list(APPEND warning_flags -Wno-unused-lambda-capture)
     endif()
 
-    if(NOT CMAKE_BUILD_TYPE STREQUAL "Release")
+    if(NOT RELEASE_MODE)
         list(APPEND warning_flags -Werror)
     endif()
 

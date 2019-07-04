@@ -261,7 +261,7 @@ TextureDescription D3D11Replay::GetTexture(ResourceId id)
   {
     WrappedID3D11Texture1D *d3dtex = (WrappedID3D11Texture1D *)it1D->second.m_Texture;
 
-    string str = GetDebugName(d3dtex);
+    std::string str = GetDebugName(d3dtex);
 
     D3D11_TEXTURE1D_DESC desc;
     d3dtex->GetDesc(&desc);
@@ -308,7 +308,7 @@ TextureDescription D3D11Replay::GetTexture(ResourceId id)
   {
     WrappedID3D11Texture2D1 *d3dtex = (WrappedID3D11Texture2D1 *)it2D->second.m_Texture;
 
-    string str = GetDebugName(d3dtex);
+    std::string str = GetDebugName(d3dtex);
 
     D3D11_TEXTURE2D_DESC desc;
     d3dtex->GetDesc(&desc);
@@ -367,7 +367,7 @@ TextureDescription D3D11Replay::GetTexture(ResourceId id)
   {
     WrappedID3D11Texture3D1 *d3dtex = (WrappedID3D11Texture3D1 *)it3D->second.m_Texture;
 
-    string str = GetDebugName(d3dtex);
+    std::string str = GetDebugName(d3dtex);
 
     D3D11_TEXTURE3D_DESC desc;
     d3dtex->GetDesc(&desc);
@@ -450,9 +450,9 @@ ShaderReflection *D3D11Replay::GetShader(ResourceId shader, ShaderEntryPoint ent
   return &ret;
 }
 
-vector<string> D3D11Replay::GetDisassemblyTargets()
+std::vector<std::string> D3D11Replay::GetDisassemblyTargets()
 {
-  vector<string> ret;
+  std::vector<std::string> ret;
 
   // DXBC is always first
   ret.insert(ret.begin(), DXBCDisassemblyTarget);
@@ -460,8 +460,8 @@ vector<string> D3D11Replay::GetDisassemblyTargets()
   return ret;
 }
 
-string D3D11Replay::DisassembleShader(ResourceId pipeline, const ShaderReflection *refl,
-                                      const string &target)
+std::string D3D11Replay::DisassembleShader(ResourceId pipeline, const ShaderReflection *refl,
+                                           const std::string &target)
 {
   auto it =
       WrappedShader::m_ShaderList.find(m_pDevice->GetResourceManager()->GetLiveID(refl->resourceId));
@@ -502,12 +502,12 @@ FrameRecord D3D11Replay::GetFrameRecord()
   return m_pDevice->GetFrameRecord();
 }
 
-vector<EventUsage> D3D11Replay::GetUsage(ResourceId id)
+std::vector<EventUsage> D3D11Replay::GetUsage(ResourceId id)
 {
   return m_pDevice->GetImmediateContext()->GetUsage(id);
 }
 
-vector<DebugMessage> D3D11Replay::GetDebugMessages()
+std::vector<DebugMessage> D3D11Replay::GetDebugMessages()
 {
   return m_pDevice->GetDebugMessages();
 }
@@ -575,7 +575,7 @@ BufferDescription D3D11Replay::GetBuffer(ResourceId id)
 
   WrappedID3D11Buffer *d3dbuf = it->second.m_Buffer;
 
-  string str = GetDebugName(d3dbuf);
+  std::string str = GetDebugName(d3dbuf);
 
   ret.resourceId = m_pDevice->GetResourceManager()->GetOriginalID(it->first);
 
@@ -654,7 +654,7 @@ void D3D11Replay::SavePipelineState(uint32_t eventId)
 
   if(rs->IA.Layout)
   {
-    const vector<D3D11_INPUT_ELEMENT_DESC> &vec = m_pDevice->GetLayoutDesc(rs->IA.Layout);
+    const std::vector<D3D11_INPUT_ELEMENT_DESC> &vec = m_pDevice->GetLayoutDesc(rs->IA.Layout);
 
     ResourceId layoutId = GetIDForResource(rs->IA.Layout);
 
@@ -1488,9 +1488,9 @@ const SDFile &D3D11Replay::GetStructuredFile()
   return m_pDevice->GetStructuredFile();
 }
 
-vector<uint32_t> D3D11Replay::GetPassEvents(uint32_t eventId)
+std::vector<uint32_t> D3D11Replay::GetPassEvents(uint32_t eventId)
 {
-  vector<uint32_t> passEvents;
+  std::vector<uint32_t> passEvents;
 
   const DrawcallDescription *draw = m_pDevice->GetDrawcall(eventId);
 
@@ -1529,7 +1529,7 @@ ResourceId D3D11Replay::GetLiveID(ResourceId id)
 
 bool D3D11Replay::GetHistogram(ResourceId texid, uint32_t sliceFace, uint32_t mip, uint32_t sample,
                                CompType typeHint, float minval, float maxval, bool channels[4],
-                               vector<uint32_t> &histogram)
+                               std::vector<uint32_t> &histogram)
 {
   if(minval >= maxval)
     return false;
@@ -2292,9 +2292,9 @@ D3D11DebugManager *D3D11Replay::GetDebugManager()
   return m_pDevice->GetDebugManager();
 }
 
-void D3D11Replay::BuildShader(ShaderEncoding sourceEncoding, bytebuf source, std::string entry,
-                              const ShaderCompileFlags &compileFlags, ShaderStage type,
-                              ResourceId *id, std::string *errors)
+void D3D11Replay::BuildShader(ShaderEncoding sourceEncoding, bytebuf source,
+                              const std::string &entry, const ShaderCompileFlags &compileFlags,
+                              ShaderStage type, ResourceId *id, std::string *errors)
 {
   if(id == NULL || errors == NULL)
   {
@@ -2449,7 +2449,7 @@ void D3D11Replay::BuildShader(ShaderEncoding sourceEncoding, bytebuf source, std
 }
 
 void D3D11Replay::BuildTargetShader(ShaderEncoding sourceEncoding, bytebuf source,
-                                    std::string entry, const ShaderCompileFlags &compileFlags,
+                                    const std::string &entry, const ShaderCompileFlags &compileFlags,
                                     ShaderStage type, ResourceId *id, std::string *errors)
 {
   ShaderCompileFlags debugCompileFlags =
@@ -2458,14 +2458,11 @@ void D3D11Replay::BuildTargetShader(ShaderEncoding sourceEncoding, bytebuf sourc
   BuildShader(sourceEncoding, source, entry, debugCompileFlags, type, id, errors);
 }
 
-void D3D11Replay::BuildCustomShader(std::string source, std::string entry,
-                                    const ShaderCompileFlags &compileFlags, ShaderStage type,
-                                    ResourceId *id, std::string *errors)
+void D3D11Replay::BuildCustomShader(ShaderEncoding sourceEncoding, bytebuf source,
+                                    const std::string &entry, const ShaderCompileFlags &compileFlags,
+                                    ShaderStage type, ResourceId *id, std::string *errors)
 {
-  bytebuf buf;
-  buf.resize(source.size());
-  memcpy(buf.data(), source.c_str(), buf.size());
-  BuildShader(ShaderEncoding::HLSL, buf, entry, compileFlags, type, id, errors);
+  BuildTargetShader(sourceEncoding, source, entry, compileFlags, type, id, errors);
 }
 
 bool D3D11Replay::RenderTexture(TextureDisplay cfg)
@@ -3531,24 +3528,8 @@ ResourceId D3D11Replay::CreateProxyBuffer(const BufferDescription &templateBuf)
     desc.CPUAccessFlags = 0;
     desc.MiscFlags = 0;
     desc.Usage = D3D11_USAGE_DEFAULT;
-    desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    desc.BindFlags = D3D11_BIND_VERTEX_BUFFER | D3D11_BIND_INDEX_BUFFER;
     desc.StructureByteStride = 0;
-
-    if(templateBuf.creationFlags & BufferCategory::Indirect)
-    {
-      desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-      desc.MiscFlags |= D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS;
-    }
-    if(templateBuf.creationFlags & BufferCategory::Index)
-      desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
-    // D3D11_BIND_CONSTANT_BUFFER size must be <= 65536 on some drivers.
-    if(desc.ByteWidth <= D3D11_REQ_CONSTANT_BUFFER_ELEMENT_COUNT * 16)
-    {
-      if(templateBuf.creationFlags & BufferCategory::Constants)
-        desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-    }
-    if(templateBuf.creationFlags & BufferCategory::ReadWrite)
-      desc.BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE;
 
     HRESULT hr = m_pDevice->CreateBuffer(&desc, NULL, &throwaway);
     if(FAILED(hr))

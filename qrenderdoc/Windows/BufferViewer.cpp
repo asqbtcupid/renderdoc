@@ -1039,7 +1039,8 @@ private:
         case ResourceFormatType::D24S8:
         case ResourceFormatType::D32S8: compCount = 2; break;
         case ResourceFormatType::BC4:
-        case ResourceFormatType::S8: compCount = 1; break;
+        case ResourceFormatType::S8:
+        case ResourceFormatType::A8: compCount = 1; break;
         case ResourceFormatType::YUV8:
         case ResourceFormatType::YUV10:
         case ResourceFormatType::YUV12:
@@ -1628,6 +1629,9 @@ BufferViewer::BufferViewer(ICaptureContext &ctx, bool meshview, QWidget *parent)
   ui->vsoutData->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
   ui->gsoutData->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
 
+  ui->minBoundsLabel->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+  ui->maxBoundsLabel->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+
   ui->rowOffset->setFont(Formatter::PreferredFont());
   ui->instance->setFont(Formatter::PreferredFont());
   ui->viewIndex->setFont(Formatter::PreferredFont());
@@ -1814,6 +1818,9 @@ void BufferViewer::SetupMeshView()
   ui->formatSpecifier->setVisible(false);
   ui->cameraControlsGroup->setVisible(false);
 
+  ui->minBoundsLabel->setText(lit("---"));
+  ui->maxBoundsLabel->setText(lit("---"));
+
   ui->outputTabs->setWindowTitle(tr("Preview"));
   ui->dockarea->addToolWindow(ui->outputTabs, ToolWindowManager::EmptySpace);
   ui->dockarea->setToolWindowProperties(ui->outputTabs, ToolWindowManager::HideCloseButton);
@@ -1861,6 +1868,7 @@ void BufferViewer::SetupMeshView()
     model->setSecondaryColumn(-1, m_Config.solidShadeMode == SolidShade::Secondary, false);
 
     UI_CalculateMeshFormats();
+    on_resetCamera_clicked();
     UpdateCurrentMeshConfig();
     INVOKE_MEMFN(RT_UpdateAndDisplay);
   });
@@ -1870,6 +1878,7 @@ void BufferViewer::SetupMeshView()
     model->setPosColumn(m_ContextColumn);
 
     UI_CalculateMeshFormats();
+    on_resetCamera_clicked();
     UpdateCurrentMeshConfig();
     INVOKE_MEMFN(RT_UpdateAndDisplay);
   });
@@ -2187,11 +2196,6 @@ void BufferViewer::OnEventChanged(uint32_t eventId)
       m_PostVS = bufdata->postVS;
       m_PostGS = bufdata->postGS;
 
-      UI_CalculateMeshFormats();
-      UpdateCurrentMeshConfig();
-
-      populateBBox(bufdata);
-
       // if we didn't have a position column selected before, or the name has changed, re-guess
       if(m_ModelVSIn->posColumn() == -1 ||
          bufdata->highlightNames[0] != bufdata->vsinConfig.columnName(m_ModelVSIn->posColumn()))
@@ -2217,6 +2221,11 @@ void BufferViewer::OnEventChanged(uint32_t eventId)
          bufdata->highlightNames[5] !=
              bufdata->gsoutConfig.columnName(m_ModelGSOut->secondaryColumn()))
         m_ModelGSOut->setSecondaryColumn(-1, m_Config.solidShadeMode == SolidShade::Secondary, false);
+
+      populateBBox(bufdata);
+
+      UI_CalculateMeshFormats();
+      UpdateCurrentMeshConfig();
 
       ApplyRowAndColumnDims(m_ModelVSIn->columnCount(), ui->vsinData);
       ApplyRowAndColumnDims(m_ModelVSOut->columnCount(), ui->vsoutData);
@@ -2318,8 +2327,17 @@ void BufferViewer::calcBoundingData(CalcBoundingBoxData &bbox)
 
     for(int i = 0; i < s.columns.count(); i++)
     {
-      minOutputList.push_back(FloatVector(FLT_MAX, FLT_MAX, FLT_MAX, FLT_MAX));
-      maxOutputList.push_back(FloatVector(-FLT_MAX, -FLT_MAX, -FLT_MAX, -FLT_MAX));
+      FloatVector maxvec(FLT_MAX, FLT_MAX, FLT_MAX, FLT_MAX);
+
+      if(s.columns[i].format.compCount == 1)
+        maxvec.y = maxvec.z = maxvec.w = 0.0;
+      else if(s.columns[i].format.compCount == 2)
+        maxvec.z = maxvec.w = 0.0;
+      else if(s.columns[i].format.compCount == 3)
+        maxvec.w = 0.0;
+
+      minOutputList.push_back(maxvec);
+      maxOutputList.push_back(FloatVector(-maxvec.x, -maxvec.y, -maxvec.z, -maxvec.w));
     }
 
     QVector<CachedElData> cache;
@@ -2404,6 +2422,51 @@ void BufferViewer::UI_UpdateBoundingBox(const CalcBoundingBoxData &bbox)
   delete &bbox;
 }
 
+void BufferViewer::UI_UpdateBoundingBoxLabels(int compCount)
+{
+  if(compCount == 0)
+  {
+    BufferItemModel *model = currentBufferModel();
+    if(model)
+    {
+      int posEl = model->posColumn();
+      if(posEl >= 0 && posEl < model->getConfig().columns.count())
+      {
+        compCount = model->getConfig().columns[posEl].format.compCount;
+      }
+    }
+  }
+
+  QString min, max;
+
+  float *minData = &m_Config.minBounds.x;
+  float *maxData = &m_Config.maxBounds.x;
+
+  const QString comps = lit("xyzw");
+
+  for(int i = 0; i < compCount && i < 4; i++)
+  {
+    if(i != 0)
+    {
+      min += lit("\n");
+      max += lit("\n");
+    }
+
+    min += tr("Min %1: %2").arg(comps[i]).arg(Formatter::Format(minData[i]));
+    max += tr("Max %1: %2").arg(comps[i]).arg(Formatter::Format(maxData[i]));
+  }
+
+  if(min.isEmpty())
+    ui->minBoundsLabel->setText(lit("---"));
+  else
+    ui->minBoundsLabel->setText(min);
+
+  if(max.isEmpty())
+    ui->maxBoundsLabel->setText(lit("---"));
+  else
+    ui->maxBoundsLabel->setText(max);
+}
+
 void BufferViewer::UI_ResetArcball()
 {
   BBoxData bbox;
@@ -2420,7 +2483,8 @@ void BufferViewer::UI_ResetArcball()
   if(model)
   {
     int posEl = model->posColumn();
-    if(posEl >= 0 && posEl < model->columnCount() && posEl < bbox.bounds[stage].Min.count())
+    if(posEl >= 0 && posEl < model->getConfig().columns.count() &&
+       posEl < bbox.bounds[stage].Min.count())
     {
       FloatVector diag;
       diag.x = bbox.bounds[stage].Max[posEl].x - bbox.bounds[stage].Min[posEl].x;
@@ -2545,6 +2609,12 @@ void BufferViewer::UI_CalculateMeshFormats()
 
       m_PostVSPosition = m_PostVS;
       m_PostVSPosition.vertexByteOffset += vsoutConfig.columns[elIdx].offset;
+      m_PostVSPosition.unproject = vsoutConfig.columns[elIdx].systemValue == ShaderBuiltin::Position;
+
+      // if geometry/tessellation is enabled, don't unproject VS output data
+      if(m_Ctx.CurPipelineState().GetShader(ShaderStage::Tess_Eval) != ResourceId() ||
+         m_Ctx.CurPipelineState().GetShader(ShaderStage::Geometry) != ResourceId())
+        m_PostVSPosition.unproject = false;
 
       elIdx = m_ModelVSOut->secondaryColumn();
 
@@ -2569,6 +2639,7 @@ void BufferViewer::UI_CalculateMeshFormats()
 
       m_PostGSPosition = m_PostGS;
       m_PostGSPosition.vertexByteOffset += gsoutConfig.columns[elIdx].offset;
+      m_PostGSPosition.unproject = gsoutConfig.columns[elIdx].systemValue == ShaderBuiltin::Position;
 
       elIdx = m_ModelGSOut->secondaryColumn();
 
@@ -2584,9 +2655,6 @@ void BufferViewer::UI_CalculateMeshFormats()
 
     if(!(draw->flags & DrawFlags::Indexed))
       m_PostVSPosition.indexByteStride = m_VSInPosition.indexByteStride = 0;
-
-    m_PostGSPosition.unproject = true;
-    m_PostVSPosition.unproject = !m_Ctx.CurPipelineState().IsTessellationEnabled();
   }
   else
   {
@@ -2693,21 +2761,19 @@ void BufferViewer::UpdateCurrentMeshConfig()
 
   m_Config.showBBox = false;
 
-  bool nonRasterizedOutput = false;
-
-  if(stage == 0)
-    nonRasterizedOutput = true;
-  else if(stage == 1 && m_Ctx.CurPipelineState().IsTessellationEnabled())
-    nonRasterizedOutput = true;
-
-  if(model && nonRasterizedOutput)
+  if(model)
   {
     int posEl = model->posColumn();
-    if(posEl >= 0 && posEl < model->columnCount() && posEl < bbox.bounds[stage].Min.count())
+    if(posEl >= 0 && posEl < model->getConfig().columns.count() &&
+       posEl < bbox.bounds[stage].Min.count())
     {
       m_Config.minBounds = bbox.bounds[stage].Min[posEl];
       m_Config.maxBounds = bbox.bounds[stage].Max[posEl];
-      m_Config.showBBox = true;
+      m_Config.showBBox = !isCurrentRasterOut();
+
+      int compCount = model->getConfig().columns[posEl].format.compCount;
+
+      UI_UpdateBoundingBoxLabels(compCount);
     }
   }
 }
@@ -2745,7 +2811,7 @@ void BufferViewer::render_clicked(QMouseEvent *e)
       uint32_t instanceSelected = 0;
       uint32_t vertSelected = 0;
 
-      std::tie(vertSelected, instanceSelected) =
+      rdctie(vertSelected, instanceSelected) =
           m_Output->PickVertex(m_Ctx.CurEvent(), (uint32_t)curpos.x(), (uint32_t)curpos.y());
 
       if(vertSelected != ~0U)
@@ -2902,20 +2968,22 @@ BufferItemModel *BufferViewer::modelForStage(MeshDataStage stage)
 
 bool BufferViewer::isCurrentRasterOut()
 {
-  if(m_CurStage == MeshDataStage::VSIn)
-  {
-    return false;
-  }
-  else if(m_CurStage == MeshDataStage::VSOut)
-  {
-    if(m_Ctx.IsCaptureLoaded() && m_Ctx.CurPipelineState().IsTessellationEnabled())
-      return false;
+  BufferItemModel *model = currentBufferModel();
+  int stage = currentStageIndex();
 
-    return true;
-  }
-  else if(m_CurStage == MeshDataStage::GSOut)
+  // if geometry/tessellation is enabled, only the GS out stage is rasterized output
+  if((m_Ctx.CurPipelineState().GetShader(ShaderStage::Tess_Eval) != ResourceId() ||
+      m_Ctx.CurPipelineState().GetShader(ShaderStage::Geometry) != ResourceId()) &&
+     m_CurStage != MeshDataStage::GSOut)
+    return false;
+
+  if(model)
   {
-    return true;
+    int posEl = model->posColumn();
+    if(posEl >= 0 && posEl < model->getConfig().columns.count())
+    {
+      return model->getConfig().columns[posEl].systemValue == ShaderBuiltin::Position;
+    }
   }
 
   return false;
@@ -3556,6 +3624,27 @@ void BufferViewer::on_outputTabs_currentChanged(int index)
 void BufferViewer::on_toggleControls_toggled(bool checked)
 {
   ui->cameraControlsGroup->setVisible(checked);
+
+  // temporarily set minimum bounds to the longest float we could format, to ensure the minimum size
+  // we calculate below is as big as needs to be (sigh...). This is necessary because Qt doesn't
+  // properly propagate the minimum size up through the scroll area and instead sizes it down much
+  // smaller.
+  FloatVector prev = m_Config.minBounds;
+
+  m_Config.minBounds.x = 1.0f;
+  m_Config.minBounds.y = 1.2345e-20f;
+  m_Config.minBounds.z = 123456.7890123456789f;
+  m_Config.minBounds.w = 1.2345e+20f;
+
+  UI_UpdateBoundingBoxLabels(4);
+
+  m_Config.minBounds = prev;
+
+  ui->cameraControlsWidget->setMinimumSize(ui->cameraControlsWidget->minimumSizeHint());
+  ui->cameraControlsScroll->setMinimumWidth(ui->cameraControlsWidget->minimumSizeHint().width() +
+                                            ui->cameraControlsScroll->verticalScrollBar()->width());
+
+  UI_UpdateBoundingBoxLabels();
 
   EnableCameraGuessControls();
 }

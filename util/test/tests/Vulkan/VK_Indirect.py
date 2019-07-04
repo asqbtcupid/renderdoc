@@ -4,8 +4,7 @@ import renderdoc as rd
 
 
 class VK_Indirect(rdtest.TestCase):
-    def get_capture(self):
-        return rdtest.run_and_capture("demos_x64", "VK_Indirect", 5)
+    demos_test_name = 'VK_Indirect'
 
     def check_overlay(self, eventId: int, out: rd.ReplayOutput, tex: rd.TextureDisplay, save_data: rd.TextureSave):
         pipe: rd.PipeState = self.controller.GetPipelineState()
@@ -35,12 +34,10 @@ class VK_Indirect(rdtest.TestCase):
             dispatches = self.find_draw("{}: Dispatches".format(level))
 
             # Set up a ReplayOutput and TextureSave for quickly testing the drawcall highlight overlay
-            out: rd.ReplayOutput = self.controller.CreateOutput(rd.CreateHeadlessWindowingData(),
+            out: rd.ReplayOutput = self.controller.CreateOutput(rd.CreateHeadlessWindowingData(100, 100),
                                                                 rd.ReplayOutputType.Texture)
 
             self.check(out is not None)
-
-            out.SetDimensions(100, 100)
 
             tex = rd.TextureDisplay()
             tex.overlay = rd.DebugOverlay.Drawcall

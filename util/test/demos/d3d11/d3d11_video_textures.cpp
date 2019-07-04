@@ -52,7 +52,7 @@ COM_SMARTPTR(IMFByteStream);
 ///////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////
 
-struct D3D11_Video_Textures : D3D11GraphicsTest, IMFMediaEngineNotify
+TEST(D3D11_Video_Textures, D3D11GraphicsTest), IMFMediaEngineNotify
 {
   static constexpr const char *Description = "Tests of YUV textures";
 
@@ -214,11 +214,8 @@ float4 main(v2f IN) : SV_Target0
     return S_OK;
   }
 
-  int main(int argc, char **argv)
+  int main()
   {
-    // call this early to parse any data path parameters
-    GraphicsTest::Init(argc, argv);
-
     // check for the existence of the test video
     std::string video_filename = GetDataPath("h264_yu420p_192x108_24fps.mp4");
 
@@ -273,7 +270,7 @@ float4 main(v2f IN) : SV_Target0
     }
 
     // initialise, create window, create device, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     IMFMediaEnginePtr engine = NULL;
@@ -849,4 +846,4 @@ float4 main(v2f IN) : SV_Target0
   }
 };
 
-REGISTER_TEST(D3D11_Video_Textures);
+REGISTER_TEST();

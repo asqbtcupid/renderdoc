@@ -24,7 +24,7 @@
 
 #include "d3d11_test.h"
 
-struct Byte_Address_Buffers : D3D11GraphicsTest
+TEST(D3D11_Byte_Address_Buffers, D3D11GraphicsTest)
 {
   static constexpr const char *Description = "Tests reading and writing from byte address buffers";
 
@@ -45,10 +45,10 @@ void main()
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create device, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     ID3D11ComputeShaderPtr cs = CreateCS(Compile(compute, "main", "cs_5_0"));
@@ -83,4 +83,4 @@ void main()
   }
 };
 
-REGISTER_TEST(Byte_Address_Buffers);
+REGISTER_TEST();

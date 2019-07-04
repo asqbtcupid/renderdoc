@@ -165,7 +165,7 @@ void D3D12Descriptor::Create(D3D12_DESCRIPTOR_HEAP_TYPE heapType, WrappedID3D12D
       {
         desc = res ? NULL : defaultSRV();
 
-        const map<ResourceId, DXGI_FORMAT> &bbs = dev->GetBackbufferFormats();
+        const std::map<ResourceId, DXGI_FORMAT> &bbs = dev->GetBackbufferFormats();
 
         auto it = bbs.find(GetResID(res));
 
@@ -189,7 +189,7 @@ void D3D12Descriptor::Create(D3D12_DESCRIPTOR_HEAP_TYPE heapType, WrappedID3D12D
       }
       else if(desc->Format == DXGI_FORMAT_UNKNOWN)
       {
-        const map<ResourceId, DXGI_FORMAT> &bbs = dev->GetBackbufferFormats();
+        const std::map<ResourceId, DXGI_FORMAT> &bbs = dev->GetBackbufferFormats();
 
         auto it = bbs.find(GetResID(res));
 
@@ -257,7 +257,7 @@ void D3D12Descriptor::Create(D3D12_DESCRIPTOR_HEAP_TYPE heapType, WrappedID3D12D
       {
         desc = res ? NULL : defaultRTV();
 
-        const map<ResourceId, DXGI_FORMAT> &bbs = dev->GetBackbufferFormats();
+        const std::map<ResourceId, DXGI_FORMAT> &bbs = dev->GetBackbufferFormats();
 
         auto it = bbs.find(GetResID(res));
 
@@ -279,7 +279,7 @@ void D3D12Descriptor::Create(D3D12_DESCRIPTOR_HEAP_TYPE heapType, WrappedID3D12D
       }
       else if(desc->Format == DXGI_FORMAT_UNKNOWN)
       {
-        const map<ResourceId, DXGI_FORMAT> &bbs = dev->GetBackbufferFormats();
+        const std::map<ResourceId, DXGI_FORMAT> &bbs = dev->GetBackbufferFormats();
 
         auto it = bbs.find(GetResID(res));
 
@@ -366,7 +366,7 @@ void D3D12Descriptor::Create(D3D12_DESCRIPTOR_HEAP_TYPE heapType, WrappedID3D12D
       {
         desc = res ? NULL : defaultUAV();
 
-        const map<ResourceId, DXGI_FORMAT> &bbs = dev->GetBackbufferFormats();
+        const std::map<ResourceId, DXGI_FORMAT> &bbs = dev->GetBackbufferFormats();
 
         auto it = bbs.find(GetResID(res));
 
@@ -388,7 +388,7 @@ void D3D12Descriptor::Create(D3D12_DESCRIPTOR_HEAP_TYPE heapType, WrappedID3D12D
       }
       else if(desc->Format == DXGI_FORMAT_UNKNOWN)
       {
-        const map<ResourceId, DXGI_FORMAT> &bbs = dev->GetBackbufferFormats();
+        const std::map<ResourceId, DXGI_FORMAT> &bbs = dev->GetBackbufferFormats();
 
         auto it = bbs.find(GetResID(res));
 
@@ -650,8 +650,8 @@ D3D12Descriptor *DescriptorFromPortableHandle(D3D12ResourceManager *manager, Por
 #define BARRIER_ASSERT(...)
 #endif
 
-void D3D12ResourceManager::ApplyBarriers(vector<D3D12_RESOURCE_BARRIER> &barriers,
-                                         map<ResourceId, SubresourceStateVector> &states)
+void D3D12ResourceManager::ApplyBarriers(std::vector<D3D12_RESOURCE_BARRIER> &barriers,
+                                         std::map<ResourceId, SubresourceStateVector> &states)
 {
   for(size_t b = 0; b < barriers.size(); b++)
   {
@@ -693,7 +693,7 @@ void D3D12ResourceManager::SerialiseResourceStates(SerialiserType &ser,
 
   for(uint32_t i = 0; i < NumMems; i++)
   {
-    SERIALISE_ELEMENT_LOCAL(Resource, srcit->first).TypedAs("ID3D12Resource *");
+    SERIALISE_ELEMENT_LOCAL(Resource, srcit->first).TypedAs("ID3D12Resource *"_lit);
     SERIALISE_ELEMENT_LOCAL(States, srcit->second);
 
     ResourceId liveid;

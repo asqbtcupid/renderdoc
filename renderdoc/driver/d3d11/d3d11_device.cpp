@@ -116,7 +116,8 @@ WrappedID3D11Device::WrappedID3D11Device(ID3D11Device *realDevice, D3D11InitPara
 
     D3D11MarkerRegion::device = this;
 
-    string shaderSearchPathString = RenderDoc::Inst().GetConfigSetting("shader.debug.searchPaths");
+    std::string shaderSearchPathString =
+        RenderDoc::Inst().GetConfigSetting("shader.debug.searchPaths");
     split(shaderSearchPathString, m_ShaderSearchPaths, ';');
 
     ResourceIDGen::SetReplayResourceIDs();
@@ -140,6 +141,7 @@ WrappedID3D11Device::WrappedID3D11Device(ID3D11Device *realDevice, D3D11InitPara
   if(!RenderDoc::Inst().IsReplayApp())
   {
     m_DeviceRecord = GetResourceManager()->AddResourceRecord(m_ResourceID);
+    m_DeviceRecord->ResType = Resource_Unknown;
     m_DeviceRecord->DataInSerialiser = false;
     m_DeviceRecord->InternalResource = true;
     m_DeviceRecord->Length = 0;
@@ -852,7 +854,7 @@ std::vector<DebugMessage> WrappedID3D11Device::GetDebugMessages()
     }
 
     msg.messageID = (uint32_t)message->ID;
-    msg.description = string(message->pDescription);
+    msg.description = std::string(message->pDescription);
 
     ret.push_back(msg);
 
@@ -879,7 +881,7 @@ bool WrappedID3D11Device::ProcessChunk(ReadSerialiser &ser, D3D11Chunk context)
   {
     case D3D11Chunk::DeviceInitialisation:
     {
-      SERIALISE_ELEMENT_LOCAL(ImmediateContext, ResourceId()).TypedAs("ID3D11DeviceContext *");
+      SERIALISE_ELEMENT_LOCAL(ImmediateContext, ResourceId()).TypedAs("ID3D11DeviceContext *"_lit);
 
       SERIALISE_CHECK_READ_ERRORS();
 
@@ -999,7 +1001,7 @@ bool WrappedID3D11Device::ProcessChunk(ReadSerialiser &ser, D3D11Chunk context)
       }
       else if(system == SystemChunk::InitialContents)
       {
-        return Serialise_InitialState(ser, ResourceId(), NULL);
+        return Serialise_InitialState(ser, ResourceId(), NULL, NULL);
       }
       else if(system == SystemChunk::CaptureScope)
       {
@@ -1316,7 +1318,7 @@ bool WrappedID3D11Device::Serialise_WrapSwapchainBuffer(SerialiserType &ser,
   WrappedID3D11Texture2D1 *pTex = (WrappedID3D11Texture2D1 *)realSurface;
 
   SERIALISE_ELEMENT(Buffer);
-  SERIALISE_ELEMENT_LOCAL(SwapbufferID, pTex->GetResourceID()).TypedAs("IDXGISwapChain *");
+  SERIALISE_ELEMENT_LOCAL(SwapbufferID, pTex->GetResourceID()).TypedAs("IDXGISwapChain *"_lit);
 
   m_BBID = SwapbufferID;
 
@@ -1401,6 +1403,7 @@ IUnknown *WrappedID3D11Device::WrapSwapchainBuffer(WrappedIDXGISwapChain4 *swap,
   if(IsCaptureMode(m_State))
   {
     D3D11ResourceRecord *record = GetResourceManager()->AddResourceRecord(id);
+    record->ResType = Resource_Texture2D;
     record->DataInSerialiser = false;
     record->Length = 0;
     record->NumSubResources = 0;
@@ -1733,7 +1736,7 @@ bool WrappedID3D11Device::EndFrameCapture(void *dev, void *wnd)
         SCOPED_SERIALISE_CHUNK(D3D11Chunk::DeviceInitialisation, 16);
 
         SERIALISE_ELEMENT_LOCAL(ImmediateContext, m_pImmediateContext->GetResourceID())
-            .TypedAs("ID3D11DeviceContext *");
+            .TypedAs("ID3D11DeviceContext *"_lit);
       }
 
       RDCDEBUG("Inserting Resource Serialisers");
@@ -2138,7 +2141,8 @@ HRESULT WrappedID3D11Device::Present(WrappedIDXGISwapChain4 *swap, UINT SyncInte
       m_TextRenderer->SetOutputWindow(swapDesc.OutputWindow);
 
       int flags = activeWindow ? RenderDoc::eOverlay_ActiveWindow : 0;
-      string overlayText = RenderDoc::Inst().GetOverlayText(RDCDriver::D3D11, m_FrameCounter, flags);
+      std::string overlayText =
+          RenderDoc::Inst().GetOverlayText(RDCDriver::D3D11, m_FrameCounter, flags);
 
       if(activeWindow && m_FailedFrame > 0)
       {
@@ -2399,8 +2403,6 @@ void WrappedID3D11Device::ReleaseResource(ID3D11DeviceChild *res)
   }
 
   SCOPED_LOCK(m_D3DLock);
-
-  GetResourceManager()->MarkCleanResource(idx);
 
   if(WrappedID3D11DeviceContext::IsAlloc(res))
     RemoveDeferredContext((WrappedID3D11DeviceContext *)res);

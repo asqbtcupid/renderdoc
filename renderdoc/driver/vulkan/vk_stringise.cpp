@@ -26,9 +26,9 @@
 #include "vk_resources.h"
 
 template <>
-std::string DoStringise(const VulkanChunk &el)
+rdcstr DoStringise(const VulkanChunk &el)
 {
-  RDCCOMPILE_ASSERT((uint32_t)VulkanChunk::Max == 1134, "Chunks changed without updating names");
+  RDCCOMPILE_ASSERT((uint32_t)VulkanChunk::Max == 1135, "Chunks changed without updating names");
 
   BEGIN_ENUM_STRINGISE(VulkanChunk)
   {
@@ -164,15 +164,16 @@ std::string DoStringise(const VulkanChunk &el)
     STRINGISE_ENUM_CLASS(vkCmdEndConditionalRenderingEXT)
     STRINGISE_ENUM_CLASS(vkCmdSetSampleLocationsEXT)
     STRINGISE_ENUM_CLASS(vkCmdSetDiscardRectangleEXT)
-    STRINGISE_ENUM_CLASS_NAMED(DeviceMemoryRefs, "Device Memory References")
+    STRINGISE_ENUM_CLASS_NAMED(DeviceMemoryRefs, "Internal: Device Memory References")
     STRINGISE_ENUM_CLASS(vkResetQueryPoolEXT);
+    STRINGISE_ENUM_CLASS_NAMED(ImageRefs, "Image References")
     STRINGISE_ENUM_CLASS_NAMED(Max, "Max Chunk");
   }
   END_ENUM_STRINGISE()
 }
 
 template <>
-std::string DoStringise(const VkResourceType &el)
+rdcstr DoStringise(const VkResourceType &el)
 {
   BEGIN_ENUM_STRINGISE(VkResourceType);
   {
@@ -209,7 +210,7 @@ std::string DoStringise(const VkResourceType &el)
 }
 
 template <>
-std::string DoStringise(const MemoryScope &el)
+rdcstr DoStringise(const MemoryScope &el)
 {
   BEGIN_ENUM_STRINGISE(MemoryScope);
   {
@@ -220,7 +221,7 @@ std::string DoStringise(const MemoryScope &el)
 }
 
 template <>
-std::string DoStringise(const MemoryType &el)
+rdcstr DoStringise(const MemoryType &el)
 {
   BEGIN_ENUM_STRINGISE(MemoryType)
   {
@@ -232,7 +233,7 @@ std::string DoStringise(const MemoryType &el)
 }
 
 template <>
-std::string DoStringise(const VkFlagWithNoBits &el)
+rdcstr DoStringise(const VkFlagWithNoBits &el)
 {
   if(el != 0)
     return StringFormat::Fmt("Invalid bits set: %x", el);
@@ -240,7 +241,7 @@ std::string DoStringise(const VkFlagWithNoBits &el)
 }
 
 template <>
-std::string DoStringise(const VkQueueFlagBits &el)
+rdcstr DoStringise(const VkQueueFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkQueueFlagBits);
   {
@@ -254,7 +255,7 @@ std::string DoStringise(const VkQueueFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkPipelineCreateFlagBits &el)
+rdcstr DoStringise(const VkPipelineCreateFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkPipelineCreateFlagBits);
   {
@@ -269,7 +270,7 @@ std::string DoStringise(const VkPipelineCreateFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkPipelineStageFlagBits &el)
+rdcstr DoStringise(const VkPipelineStageFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkPipelineStageFlagBits);
   {
@@ -304,7 +305,7 @@ std::string DoStringise(const VkPipelineStageFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkBufferUsageFlagBits &el)
+rdcstr DoStringise(const VkBufferUsageFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkBufferUsageFlagBits);
   {
@@ -327,7 +328,7 @@ std::string DoStringise(const VkBufferUsageFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkImageViewCreateFlagBits &el)
+rdcstr DoStringise(const VkImageViewCreateFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkImageViewCreateFlagBits);
   {
@@ -337,7 +338,7 @@ std::string DoStringise(const VkImageViewCreateFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkImageUsageFlagBits &el)
+rdcstr DoStringise(const VkImageUsageFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkImageUsageFlagBits);
   {
@@ -356,7 +357,7 @@ std::string DoStringise(const VkImageUsageFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkBufferCreateFlagBits &el)
+rdcstr DoStringise(const VkBufferCreateFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkBufferCreateFlagBits);
   {
@@ -370,7 +371,7 @@ std::string DoStringise(const VkBufferCreateFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkImageCreateFlagBits &el)
+rdcstr DoStringise(const VkImageCreateFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkImageCreateFlagBits);
   {
@@ -394,7 +395,7 @@ std::string DoStringise(const VkImageCreateFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkSamplerCreateFlagBits &el)
+rdcstr DoStringise(const VkSamplerCreateFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkSamplerCreateFlagBits);
   {
@@ -405,7 +406,7 @@ std::string DoStringise(const VkSamplerCreateFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkSparseMemoryBindFlagBits &el)
+rdcstr DoStringise(const VkSparseMemoryBindFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkSparseMemoryBindFlagBits);
   {
@@ -415,7 +416,7 @@ std::string DoStringise(const VkSparseMemoryBindFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkCommandPoolCreateFlagBits &el)
+rdcstr DoStringise(const VkCommandPoolCreateFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkCommandPoolCreateFlagBits);
   {
@@ -427,7 +428,7 @@ std::string DoStringise(const VkCommandPoolCreateFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkCommandPoolResetFlagBits &el)
+rdcstr DoStringise(const VkCommandPoolResetFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkCommandPoolResetFlagBits);
   {
@@ -437,7 +438,7 @@ std::string DoStringise(const VkCommandPoolResetFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkCommandBufferUsageFlagBits &el)
+rdcstr DoStringise(const VkCommandBufferUsageFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkCommandBufferUsageFlagBits);
   {
@@ -449,7 +450,7 @@ std::string DoStringise(const VkCommandBufferUsageFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkDescriptorPoolCreateFlagBits &el)
+rdcstr DoStringise(const VkDescriptorPoolCreateFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkDescriptorPoolCreateFlagBits);
   {
@@ -460,7 +461,7 @@ std::string DoStringise(const VkDescriptorPoolCreateFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkFenceCreateFlagBits &el)
+rdcstr DoStringise(const VkFenceCreateFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkFenceCreateFlagBits);
   {
@@ -470,7 +471,7 @@ std::string DoStringise(const VkFenceCreateFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkQueryPipelineStatisticFlagBits &el)
+rdcstr DoStringise(const VkQueryPipelineStatisticFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkQueryPipelineStatisticFlagBits);
   {
@@ -490,7 +491,7 @@ std::string DoStringise(const VkQueryPipelineStatisticFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkQueryControlFlagBits &el)
+rdcstr DoStringise(const VkQueryControlFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkQueryControlFlagBits);
   {
@@ -500,7 +501,7 @@ std::string DoStringise(const VkQueryControlFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkQueryResultFlagBits &el)
+rdcstr DoStringise(const VkQueryResultFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkQueryResultFlagBits);
   {
@@ -513,7 +514,7 @@ std::string DoStringise(const VkQueryResultFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkAttachmentDescriptionFlagBits &el)
+rdcstr DoStringise(const VkAttachmentDescriptionFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkAttachmentDescriptionFlagBits);
   {
@@ -523,7 +524,7 @@ std::string DoStringise(const VkAttachmentDescriptionFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkResolveModeFlagBitsKHR &el)
+rdcstr DoStringise(const VkResolveModeFlagBitsKHR &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkResolveModeFlagBitsKHR);
   {
@@ -537,7 +538,7 @@ std::string DoStringise(const VkResolveModeFlagBitsKHR &el)
 }
 
 template <>
-std::string DoStringise(const VkSampleCountFlagBits &el)
+rdcstr DoStringise(const VkSampleCountFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkSampleCountFlagBits);
   {
@@ -553,7 +554,7 @@ std::string DoStringise(const VkSampleCountFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkImageAspectFlagBits &el)
+rdcstr DoStringise(const VkImageAspectFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkImageAspectFlagBits);
   {
@@ -573,7 +574,7 @@ std::string DoStringise(const VkImageAspectFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkDependencyFlagBits &el)
+rdcstr DoStringise(const VkDependencyFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkDependencyFlagBits);
   {
@@ -585,7 +586,7 @@ std::string DoStringise(const VkDependencyFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkShaderStageFlagBits &el)
+rdcstr DoStringise(const VkShaderStageFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkShaderStageFlagBits);
   {
@@ -612,7 +613,7 @@ std::string DoStringise(const VkShaderStageFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkMemoryHeapFlagBits &el)
+rdcstr DoStringise(const VkMemoryHeapFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkMemoryHeapFlagBits);
   {
@@ -623,7 +624,7 @@ std::string DoStringise(const VkMemoryHeapFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkMemoryPropertyFlagBits &el)
+rdcstr DoStringise(const VkMemoryPropertyFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkMemoryPropertyFlagBits);
   {
@@ -638,7 +639,7 @@ std::string DoStringise(const VkMemoryPropertyFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkAccessFlagBits &el)
+rdcstr DoStringise(const VkAccessFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkAccessFlagBits);
   {
@@ -675,7 +676,7 @@ std::string DoStringise(const VkAccessFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkExternalMemoryHandleTypeFlagBitsNV &el)
+rdcstr DoStringise(const VkExternalMemoryHandleTypeFlagBitsNV &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkExternalMemoryHandleTypeFlagBitsNV);
   {
@@ -689,7 +690,7 @@ std::string DoStringise(const VkExternalMemoryHandleTypeFlagBitsNV &el)
 }
 
 template <>
-std::string DoStringise(const VkExternalMemoryHandleTypeFlagBits &el)
+rdcstr DoStringise(const VkExternalMemoryHandleTypeFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkExternalMemoryHandleTypeFlagBits);
   {
@@ -709,7 +710,7 @@ std::string DoStringise(const VkExternalMemoryHandleTypeFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkExternalSemaphoreHandleTypeFlagBits &el)
+rdcstr DoStringise(const VkExternalSemaphoreHandleTypeFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkExternalSemaphoreHandleTypeFlagBits);
   {
@@ -723,7 +724,7 @@ std::string DoStringise(const VkExternalSemaphoreHandleTypeFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkExternalFenceHandleTypeFlagBits &el)
+rdcstr DoStringise(const VkExternalFenceHandleTypeFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkExternalFenceHandleTypeFlagBits);
   {
@@ -736,7 +737,7 @@ std::string DoStringise(const VkExternalFenceHandleTypeFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkSurfaceCounterFlagBitsEXT &el)
+rdcstr DoStringise(const VkSurfaceCounterFlagBitsEXT &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkSurfaceCounterFlagBitsEXT);
   {
@@ -746,7 +747,7 @@ std::string DoStringise(const VkSurfaceCounterFlagBitsEXT &el)
 }
 
 template <>
-std::string DoStringise(const VkDeviceGroupPresentModeFlagBitsKHR &el)
+rdcstr DoStringise(const VkDeviceGroupPresentModeFlagBitsKHR &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkDeviceGroupPresentModeFlagBitsKHR);
   {
@@ -759,7 +760,7 @@ std::string DoStringise(const VkDeviceGroupPresentModeFlagBitsKHR &el)
 }
 
 template <>
-std::string DoStringise(const VkDebugReportFlagBitsEXT &el)
+rdcstr DoStringise(const VkDebugReportFlagBitsEXT &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkDebugReportFlagBitsEXT);
   {
@@ -773,7 +774,7 @@ std::string DoStringise(const VkDebugReportFlagBitsEXT &el)
 }
 
 template <>
-std::string DoStringise(const VkDebugUtilsMessageSeverityFlagBitsEXT &el)
+rdcstr DoStringise(const VkDebugUtilsMessageSeverityFlagBitsEXT &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkDebugUtilsMessageSeverityFlagBitsEXT);
   {
@@ -786,7 +787,7 @@ std::string DoStringise(const VkDebugUtilsMessageSeverityFlagBitsEXT &el)
 }
 
 template <>
-std::string DoStringise(const VkConditionalRenderingFlagBitsEXT &el)
+rdcstr DoStringise(const VkConditionalRenderingFlagBitsEXT &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkConditionalRenderingFlagBitsEXT);
   {
@@ -796,7 +797,7 @@ std::string DoStringise(const VkConditionalRenderingFlagBitsEXT &el)
 }
 
 template <>
-std::string DoStringise(const VkDebugUtilsMessageTypeFlagBitsEXT &el)
+rdcstr DoStringise(const VkDebugUtilsMessageTypeFlagBitsEXT &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkDebugUtilsMessageTypeFlagBitsEXT);
   {
@@ -808,7 +809,7 @@ std::string DoStringise(const VkDebugUtilsMessageTypeFlagBitsEXT &el)
 }
 
 template <>
-std::string DoStringise(const VkMemoryAllocateFlagBits &el)
+rdcstr DoStringise(const VkMemoryAllocateFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkMemoryAllocateFlagBits);
   {
@@ -818,7 +819,7 @@ std::string DoStringise(const VkMemoryAllocateFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkStencilFaceFlagBits &el)
+rdcstr DoStringise(const VkStencilFaceFlagBits &el)
 {
   // technically a bitfield but each combination has a particular meaning
   BEGIN_ENUM_STRINGISE(VkStencilFaceFlagBits);
@@ -831,7 +832,7 @@ std::string DoStringise(const VkStencilFaceFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkCullModeFlagBits &el)
+rdcstr DoStringise(const VkCullModeFlagBits &el)
 {
   // technically a bitfield but each combination has a particular meaning
   BEGIN_ENUM_STRINGISE(VkCullModeFlagBits);
@@ -845,7 +846,7 @@ std::string DoStringise(const VkCullModeFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkColorComponentFlagBits &el)
+rdcstr DoStringise(const VkColorComponentFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkColorComponentFlagBits);
   {
@@ -858,7 +859,7 @@ std::string DoStringise(const VkColorComponentFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkPipelineBindPoint &el)
+rdcstr DoStringise(const VkPipelineBindPoint &el)
 {
   BEGIN_ENUM_STRINGISE(VkPipelineBindPoint);
   {
@@ -870,7 +871,7 @@ std::string DoStringise(const VkPipelineBindPoint &el)
 }
 
 template <>
-std::string DoStringise(const VkIndexType &el)
+rdcstr DoStringise(const VkIndexType &el)
 {
   BEGIN_ENUM_STRINGISE(VkIndexType);
   {
@@ -881,7 +882,7 @@ std::string DoStringise(const VkIndexType &el)
 }
 
 template <>
-std::string DoStringise(const VkImageType &el)
+rdcstr DoStringise(const VkImageType &el)
 {
   BEGIN_ENUM_STRINGISE(VkImageType);
   {
@@ -893,7 +894,7 @@ std::string DoStringise(const VkImageType &el)
 }
 
 template <>
-std::string DoStringise(const VkImageTiling &el)
+rdcstr DoStringise(const VkImageTiling &el)
 {
   BEGIN_ENUM_STRINGISE(VkImageTiling);
   {
@@ -905,7 +906,7 @@ std::string DoStringise(const VkImageTiling &el)
 }
 
 template <>
-std::string DoStringise(const VkImageViewType &el)
+rdcstr DoStringise(const VkImageViewType &el)
 {
   BEGIN_ENUM_STRINGISE(VkImageViewType);
   {
@@ -921,7 +922,7 @@ std::string DoStringise(const VkImageViewType &el)
 }
 
 template <>
-std::string DoStringise(const VkVertexInputRate &el)
+rdcstr DoStringise(const VkVertexInputRate &el)
 {
   BEGIN_ENUM_STRINGISE(VkVertexInputRate);
   {
@@ -932,7 +933,7 @@ std::string DoStringise(const VkVertexInputRate &el)
 }
 
 template <>
-std::string DoStringise(const VkPolygonMode &el)
+rdcstr DoStringise(const VkPolygonMode &el)
 {
   BEGIN_ENUM_STRINGISE(VkPolygonMode);
   {
@@ -945,7 +946,7 @@ std::string DoStringise(const VkPolygonMode &el)
 }
 
 template <>
-std::string DoStringise(const VkFrontFace &el)
+rdcstr DoStringise(const VkFrontFace &el)
 {
   BEGIN_ENUM_STRINGISE(VkFrontFace);
   {
@@ -956,7 +957,7 @@ std::string DoStringise(const VkFrontFace &el)
 }
 
 template <>
-std::string DoStringise(const VkBlendFactor &el)
+rdcstr DoStringise(const VkBlendFactor &el)
 {
   BEGIN_ENUM_STRINGISE(VkBlendFactor);
   {
@@ -984,7 +985,7 @@ std::string DoStringise(const VkBlendFactor &el)
 }
 
 template <>
-std::string DoStringise(const VkBlendOp &el)
+rdcstr DoStringise(const VkBlendOp &el)
 {
   BEGIN_ENUM_STRINGISE(VkBlendOp);
   {
@@ -1044,7 +1045,7 @@ std::string DoStringise(const VkBlendOp &el)
 }
 
 template <>
-std::string DoStringise(const VkDynamicState &el)
+rdcstr DoStringise(const VkDynamicState &el)
 {
   BEGIN_ENUM_STRINGISE(VkDynamicState);
   {
@@ -1068,7 +1069,7 @@ std::string DoStringise(const VkDynamicState &el)
 }
 
 template <>
-std::string DoStringise(const VkAttachmentLoadOp &el)
+rdcstr DoStringise(const VkAttachmentLoadOp &el)
 {
   BEGIN_ENUM_STRINGISE(VkAttachmentLoadOp);
   {
@@ -1080,7 +1081,7 @@ std::string DoStringise(const VkAttachmentLoadOp &el)
 }
 
 template <>
-std::string DoStringise(const VkAttachmentStoreOp &el)
+rdcstr DoStringise(const VkAttachmentStoreOp &el)
 {
   BEGIN_ENUM_STRINGISE(VkAttachmentStoreOp);
   {
@@ -1091,7 +1092,7 @@ std::string DoStringise(const VkAttachmentStoreOp &el)
 }
 
 template <>
-std::string DoStringise(const VkStencilOp &el)
+rdcstr DoStringise(const VkStencilOp &el)
 {
   BEGIN_ENUM_STRINGISE(VkStencilOp);
   {
@@ -1108,7 +1109,7 @@ std::string DoStringise(const VkStencilOp &el)
 }
 
 template <>
-std::string DoStringise(const VkLogicOp &el)
+rdcstr DoStringise(const VkLogicOp &el)
 {
   BEGIN_ENUM_STRINGISE(VkLogicOp);
   {
@@ -1133,7 +1134,7 @@ std::string DoStringise(const VkLogicOp &el)
 }
 
 template <>
-std::string DoStringise(const VkCompareOp &el)
+rdcstr DoStringise(const VkCompareOp &el)
 {
   BEGIN_ENUM_STRINGISE(VkCompareOp);
   {
@@ -1150,7 +1151,7 @@ std::string DoStringise(const VkCompareOp &el)
 }
 
 template <>
-std::string DoStringise(const VkFilter &el)
+rdcstr DoStringise(const VkFilter &el)
 {
   BEGIN_ENUM_STRINGISE(VkFilter);
   {
@@ -1162,7 +1163,7 @@ std::string DoStringise(const VkFilter &el)
 }
 
 template <>
-std::string DoStringise(const VkSamplerMipmapMode &el)
+rdcstr DoStringise(const VkSamplerMipmapMode &el)
 {
   BEGIN_ENUM_STRINGISE(VkSamplerMipmapMode);
   {
@@ -1173,7 +1174,7 @@ std::string DoStringise(const VkSamplerMipmapMode &el)
 }
 
 template <>
-std::string DoStringise(const VkSamplerAddressMode &el)
+rdcstr DoStringise(const VkSamplerAddressMode &el)
 {
   BEGIN_ENUM_STRINGISE(VkSamplerAddressMode);
   {
@@ -1187,7 +1188,7 @@ std::string DoStringise(const VkSamplerAddressMode &el)
 }
 
 template <>
-std::string DoStringise(const VkBorderColor &el)
+rdcstr DoStringise(const VkBorderColor &el)
 {
   BEGIN_ENUM_STRINGISE(VkBorderColor);
   {
@@ -1202,7 +1203,7 @@ std::string DoStringise(const VkBorderColor &el)
 }
 
 template <>
-std::string DoStringise(const VkPrimitiveTopology &el)
+rdcstr DoStringise(const VkPrimitiveTopology &el)
 {
   BEGIN_ENUM_STRINGISE(VkPrimitiveTopology);
   {
@@ -1222,7 +1223,7 @@ std::string DoStringise(const VkPrimitiveTopology &el)
 }
 
 template <>
-std::string DoStringise(const VkDescriptorType &el)
+rdcstr DoStringise(const VkDescriptorType &el)
 {
   BEGIN_ENUM_STRINGISE(VkDescriptorType);
   {
@@ -1244,7 +1245,7 @@ std::string DoStringise(const VkDescriptorType &el)
 }
 
 template <>
-std::string DoStringise(const VkQueryType &el)
+rdcstr DoStringise(const VkQueryType &el)
 {
   BEGIN_ENUM_STRINGISE(VkQueryType);
   {
@@ -1253,12 +1254,13 @@ std::string DoStringise(const VkQueryType &el)
     STRINGISE_ENUM(VK_QUERY_TYPE_TIMESTAMP)
     STRINGISE_ENUM(VK_QUERY_TYPE_TRANSFORM_FEEDBACK_STREAM_EXT)
     STRINGISE_ENUM(VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_NV)
+    STRINGISE_ENUM(VK_QUERY_TYPE_PERFORMANCE_QUERY_INTEL)
   }
   END_ENUM_STRINGISE();
 }
 
 template <>
-std::string DoStringise(const VkPhysicalDeviceType &el)
+rdcstr DoStringise(const VkPhysicalDeviceType &el)
 {
   BEGIN_ENUM_STRINGISE(VkPhysicalDeviceType);
   {
@@ -1272,7 +1274,7 @@ std::string DoStringise(const VkPhysicalDeviceType &el)
 }
 
 template <>
-std::string DoStringise(const VkSharingMode &el)
+rdcstr DoStringise(const VkSharingMode &el)
 {
   BEGIN_ENUM_STRINGISE(VkSharingMode);
   {
@@ -1283,7 +1285,7 @@ std::string DoStringise(const VkSharingMode &el)
 }
 
 template <>
-std::string DoStringise(const VkCommandBufferLevel &el)
+rdcstr DoStringise(const VkCommandBufferLevel &el)
 {
   BEGIN_ENUM_STRINGISE(VkCommandBufferLevel);
   {
@@ -1294,7 +1296,7 @@ std::string DoStringise(const VkCommandBufferLevel &el)
 }
 
 template <>
-std::string DoStringise(const VkSubpassContents &el)
+rdcstr DoStringise(const VkSubpassContents &el)
 {
   BEGIN_ENUM_STRINGISE(VkSubpassContents);
   {
@@ -1305,7 +1307,7 @@ std::string DoStringise(const VkSubpassContents &el)
 }
 
 template <>
-std::string DoStringise(const VkImageLayout &el)
+rdcstr DoStringise(const VkImageLayout &el)
 {
   BEGIN_ENUM_STRINGISE(VkImageLayout);
   {
@@ -1329,7 +1331,7 @@ std::string DoStringise(const VkImageLayout &el)
 }
 
 template <>
-std::string DoStringise(const VkStructureType &el)
+rdcstr DoStringise(const VkStructureType &el)
 {
   BEGIN_ENUM_STRINGISE(VkStructureType);
   {
@@ -1418,7 +1420,7 @@ std::string DoStringise(const VkStructureType &el)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_RENDER_PASS_MULTIVIEW_CREATE_INFO)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_PROPERTIES)
-    STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VARIABLE_POINTER_FEATURES)
+    STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VARIABLE_POINTERS_FEATURES)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_PROTECTED_SUBMIT_INFO)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROTECTED_MEMORY_FEATURES)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROTECTED_MEMORY_PROPERTIES)
@@ -1446,7 +1448,7 @@ std::string DoStringise(const VkStructureType &el)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_EXTERNAL_SEMAPHORE_PROPERTIES)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_3_PROPERTIES)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_SUPPORT)
-    STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETER_FEATURES)
+    STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_PRESENT_INFO_KHR)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_DEVICE_GROUP_PRESENT_CAPABILITIES_KHR)
@@ -1580,6 +1582,8 @@ std::string DoStringise(const VkStructureType &el)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_ADVANCED_STATE_CREATE_INFO_EXT)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_PIPELINE_COVERAGE_TO_COLOR_STATE_CREATE_INFO_NV)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_PIPELINE_COVERAGE_MODULATION_STATE_CREATE_INFO_NV)
+    STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_SM_BUILTINS_FEATURES_NV)
+    STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_SM_BUILTINS_PROPERTIES_NV)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_DRM_FORMAT_MODIFIER_PROPERTIES_LIST_EXT)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_DRM_FORMAT_MODIFIER_PROPERTIES_EXT)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_DRM_FORMAT_MODIFIER_INFO_EXT)
@@ -1639,6 +1643,13 @@ std::string DoStringise(const VkStructureType &el)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXCLUSIVE_SCISSOR_FEATURES_NV)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_CHECKPOINT_DATA_NV)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_QUEUE_FAMILY_CHECKPOINT_PROPERTIES_NV)
+    STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_INTEGER_FUNCTIONS2_FEATURES_INTEL)
+    STRINGISE_ENUM(VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO_INTEL)
+    STRINGISE_ENUM(VK_STRUCTURE_TYPE_INITIALIZE_PERFORMANCE_API_INFO_INTEL)
+    STRINGISE_ENUM(VK_STRUCTURE_TYPE_PERFORMANCE_MARKER_INFO_INTEL)
+    STRINGISE_ENUM(VK_STRUCTURE_TYPE_PERFORMANCE_STREAM_MARKER_INFO_INTEL)
+    STRINGISE_ENUM(VK_STRUCTURE_TYPE_PERFORMANCE_OVERRIDE_INFO_INTEL)
+    STRINGISE_ENUM(VK_STRUCTURE_TYPE_PERFORMANCE_CONFIGURATION_ACQUIRE_INFO_INTEL)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_MEMORY_MODEL_FEATURES_KHR)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PCI_BUS_INFO_PROPERTIES_EXT)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_DISPLAY_NATIVE_HDR_SURFACE_CAPABILITIES_AMD)
@@ -1654,7 +1665,7 @@ std::string DoStringise(const VkStructureType &el)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_MEMORY_PRIORITY_ALLOCATE_INFO_EXT)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_SURFACE_PROTECTED_CAPABILITIES_KHR)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEDICATED_ALLOCATION_IMAGE_ALIASING_FEATURES_NV)
-    STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_ADDRESS_FEATURES_EXT)
+    STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_EXT)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO_EXT)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_CREATE_INFO_EXT)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_IMAGE_STENCIL_USAGE_CREATE_INFO_EXT)
@@ -1662,17 +1673,26 @@ std::string DoStringise(const VkStructureType &el)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_FEATURES_NV)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_COOPERATIVE_MATRIX_PROPERTIES_NV)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_PROPERTIES_NV)
+    STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COVERAGE_REDUCTION_MODE_FEATURES_NV)
+    STRINGISE_ENUM(VK_STRUCTURE_TYPE_PIPELINE_COVERAGE_REDUCTION_STATE_CREATE_INFO_NV)
+    STRINGISE_ENUM(VK_STRUCTURE_TYPE_FRAMEBUFFER_MIXED_SAMPLES_COMBINATION_NV)
+    STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_INTERLOCK_FEATURES_EXT)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_YCBCR_IMAGE_ARRAYS_FEATURES_EXT)
+    STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_UNIFORM_BUFFER_STANDARD_LAYOUT_FEATURES_KHR)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_FULL_SCREEN_EXCLUSIVE_EXT)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_WIN32_INFO_EXT)
+    STRINGISE_ENUM(VK_STRUCTURE_TYPE_HEADLESS_SURFACE_CREATE_INFO_EXT)
     STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_QUERY_RESET_FEATURES_EXT)
+    STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DEMOTE_TO_HELPER_INVOCATION_FEATURES_EXT)
+    STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXEL_BUFFER_ALIGNMENT_FEATURES_EXT)
+    STRINGISE_ENUM(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TEXEL_BUFFER_ALIGNMENT_PROPERTIES_EXT)
   }
   END_ENUM_STRINGISE();
 }
 
 template <>
-std::string DoStringise(const VkComponentSwizzle &el)
+rdcstr DoStringise(const VkComponentSwizzle &el)
 {
   BEGIN_ENUM_STRINGISE(VkComponentSwizzle);
   {
@@ -1688,7 +1708,7 @@ std::string DoStringise(const VkComponentSwizzle &el)
 }
 
 template <>
-std::string DoStringise(const VkFormat &el)
+rdcstr DoStringise(const VkFormat &el)
 {
   BEGIN_ENUM_STRINGISE(VkFormat);
   {
@@ -1924,7 +1944,7 @@ std::string DoStringise(const VkFormat &el)
 }
 
 template <>
-std::string DoStringise(const VkResult &el)
+rdcstr DoStringise(const VkResult &el)
 {
   BEGIN_ENUM_STRINGISE(VkResult);
   {
@@ -1968,7 +1988,7 @@ std::string DoStringise(const VkResult &el)
 ////////////////////////////////////////////////////////////
 
 template <>
-std::string DoStringise(const VkSurfaceTransformFlagBitsKHR &el)
+rdcstr DoStringise(const VkSurfaceTransformFlagBitsKHR &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkSurfaceTransformFlagBitsKHR);
   {
@@ -1986,7 +2006,7 @@ std::string DoStringise(const VkSurfaceTransformFlagBitsKHR &el)
 }
 
 template <>
-std::string DoStringise(const VkCompositeAlphaFlagBitsKHR &el)
+rdcstr DoStringise(const VkCompositeAlphaFlagBitsKHR &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkCompositeAlphaFlagBitsKHR);
   {
@@ -1999,14 +2019,14 @@ std::string DoStringise(const VkCompositeAlphaFlagBitsKHR &el)
 }
 
 template <>
-std::string DoStringise(const VkColorSpaceKHR &el)
+rdcstr DoStringise(const VkColorSpaceKHR &el)
 {
   BEGIN_ENUM_STRINGISE(VkColorSpaceKHR);
   {
     STRINGISE_ENUM(VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
     STRINGISE_ENUM(VK_COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT)
     STRINGISE_ENUM(VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT)
-    STRINGISE_ENUM(VK_COLOR_SPACE_DCI_P3_LINEAR_EXT)
+    STRINGISE_ENUM(VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT)
     STRINGISE_ENUM(VK_COLOR_SPACE_DCI_P3_NONLINEAR_EXT)
     STRINGISE_ENUM(VK_COLOR_SPACE_BT709_LINEAR_EXT)
     STRINGISE_ENUM(VK_COLOR_SPACE_BT709_NONLINEAR_EXT)
@@ -2024,7 +2044,7 @@ std::string DoStringise(const VkColorSpaceKHR &el)
 }
 
 template <>
-std::string DoStringise(const VkPresentModeKHR &el)
+rdcstr DoStringise(const VkPresentModeKHR &el)
 {
   BEGIN_ENUM_STRINGISE(VkPresentModeKHR);
   {
@@ -2039,7 +2059,7 @@ std::string DoStringise(const VkPresentModeKHR &el)
 }
 
 template <>
-std::string DoStringise(const VkDescriptorUpdateTemplateType &el)
+rdcstr DoStringise(const VkDescriptorUpdateTemplateType &el)
 {
   BEGIN_ENUM_STRINGISE(VkDescriptorUpdateTemplateType);
   {
@@ -2050,7 +2070,7 @@ std::string DoStringise(const VkDescriptorUpdateTemplateType &el)
 }
 
 template <>
-std::string DoStringise(const VkConservativeRasterizationModeEXT &el)
+rdcstr DoStringise(const VkConservativeRasterizationModeEXT &el)
 {
   BEGIN_ENUM_STRINGISE(VkConservativeRasterizationModeEXT);
   {
@@ -2062,7 +2082,7 @@ std::string DoStringise(const VkConservativeRasterizationModeEXT &el)
 }
 
 template <>
-std::string DoStringise(const VkTessellationDomainOrigin &el)
+rdcstr DoStringise(const VkTessellationDomainOrigin &el)
 {
   BEGIN_ENUM_STRINGISE(VkTessellationDomainOrigin);
   {
@@ -2073,7 +2093,7 @@ std::string DoStringise(const VkTessellationDomainOrigin &el)
 }
 
 template <>
-std::string DoStringise(const VkSamplerReductionModeEXT &el)
+rdcstr DoStringise(const VkSamplerReductionModeEXT &el)
 {
   BEGIN_ENUM_STRINGISE(VkSamplerReductionModeEXT);
   {
@@ -2085,7 +2105,7 @@ std::string DoStringise(const VkSamplerReductionModeEXT &el)
 }
 
 template <>
-std::string DoStringise(const VkTimeDomainEXT &el)
+rdcstr DoStringise(const VkTimeDomainEXT &el)
 {
   BEGIN_ENUM_STRINGISE(VkTimeDomainEXT);
   {
@@ -2098,7 +2118,7 @@ std::string DoStringise(const VkTimeDomainEXT &el)
 }
 
 template <>
-std::string DoStringise(const VkSamplerYcbcrModelConversion &el)
+rdcstr DoStringise(const VkSamplerYcbcrModelConversion &el)
 {
   BEGIN_ENUM_STRINGISE(VkSamplerYcbcrModelConversion);
   {
@@ -2112,7 +2132,7 @@ std::string DoStringise(const VkSamplerYcbcrModelConversion &el)
 }
 
 template <>
-std::string DoStringise(const VkSamplerYcbcrRange &el)
+rdcstr DoStringise(const VkSamplerYcbcrRange &el)
 {
   BEGIN_ENUM_STRINGISE(VkSamplerYcbcrRange);
   {
@@ -2123,7 +2143,7 @@ std::string DoStringise(const VkSamplerYcbcrRange &el)
 }
 
 template <>
-std::string DoStringise(const VkChromaLocation &el)
+rdcstr DoStringise(const VkChromaLocation &el)
 {
   BEGIN_ENUM_STRINGISE(VkChromaLocation);
   {
@@ -2134,7 +2154,7 @@ std::string DoStringise(const VkChromaLocation &el)
 }
 
 template <>
-std::string DoStringise(const VkDeviceQueueCreateFlagBits &el)
+rdcstr DoStringise(const VkDeviceQueueCreateFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkDeviceQueueCreateFlagBits);
   {
@@ -2144,7 +2164,7 @@ std::string DoStringise(const VkDeviceQueueCreateFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkSubpassDescriptionFlagBits &el)
+rdcstr DoStringise(const VkSubpassDescriptionFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkSubpassDescriptionFlagBits);
   {
@@ -2155,7 +2175,7 @@ std::string DoStringise(const VkSubpassDescriptionFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkDescriptorSetLayoutCreateFlagBits &el)
+rdcstr DoStringise(const VkDescriptorSetLayoutCreateFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkDescriptorSetLayoutCreateFlagBits);
   {
@@ -2166,7 +2186,7 @@ std::string DoStringise(const VkDescriptorSetLayoutCreateFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkSwapchainCreateFlagBitsKHR &el)
+rdcstr DoStringise(const VkSwapchainCreateFlagBitsKHR &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkSwapchainCreateFlagBitsKHR);
   {
@@ -2178,7 +2198,7 @@ std::string DoStringise(const VkSwapchainCreateFlagBitsKHR &el)
 }
 
 template <>
-std::string DoStringise(const VkQueueGlobalPriorityEXT &el)
+rdcstr DoStringise(const VkQueueGlobalPriorityEXT &el)
 {
   BEGIN_ENUM_STRINGISE(VkQueueGlobalPriorityEXT);
   {
@@ -2191,7 +2211,7 @@ std::string DoStringise(const VkQueueGlobalPriorityEXT &el)
 }
 
 template <>
-std::string DoStringise(const VkDeviceEventTypeEXT &el)
+rdcstr DoStringise(const VkDeviceEventTypeEXT &el)
 {
   BEGIN_ENUM_STRINGISE(VkDeviceEventTypeEXT);
   {
@@ -2201,7 +2221,7 @@ std::string DoStringise(const VkDeviceEventTypeEXT &el)
 }
 
 template <>
-std::string DoStringise(const VkValidationCheckEXT &el)
+rdcstr DoStringise(const VkValidationCheckEXT &el)
 {
   BEGIN_ENUM_STRINGISE(VkValidationCheckEXT);
   {
@@ -2212,7 +2232,7 @@ std::string DoStringise(const VkValidationCheckEXT &el)
 }
 
 template <>
-std::string DoStringise(const VkValidationFeatureEnableEXT &el)
+rdcstr DoStringise(const VkValidationFeatureEnableEXT &el)
 {
   BEGIN_ENUM_STRINGISE(VkValidationFeatureEnableEXT);
   {
@@ -2223,7 +2243,7 @@ std::string DoStringise(const VkValidationFeatureEnableEXT &el)
 }
 
 template <>
-std::string DoStringise(const VkValidationFeatureDisableEXT &el)
+rdcstr DoStringise(const VkValidationFeatureDisableEXT &el)
 {
   BEGIN_ENUM_STRINGISE(VkValidationFeatureDisableEXT);
   {
@@ -2239,7 +2259,7 @@ std::string DoStringise(const VkValidationFeatureDisableEXT &el)
 }
 
 template <>
-std::string DoStringise(const VkDriverIdKHR &el)
+rdcstr DoStringise(const VkDriverIdKHR &el)
 {
   BEGIN_ENUM_STRINGISE(VkDriverIdKHR);
   {
@@ -2252,14 +2272,15 @@ std::string DoStringise(const VkDriverIdKHR &el)
     STRINGISE_ENUM(VK_DRIVER_ID_IMAGINATION_PROPRIETARY_KHR)
     STRINGISE_ENUM(VK_DRIVER_ID_QUALCOMM_PROPRIETARY_KHR)
     STRINGISE_ENUM(VK_DRIVER_ID_ARM_PROPRIETARY_KHR)
-    STRINGISE_ENUM(VK_DRIVER_ID_GOOGLE_PASTEL_KHR)
+    STRINGISE_ENUM(VK_DRIVER_ID_GOOGLE_SWIFTSHADER_KHR)
     STRINGISE_ENUM(VK_DRIVER_ID_GGP_PROPRIETARY_KHR)
+    STRINGISE_ENUM(VK_DRIVER_ID_BROADCOM_PROPRIETARY_KHR)
   }
   END_ENUM_STRINGISE();
 }
 
 template <>
-std::string DoStringise(const VkDisplayPowerStateEXT &el)
+rdcstr DoStringise(const VkDisplayPowerStateEXT &el)
 {
   BEGIN_ENUM_STRINGISE(VkDisplayPowerStateEXT);
   {
@@ -2271,7 +2292,7 @@ std::string DoStringise(const VkDisplayPowerStateEXT &el)
 }
 
 template <>
-std::string DoStringise(const VkDisplayEventTypeEXT &el)
+rdcstr DoStringise(const VkDisplayEventTypeEXT &el)
 {
   BEGIN_ENUM_STRINGISE(VkDisplayEventTypeEXT);
   {
@@ -2281,7 +2302,7 @@ std::string DoStringise(const VkDisplayEventTypeEXT &el)
 }
 
 template <>
-std::string DoStringise(const VkDiscardRectangleModeEXT &el)
+rdcstr DoStringise(const VkDiscardRectangleModeEXT &el)
 {
   BEGIN_ENUM_STRINGISE(VkDiscardRectangleModeEXT);
   {
@@ -2292,7 +2313,7 @@ std::string DoStringise(const VkDiscardRectangleModeEXT &el)
 }
 
 template <>
-std::string DoStringise(const VkPointClippingBehavior &el)
+rdcstr DoStringise(const VkPointClippingBehavior &el)
 {
   BEGIN_ENUM_STRINGISE(VkPointClippingBehavior);
   {
@@ -2303,7 +2324,7 @@ std::string DoStringise(const VkPointClippingBehavior &el)
 }
 
 template <>
-std::string DoStringise(const VkSemaphoreImportFlagBits &el)
+rdcstr DoStringise(const VkSemaphoreImportFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkSemaphoreImportFlagBits);
   {
@@ -2313,7 +2334,7 @@ std::string DoStringise(const VkSemaphoreImportFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkFenceImportFlagBits &el)
+rdcstr DoStringise(const VkFenceImportFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkFenceImportFlagBits);
   {
@@ -2323,7 +2344,7 @@ std::string DoStringise(const VkFenceImportFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkExternalSemaphoreFeatureFlagBits &el)
+rdcstr DoStringise(const VkExternalSemaphoreFeatureFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkExternalSemaphoreFeatureFlagBits);
   {
@@ -2334,7 +2355,7 @@ std::string DoStringise(const VkExternalSemaphoreFeatureFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkExternalFenceFeatureFlagBits &el)
+rdcstr DoStringise(const VkExternalFenceFeatureFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkExternalFenceFeatureFlagBits);
   {
@@ -2345,7 +2366,7 @@ std::string DoStringise(const VkExternalFenceFeatureFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkSparseImageFormatFlagBits &el)
+rdcstr DoStringise(const VkSparseImageFormatFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkSparseImageFormatFlagBits);
   {
@@ -2357,7 +2378,7 @@ std::string DoStringise(const VkSparseImageFormatFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkFormatFeatureFlagBits &el)
+rdcstr DoStringise(const VkFormatFeatureFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkFormatFeatureFlagBits);
   {
@@ -2394,7 +2415,7 @@ std::string DoStringise(const VkFormatFeatureFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkExternalMemoryFeatureFlagBits &el)
+rdcstr DoStringise(const VkExternalMemoryFeatureFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkExternalMemoryFeatureFlagBits);
   {
@@ -2406,7 +2427,7 @@ std::string DoStringise(const VkExternalMemoryFeatureFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkDisplayPlaneAlphaFlagBitsKHR &el)
+rdcstr DoStringise(const VkDisplayPlaneAlphaFlagBitsKHR &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkDisplayPlaneAlphaFlagBitsKHR);
   {
@@ -2419,7 +2440,7 @@ std::string DoStringise(const VkDisplayPlaneAlphaFlagBitsKHR &el)
 }
 
 template <>
-std::string DoStringise(const VkSubgroupFeatureFlagBits &el)
+rdcstr DoStringise(const VkSubgroupFeatureFlagBits &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkSubgroupFeatureFlagBits);
   {
@@ -2437,7 +2458,7 @@ std::string DoStringise(const VkSubgroupFeatureFlagBits &el)
 }
 
 template <>
-std::string DoStringise(const VkPipelineCreationFeedbackFlagBitsEXT &el)
+rdcstr DoStringise(const VkPipelineCreationFeedbackFlagBitsEXT &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkPipelineCreationFeedbackFlagBitsEXT);
   {
@@ -2449,7 +2470,7 @@ std::string DoStringise(const VkPipelineCreationFeedbackFlagBitsEXT &el)
 }
 
 template <>
-std::string DoStringise(const VkDescriptorBindingFlagBitsEXT &el)
+rdcstr DoStringise(const VkDescriptorBindingFlagBitsEXT &el)
 {
   BEGIN_BITFIELD_STRINGISE(VkDescriptorBindingFlagBitsEXT);
   {
@@ -2462,7 +2483,28 @@ std::string DoStringise(const VkDescriptorBindingFlagBitsEXT &el)
 }
 
 template <>
-std::string DoStringise(const VkExtent3D &el)
+rdcstr DoStringise(const VkExtent3D &el)
 {
   return StringFormat::Fmt("VkExtent3D(%u, %u, %u)", el.width, el.height, el.depth);
 }
+
+template <>
+rdcstr DoStringise(const VkPackedVersion &el)
+{
+  return StringFormat::Fmt("VK_MAKE_VERSION(%u, %u, %u)", VK_VERSION_MAJOR(el.version),
+                           VK_VERSION_MINOR(el.version), VK_VERSION_PATCH(el.version));
+}
+
+#if ENABLED(RDOC_WIN32)
+template <>
+rdcstr DoStringise(const VkFullScreenExclusiveEXT &el)
+{
+  BEGIN_ENUM_STRINGISE(VkFullScreenExclusiveEXT);
+  {
+    STRINGISE_ENUM(VK_FULL_SCREEN_EXCLUSIVE_DEFAULT_EXT)
+    STRINGISE_ENUM(VK_FULL_SCREEN_EXCLUSIVE_ALLOWED_EXT)
+    STRINGISE_ENUM(VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT)
+  }
+  END_ENUM_STRINGISE();
+}
+#endif

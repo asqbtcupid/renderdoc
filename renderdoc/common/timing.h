@@ -31,8 +31,6 @@
 #include "os/os_specific.h"
 #include "common.h"
 
-using std::string;
-
 class PerformanceTimer
 {
 public:
@@ -96,7 +94,7 @@ public:
   double GetMaxFrameTime() const { return m_MaxFrametime; }
 private:
   PerformanceTimer m_HighPrecisionTimer;
-  vector<double> m_FrameTimes;
+  std::vector<double> m_FrameTimes;
   double m_TotalTime;
   double m_AvgFrametime;
   double m_MinFrametime;
@@ -133,7 +131,7 @@ public:
 private:
   const char *m_File;
   unsigned int m_Line;
-  string m_Message;
+  std::string m_Message;
   PerformanceTimer m_Timer;
 };
 

@@ -96,6 +96,8 @@ VkFramebufferCreateInfo WrappedVulkan::UnwrapInfo(const VkFramebufferCreateInfo 
       return;                                                                                      \
     type unwrappedObj = Unwrap(obj);                                                               \
     m_ForcedReferences.erase(GetResID(obj));                                                       \
+    if(IsReplayMode(m_State))                                                                      \
+      m_CreationInfo.erase(GetResID(obj));                                                         \
     GetResourceManager()->ReleaseWrappedResource(obj, true);                                       \
     ObjDisp(device)->func(Unwrap(device), unwrappedObj, pAllocator);                               \
   }
@@ -200,7 +202,7 @@ bool WrappedVulkan::ReleaseResource(WrappedVkRes *res)
 
   // MULTIDEVICE need to get the actual device that created this object
   VkDevice dev = m_Device;
-  const VkLayerDispatchTable *vt = m_Device != VK_NULL_HANDLE ? ObjDisp(dev) : NULL;
+  const VkDevDispatchTable *vt = m_Device != VK_NULL_HANDLE ? ObjDisp(dev) : NULL;
 
   WrappedVkNonDispRes *nondisp = (WrappedVkNonDispRes *)res;
   WrappedVkDispRes *disp = (WrappedVkDispRes *)res;
@@ -420,7 +422,7 @@ bool WrappedVulkan::Serialise_vkCreateSampler(SerialiserType &ser, VkDevice devi
   SERIALISE_ELEMENT(device);
   SERIALISE_ELEMENT_LOCAL(CreateInfo, *pCreateInfo);
   SERIALISE_ELEMENT_OPT(pAllocator);
-  SERIALISE_ELEMENT_LOCAL(Sampler, GetResID(*pSampler)).TypedAs("VkSampler");
+  SERIALISE_ELEMENT_LOCAL(Sampler, GetResID(*pSampler)).TypedAs("VkSampler"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -544,7 +546,7 @@ bool WrappedVulkan::Serialise_vkCreateFramebuffer(SerialiserType &ser, VkDevice 
   SERIALISE_ELEMENT(device);
   SERIALISE_ELEMENT_LOCAL(CreateInfo, *pCreateInfo);
   SERIALISE_ELEMENT_OPT(pAllocator);
-  SERIALISE_ELEMENT_LOCAL(Framebuffer, GetResID(*pFramebuffer)).TypedAs("VkFramebuffer");
+  SERIALISE_ELEMENT_LOCAL(Framebuffer, GetResID(*pFramebuffer)).TypedAs("VkFramebuffer"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -728,7 +730,7 @@ bool WrappedVulkan::Serialise_vkCreateRenderPass(SerialiserType &ser, VkDevice d
   SERIALISE_ELEMENT(device);
   SERIALISE_ELEMENT_LOCAL(CreateInfo, *pCreateInfo);
   SERIALISE_ELEMENT_OPT(pAllocator);
-  SERIALISE_ELEMENT_LOCAL(RenderPass, GetResID(*pRenderPass)).TypedAs("VkRenderPass");
+  SERIALISE_ELEMENT_LOCAL(RenderPass, GetResID(*pRenderPass)).TypedAs("VkRenderPass"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -755,9 +757,9 @@ bool WrappedVulkan::Serialise_vkCreateRenderPass(SerialiserType &ser, VkDevice d
       if(att[i].stencilLoadOp == VK_ATTACHMENT_LOAD_OP_DONT_CARE)
         att[i].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 
-      // renderpass can't start or end in presentable layout on replay
-      ReplacePresentableImageLayout(att[i].initialLayout);
-      ReplacePresentableImageLayout(att[i].finalLayout);
+      // sanitise the actual layouts used to create the renderpass
+      SanitiseOldImageLayout(att[i].initialLayout);
+      SanitiseNewImageLayout(att[i].finalLayout);
     }
 
     VkResult ret = ObjDisp(device)->CreateRenderPass(Unwrap(device), &CreateInfo, NULL, &rp);
@@ -958,7 +960,7 @@ bool WrappedVulkan::Serialise_vkCreateRenderPass2KHR(SerialiserType &ser, VkDevi
   SERIALISE_ELEMENT(device);
   SERIALISE_ELEMENT_LOCAL(CreateInfo, *pCreateInfo);
   SERIALISE_ELEMENT_OPT(pAllocator);
-  SERIALISE_ELEMENT_LOCAL(RenderPass, GetResID(*pRenderPass)).TypedAs("VkRenderPass");
+  SERIALISE_ELEMENT_LOCAL(RenderPass, GetResID(*pRenderPass)).TypedAs("VkRenderPass"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -986,8 +988,8 @@ bool WrappedVulkan::Serialise_vkCreateRenderPass2KHR(SerialiserType &ser, VkDevi
         att[i].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 
       // renderpass can't start or end in presentable layout on replay
-      ReplacePresentableImageLayout(att[i].initialLayout);
-      ReplacePresentableImageLayout(att[i].finalLayout);
+      SanitiseOldImageLayout(att[i].initialLayout);
+      SanitiseNewImageLayout(att[i].finalLayout);
     }
 
     VkResult ret = ObjDisp(device)->CreateRenderPass2KHR(Unwrap(device), &CreateInfo, NULL, &rp);
@@ -1173,7 +1175,7 @@ bool WrappedVulkan::Serialise_vkCreateQueryPool(SerialiserType &ser, VkDevice de
   SERIALISE_ELEMENT(device);
   SERIALISE_ELEMENT_LOCAL(CreateInfo, *pCreateInfo);
   SERIALISE_ELEMENT_OPT(pAllocator);
-  SERIALISE_ELEMENT_LOCAL(QueryPool, GetResID(*pQueryPool)).TypedAs("VkQueryPool");
+  SERIALISE_ELEMENT_LOCAL(QueryPool, GetResID(*pQueryPool)).TypedAs("VkQueryPool"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -1338,7 +1340,7 @@ bool WrappedVulkan::Serialise_vkCreateSamplerYcbcrConversion(
   SERIALISE_ELEMENT_LOCAL(CreateInfo, *pCreateInfo);
   SERIALISE_ELEMENT_OPT(pAllocator);
   SERIALISE_ELEMENT_LOCAL(ycbcrConversion, GetResID(*pYcbcrConversion))
-      .TypedAs("VkSamplerYcbcrConversion");
+      .TypedAs("VkSamplerYcbcrConversion"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -1583,6 +1585,20 @@ void WrappedVulkan::vkDebugReportMessageEXT(VkInstance instance, VkDebugReportFl
                                                   location, messageCode, pLayerPrefix, pMessage);
 }
 
+void WrappedVulkan::vkSetHdrMetadataEXT(VkDevice device, uint32_t swapchainCount,
+                                        const VkSwapchainKHR *pSwapchains,
+                                        const VkHdrMetadataEXT *pMetadata)
+{
+  return ObjDisp(device)->SetHdrMetadataEXT(Unwrap(device), swapchainCount,
+                                            UnwrapArray(pSwapchains, swapchainCount), pMetadata);
+}
+
+void WrappedVulkan::vkSetLocalDimmingAMD(VkDevice device, VkSwapchainKHR swapChain,
+                                         VkBool32 localDimmingEnable)
+{
+  return ObjDisp(device)->SetLocalDimmingAMD(Unwrap(device), Unwrap(swapChain), localDimmingEnable);
+}
+
 // we use VkObjectType as the object type since it mostly overlaps with the debug report enum so in
 // most cases we can upcast it. There's an overload to translate the few that might conflict.
 // Likewise to re-use the switch in most cases, we return both the record and the unwrapped
@@ -1670,6 +1686,7 @@ static ObjData GetObjData(VkObjectType objType, uint64_t object)
     case VK_OBJECT_TYPE_OBJECT_TABLE_NVX:
     case VK_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_NVX:
     case VK_OBJECT_TYPE_ACCELERATION_STRUCTURE_NV:
+    case VK_OBJECT_TYPE_PERFORMANCE_CONFIGURATION_INTEL:
     case VK_OBJECT_TYPE_UNKNOWN:
     case VK_OBJECT_TYPE_RANGE_SIZE:
     case VK_OBJECT_TYPE_MAX_ENUM: break;

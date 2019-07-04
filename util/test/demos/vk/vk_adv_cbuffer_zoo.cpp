@@ -108,7 +108,7 @@ struct UBO
   int8_t test;
 };
 
-struct VK_Adv_CBuffer_Zoo : VulkanGraphicsTest
+TEST(VK_Adv_CBuffer_Zoo, VulkanGraphicsTest)
 {
   static constexpr const char *Description =
       "Tests VK_EXT_scalar_block_layout as well as 8-bit/16-bit storage "
@@ -225,51 +225,54 @@ void main()
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  void Prepare(int argc, char **argv)
   {
-    instExts.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
     devExts.push_back(VK_EXT_SCALAR_BLOCK_LAYOUT_EXTENSION_NAME);
     devExts.push_back(VK_KHR_STORAGE_BUFFER_STORAGE_CLASS_EXTENSION_NAME);
     devExts.push_back(VK_KHR_16BIT_STORAGE_EXTENSION_NAME);
     devExts.push_back(VK_KHR_8BIT_STORAGE_EXTENSION_NAME);
 
-    VkPhysicalDevice16BitStorageFeaturesKHR _16bitFeatures = {
+    features.shaderFloat64 = true;
+    features.shaderInt64 = true;
+
+    VulkanGraphicsTest::Prepare(argc, argv);
+
+    if(!Avail.empty())
+      return;
+
+    static VkPhysicalDevice16BitStorageFeaturesKHR _16bitFeatures = {
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES_KHR,
     };
 
-    VkPhysicalDevice16BitStorageFeaturesKHR _8bitFeatures = {
+    static VkPhysicalDevice16BitStorageFeaturesKHR _8bitFeatures = {
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES_KHR,
     };
 
-    VkPhysicalDeviceScalarBlockLayoutFeaturesEXT scalarFeatures = {
+    static VkPhysicalDeviceScalarBlockLayoutFeaturesEXT scalarFeatures = {
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES_EXT,
     };
 
-    _16bitFeatures.uniformAndStorageBuffer16BitAccess = VK_TRUE;
-    _8bitFeatures.uniformAndStorageBuffer16BitAccess = VK_TRUE;
-    scalarFeatures.scalarBlockLayout = VK_TRUE;
+    getPhysFeatures2(&_16bitFeatures);
+    getPhysFeatures2(&_8bitFeatures);
+    getPhysFeatures2(&scalarFeatures);
+
+    if(!scalarFeatures.scalarBlockLayout)
+      Avail = "Scalar block layout feature 'scalarBlockLayout' not available";
+    else if(!_8bitFeatures.uniformAndStorageBuffer16BitAccess)
+      Avail = "8-bit storage feature 'uniformAndStorageBuffer16BitAccess' not available";
+    else if(!_16bitFeatures.uniformAndStorageBuffer16BitAccess)
+      Avail = "16-bit storage feature 'uniformAndStorageBuffer16BitAccess' not available";
 
     devInfoNext = &_8bitFeatures;
     _8bitFeatures.pNext = &_16bitFeatures;
     _16bitFeatures.pNext = &scalarFeatures;
+  }
 
-    features.shaderFloat64 = true;
-    features.shaderInt64 = true;
-
+  int main()
+  {
     // initialise, create window, create context, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
-
-    _16bitFeatures.uniformAndStorageBuffer16BitAccess = VK_FALSE;
-    _8bitFeatures.uniformAndStorageBuffer16BitAccess = VK_FALSE;
-
-    vkGetPhysicalDeviceFeatures2KHR(phys, vkh::PhysicalDeviceFeatures2KHR().next(&_16bitFeatures));
-    vkGetPhysicalDeviceFeatures2KHR(phys, vkh::PhysicalDeviceFeatures2KHR().next(&_8bitFeatures));
-
-    // a bit late, but...
-    TEST_ASSERT(_16bitFeatures.uniformAndStorageBuffer16BitAccess &&
-                    _8bitFeatures.uniformAndStorageBuffer16BitAccess,
-                "8-bit or 16-bit uniform storage not available");
 
     VkDescriptorSetLayout setlayout = createDescriptorSetLayout(vkh::DescriptorSetLayoutCreateInfo({
         {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT},
@@ -280,7 +283,7 @@ void main()
     vkh::GraphicsPipelineCreateInfo pipeCreateInfo;
 
     pipeCreateInfo.layout = layout;
-    pipeCreateInfo.renderPass = swapRenderPass;
+    pipeCreateInfo.renderPass = mainWindow->rp;
 
     pipeCreateInfo.vertexInputState.vertexBindingDescriptions = {vkh::vertexBind(0, DefaultA2V)};
     pipeCreateInfo.vertexInputState.vertexAttributeDescriptions = {
@@ -374,13 +377,13 @@ void main()
                            vkh::ImageSubresourceRange());
 
       vkCmdBeginRenderPass(
-          cmd, vkh::RenderPassBeginInfo(swapRenderPass, swapFramebuffers[swapIndex], scissor,
+          cmd, vkh::RenderPassBeginInfo(mainWindow->rp, mainWindow->GetFB(), mainWindow->scissor,
                                         {vkh::ClearValue(0.0f, 0.0f, 0.0f, 1.0f)}),
           VK_SUBPASS_CONTENTS_INLINE);
 
       vkh::cmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, {descset}, {});
-      vkCmdSetViewport(cmd, 0, 1, &viewport);
-      vkCmdSetScissor(cmd, 0, 1, &scissor);
+      vkCmdSetViewport(cmd, 0, 1, &mainWindow->viewport);
+      vkCmdSetScissor(cmd, 0, 1, &mainWindow->scissor);
       vkh::cmdBindVertexBuffers(cmd, 0, {vb.buffer}, {0});
 
       vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
@@ -401,4 +404,4 @@ void main()
   }
 };
 
-REGISTER_TEST(VK_Adv_CBuffer_Zoo);
+REGISTER_TEST();

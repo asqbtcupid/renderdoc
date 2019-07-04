@@ -171,12 +171,16 @@ private:
   void gotoSourceDebugging();
   void gotoDisassemblyDebugging();
 
+  void insertSnippet(const QString &text);
+
   void showVariableTooltip(VariableCategory varCat, int varIdx, int arrayIdx);
   void showVariableTooltip(QString name);
   void updateVariableTooltip();
   void hideVariableTooltip();
 
   bool isSourceDebugging();
+
+  ShaderEncoding currentEncoding();
 
   VariableCategory m_TooltipVarCat = VariableCategory::Temporaries;
   QString m_TooltipName;
@@ -188,7 +192,9 @@ private:
   ICaptureContext &m_Ctx;
   const ShaderBindpointMapping *m_Mapping = NULL;
   const ShaderReflection *m_ShaderDetails = NULL;
+  bool m_CustomShader = false;
   ShaderCompileFlags m_Flags;
+  QList<ShaderEncoding> m_Encodings;
   ShaderStage m_Stage;
   QString m_DebugContext;
   ResourceId m_Pipeline;
@@ -246,13 +252,13 @@ private:
   void addFileList();
 
   ScintillaEdit *MakeEditor(const QString &name, const QString &text, int lang);
-  ScintillaEdit *AddFileScintilla(const QString &name, const QString &text);
+  ScintillaEdit *AddFileScintilla(const QString &name, const QString &text, ShaderEncoding encoding);
 
   ScintillaEdit *currentScintilla();
   ScintillaEdit *nextScintilla(ScintillaEdit *cur);
 
   int snippetPos();
-  void insertVulkanUBO();
+  QString vulkanUBO();
 
   int instructionForLine(sptr_t line);
 

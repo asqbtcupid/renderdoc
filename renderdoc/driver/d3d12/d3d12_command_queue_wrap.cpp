@@ -193,8 +193,8 @@ bool WrappedID3D12CommandQueue::Serialise_ExecuteCommandLists(SerialiserType &se
 
         for(size_t e = 0; e < cmdListInfo.draw->executedCmds.size(); e++)
         {
-          vector<uint32_t> &submits = m_Cmd.m_Partial[D3D12CommandData::Secondary]
-                                          .cmdListExecs[cmdListInfo.draw->executedCmds[e]];
+          std::vector<uint32_t> &submits = m_Cmd.m_Partial[D3D12CommandData::Secondary]
+                                               .cmdListExecs[cmdListInfo.draw->executedCmds[e]];
 
           for(size_t s = 0; s < submits.size(); s++)
             submits[s] += m_Cmd.m_RootEventID;
@@ -375,18 +375,10 @@ void WrappedID3D12CommandQueue::ExecuteCommandListsInternal(UINT NumCommandLists
       // the submit chunk to the frame record don't have to be protected.
       // Only the decision of whether we're inframe or not, and marking
       // dirty.
-      if(capframe)
-      {
-        for(auto it = record->bakedCommands->cmdInfo->dirtied.begin();
-            it != record->bakedCommands->cmdInfo->dirtied.end(); ++it)
-          GetResourceManager()->MarkPendingDirty(*it);
-      }
-      else
-      {
-        for(auto it = record->bakedCommands->cmdInfo->dirtied.begin();
-            it != record->bakedCommands->cmdInfo->dirtied.end(); ++it)
-          GetResourceManager()->MarkDirtyResource(*it);
-      }
+
+      for(auto it = record->bakedCommands->cmdInfo->dirtied.begin();
+          it != record->bakedCommands->cmdInfo->dirtied.end(); ++it)
+        GetResourceManager()->MarkDirtyResource(*it);
 
       if(capframe)
       {
@@ -521,7 +513,7 @@ void WrappedID3D12CommandQueue::ExecuteCommandListsInternal(UINT NumCommandLists
           // update comparison shadow for next time
           memcpy(ref, res->GetMap(subres), size);
 
-          GetResourceManager()->MarkPendingDirty(res->GetResourceID());
+          GetResourceManager()->MarkDirtyResource(res->GetResourceID());
         }
         else
         {
@@ -699,6 +691,7 @@ bool WrappedID3D12CommandQueue::Serialise_Signal(SerialiserType &ser, ID3D12Fenc
   if(IsReplayingAndReading() && pFence)
   {
     m_pReal->Signal(Unwrap(pFence), Value);
+    m_pDevice->GPUSync();
   }
 
   return true;

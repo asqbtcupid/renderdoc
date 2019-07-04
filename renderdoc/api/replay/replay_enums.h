@@ -327,14 +327,26 @@ DOCUMENT(R"(A texture addressing mode in a single direction (U,V or W).
 
   The texture is tiled at every multiple of 1.0.
 
+.. data:: Repeat
+
+  Alias of :data:`Wrap`.
+
 .. data:: Mirror
 
   The texture is tiled as with :data:`Wrap`, but with the absolute value of the texture co-ordinate.
+
+.. data:: MirrorRepeat
+
+  Alias of :data:`Mirror`.
 
 .. data:: MirrorOnce
 
   The texture is mirrored with :data:`Mirror`, but the texture does not tile as with
   :data:`ClampEdge`.
+
+.. data:: MirrorClamp
+
+  Alias of :data:`MirrorOnce`.
 
 .. data:: ClampEdge
 
@@ -348,8 +360,11 @@ DOCUMENT(R"(A texture addressing mode in a single direction (U,V or W).
 enum class AddressMode : uint32_t
 {
   Wrap,
+  Repeat = Wrap,
   Mirror,
+  MirrorRepeat = Mirror,
   MirrorOnce,
+  MirrorClamp = MirrorOnce,
   ClampEdge,
   ClampBorder,
 };
@@ -1297,6 +1312,10 @@ or formats that don't have equal byte-multiple sizes for each channel.
 .. data:: PVRTC
 
   PowerVR properitary texture compression format.
+
+.. data:: A8
+
+  8-bit unsigned normalised alpha - equivalent to standard R8 with a pre-baked swizzle.
 )");
 enum class ResourceFormatType : uint8_t
 {
@@ -1328,6 +1347,7 @@ enum class ResourceFormatType : uint8_t
   YUV12,
   YUV16,
   PVRTC,
+  A8,
 };
 
 DECLARE_REFLECTION_ENUM(ResourceFormatType);
@@ -3353,6 +3373,7 @@ DOCUMENT(R"(The type of a log message
 enum class LogType : int32_t
 {
   Debug,
+  First = Debug,
   Comment,
   Warning,
   Error,
@@ -3361,6 +3382,8 @@ enum class LogType : int32_t
 };
 
 DECLARE_REFLECTION_ENUM(LogType);
+
+ITERABLE_OPERATORS(LogType);
 
 #if defined(ENABLE_PYTHON_FLAG_ENUMS)
 

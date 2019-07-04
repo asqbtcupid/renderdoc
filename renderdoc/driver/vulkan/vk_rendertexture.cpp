@@ -129,7 +129,7 @@ bool VulkanReplay::RenderTexture(TextureDisplay cfg)
 
   // if the swapchain failed to create, do nothing. We will try to recreate it
   // again in CheckResizeOutputWindow (once per render 'frame')
-  if(outw.swap == VK_NULL_HANDLE)
+  if(outw.m_WindowSystem != WindowingSystem::Headless && outw.swap == VK_NULL_HANDLE)
     return false;
 
   VkRenderPassBeginInfo rpbegin = {
@@ -158,12 +158,13 @@ bool VulkanReplay::RenderTextureInternal(TextureDisplay cfg, VkRenderPassBeginIn
 
   VkDevice dev = m_pDriver->GetDev();
   VkCommandBuffer cmd = m_pDriver->GetNextCmd();
-  const VkLayerDispatchTable *vt = ObjDisp(dev);
+  const VkDevDispatchTable *vt = ObjDisp(dev);
 
   ImageLayouts &layouts = m_pDriver->m_ImageLayouts[cfg.resourceId];
   VulkanCreationInfo::Image &iminfo = m_pDriver->m_CreationInfo.m_Image[cfg.resourceId];
   TextureDisplayViews &texviews = m_TexRender.TextureViews[cfg.resourceId];
   VkImage liveIm = m_pDriver->GetResourceManager()->GetCurrentHandle<VkImage>(cfg.resourceId);
+  const ImageInfo &imageInfo = layouts.imageInfo;
 
   CreateTexImageView(liveIm, iminfo, cfg.typeHint, texviews);
 
@@ -189,14 +190,14 @@ bool VulkanReplay::RenderTextureInternal(TextureDisplay cfg, VkRenderPassBeginIn
   int viewIndex = 0;
 
   // if we're displaying the stencil, set up for stencil display
-  if(layouts.format == VK_FORMAT_S8_UINT ||
-     (IsStencilFormat(layouts.format) && !cfg.red && cfg.green))
+  if(imageInfo.format == VK_FORMAT_S8_UINT ||
+     (IsStencilFormat(imageInfo.format) && !cfg.red && cfg.green))
   {
     descSetBinding = 10;
     displayformat |= TEXDISPLAY_UINT_TEX;
 
     // for stencil we use view 1 as long as it's a depth-stencil texture
-    if(IsDepthAndStencilFormat(layouts.format))
+    if(IsDepthAndStencilFormat(imageInfo.format))
       viewIndex = 1;
 
     // rescale the range so that stencil seems to fit to 0-1
@@ -444,7 +445,7 @@ bool VulkanReplay::RenderTextureInternal(TextureDisplay cfg, VkRenderPassBeginIn
        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, NULL, &heatubodesc, NULL},
   };
 
-  vector<VkWriteDescriptorSet> writeSets;
+  std::vector<VkWriteDescriptorSet> writeSets;
   for(size_t i = 0; i < ARRAY_COUNT(writeSet); i++)
   {
     if(writeSet[i].descriptorCount > 0)
@@ -513,6 +514,9 @@ bool VulkanReplay::RenderTextureInternal(TextureDisplay cfg, VkRenderPassBeginIn
     srcimBarrier.subresourceRange = layouts.subresourceStates[si].subresourceRange;
     srcimBarrier.oldLayout = layouts.subresourceStates[si].newLayout;
     srcimBarrier.srcAccessMask = VK_ACCESS_ALL_WRITE_BITS | MakeAccessMask(srcimBarrier.oldLayout);
+
+    SanitiseOldImageLayout(srcimBarrier.oldLayout);
+
     DoPipelineBarrier(cmd, 1, &srcimBarrier);
 
     if(extQCmd != VK_NULL_HANDLE)

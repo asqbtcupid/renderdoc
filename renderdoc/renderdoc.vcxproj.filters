@@ -136,6 +136,9 @@
     <Filter Include="Common\Serialise\Codecs\cpp_codec\vulkan">
       <UniqueIdentifier>{ee6a7f7e-becf-43f0-8c7f-e0109a364ebb}</UniqueIdentifier>
     </Filter>
+    <Filter Include="OS\Posix\GGP">
+      <UniqueIdentifier>{b76c42f4-d523-4417-a474-56d278d35a36}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="maths\camera.h">
@@ -476,6 +479,12 @@
     </ClInclude>
     <ClInclude Include="data\glsl\glsl_globals.h">
       <Filter>Resources\glsl</Filter>
+    </ClInclude>
+    <ClInclude Include="api\replay\rdcstr.h">
+      <Filter>API\Replay</Filter>
+    </ClInclude>
+    <ClInclude Include="core\bit_flag_iterator.h">
+      <Filter>Core</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -833,6 +842,27 @@
     <ClCompile Include="core\intervals_tests.cpp">
       <Filter>Core</Filter>
     </ClCompile>
+    <ClCompile Include="os\posix\ggp\ggp_callstack.cpp">
+      <Filter>OS\Posix\GGP</Filter>
+    </ClCompile>
+    <ClCompile Include="os\posix\ggp\ggp_hook.cpp">
+      <Filter>OS\Posix\GGP</Filter>
+    </ClCompile>
+    <ClCompile Include="os\posix\ggp\ggp_network.cpp">
+      <Filter>OS\Posix\GGP</Filter>
+    </ClCompile>
+    <ClCompile Include="os\posix\ggp\ggp_process.cpp">
+      <Filter>OS\Posix\GGP</Filter>
+    </ClCompile>
+    <ClCompile Include="os\posix\ggp\ggp_stringio.cpp">
+      <Filter>OS\Posix\GGP</Filter>
+    </ClCompile>
+    <ClCompile Include="os\posix\ggp\ggp_threading.cpp">
+      <Filter>OS\Posix\GGP</Filter>
+    </ClCompile>
+    <ClCompile Include="core\bit_flag_iterator_tests.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="os\win32\comexport.def">
@@ -934,9 +964,15 @@
     <None Include="data\hlsl\misc.hlsl">
       <Filter>Resources\hlsl</Filter>
     </None>
-    <None Include="data\hlsl\pixelhistory.hlsl" />
-    <None Include="data\hlsl\quadoverdraw.hlsl" />
-    <None Include="data\hlsl\texdisplay.hlsl" />
+    <None Include="data\hlsl\pixelhistory.hlsl">
+      <Filter>Resources\hlsl</Filter>
+    </None>
+    <None Include="data\hlsl\quadoverdraw.hlsl">
+      <Filter>Resources\hlsl</Filter>
+    </None>
+    <None Include="data\hlsl\texdisplay.hlsl">
+      <Filter>Resources\hlsl</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="data\renderdoc.rc">

@@ -72,7 +72,7 @@ enum PacketType : uint32_t
 DECLARE_REFLECTION_ENUM(PacketType);
 
 template <>
-std::string DoStringise(const PacketType &el)
+rdcstr DoStringise(const PacketType &el)
 {
   BEGIN_ENUM_STRINGISE(PacketType);
   {
@@ -140,7 +140,7 @@ void RenderDoc::TargetControlClientThread(uint32_t version, Network::Socket *cli
   int curtime = 0;
 
   std::vector<CaptureData> captures;
-  std::vector<pair<uint32_t, uint32_t> > children;
+  std::vector<rdcpair<uint32_t, uint32_t> > children;
   std::map<RDCDriver, bool> drivers;
   float prevCaptureProgress = captureProgress;
   uint32_t prevWindows = 0;
@@ -159,7 +159,7 @@ void RenderDoc::TargetControlClientThread(uint32_t version, Network::Socket *cli
     std::map<RDCDriver, bool> curdrivers = RenderDoc::Inst().GetActiveDrivers();
 
     std::vector<CaptureData> caps = RenderDoc::Inst().GetCaptures();
-    std::vector<pair<uint32_t, uint32_t> > childprocs = RenderDoc::Inst().GetChildProcesses();
+    std::vector<rdcpair<uint32_t, uint32_t> > childprocs = RenderDoc::Inst().GetChildProcesses();
 
     uint32_t curWindows = RenderDoc::Inst().GetCapturableWindowCount();
 
@@ -688,7 +688,7 @@ public:
     else if(type == ePacket_Busy)
     {
       READ_DATA_SCOPE();
-      SERIALISE_ELEMENT(msg.busy.clientName).Named("Client Name");
+      SERIALISE_ELEMENT(msg.busy.clientName).Named("Client Name"_lit);
 
       SAFE_DELETE(m_Socket);
 
@@ -701,8 +701,8 @@ public:
       msg.type = TargetControlMessageType::NewChild;
 
       READ_DATA_SCOPE();
-      SERIALISE_ELEMENT(msg.newChild.processId).Named("PID");
-      SERIALISE_ELEMENT(msg.newChild.ident).Named("Child ident");
+      SERIALISE_ELEMENT(msg.newChild.processId).Named("PID"_lit);
+      SERIALISE_ELEMENT(msg.newChild.ident).Named("Child ident"_lit);
 
       RDCLOG("Got a new child process: %u %u", msg.newChild.processId, msg.newChild.ident);
 
@@ -714,7 +714,7 @@ public:
       msg.type = TargetControlMessageType::CaptureProgress;
 
       READ_DATA_SCOPE();
-      SERIALISE_ELEMENT(msg.capProgress).Named("Capture Progress");
+      SERIALISE_ELEMENT(msg.capProgress).Named("Capture Progress"_lit);
 
       reader.EndChunk();
       return msg;
@@ -729,9 +729,9 @@ public:
 
       {
         READ_DATA_SCOPE();
-        SERIALISE_ELEMENT(msg.newCapture.captureId).Named("Capture ID");
-        SERIALISE_ELEMENT(msg.newCapture.timestamp).Named("timestamp");
-        SERIALISE_ELEMENT(msg.newCapture.path).Named("path");
+        SERIALISE_ELEMENT(msg.newCapture.captureId).Named("Capture ID"_lit);
+        SERIALISE_ELEMENT(msg.newCapture.timestamp).Named("timestamp"_lit);
+        SERIALISE_ELEMENT(msg.newCapture.path).Named("path"_lit);
         SERIALISE_ELEMENT(thumbnail);
         if(m_Version >= 3)
           SERIALISE_ELEMENT(driver);
@@ -809,7 +809,7 @@ public:
       msg.type = TargetControlMessageType::CaptureCopied;
 
       READ_DATA_SCOPE();
-      SERIALISE_ELEMENT(msg.newCapture.captureId).Named("Capture ID");
+      SERIALISE_ELEMENT(msg.newCapture.captureId).Named("Capture ID"_lit);
 
       msg.newCapture.path = m_CaptureCopies[msg.newCapture.captureId];
 

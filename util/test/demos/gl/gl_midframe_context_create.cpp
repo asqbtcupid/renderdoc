@@ -24,7 +24,7 @@
 
 #include "gl_test.h"
 
-struct Midframe_Context_Create : OpenGLGraphicsTest
+TEST(GL_Midframe_Context_Create, OpenGLGraphicsTest)
 {
   static constexpr const char *Description =
       "Creates a context and activates it in the middle of rendering.";
@@ -73,12 +73,12 @@ void main()
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  int main()
   {
     coreProfile = false;
 
     // initialise, create window, create context, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     GLuint vao = MakeVAO();
@@ -103,7 +103,6 @@ void main()
     glBufferStorage(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * 3, idxs, 0);
 
     GLuint program = MakeProgram(common + vertex, common + pixel);
-    glObjectLabel(GL_PROGRAM, program, -1, "Full program");
 
     GraphicsWindow *win2 = NULL;
     void *ctx2 = NULL;
@@ -141,4 +140,4 @@ void main()
   }
 };
 
-REGISTER_TEST(Midframe_Context_Create);
+REGISTER_TEST();

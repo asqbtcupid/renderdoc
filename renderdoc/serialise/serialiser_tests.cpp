@@ -499,7 +499,7 @@ TEST_CASE("Read/write chunk metadata", "[serialiser]")
     ser.WriteChunk(1);
 
     uint32_t dummy = 99;
-    ser.Serialise("dummy", dummy);
+    ser.Serialise("dummy"_lit, dummy);
 
     ser.EndChunk();
 
@@ -539,7 +539,7 @@ TEST_CASE("Read/write chunk metadata", "[serialiser]")
     ser.ReadChunk<uint32_t>();
 
     uint32_t dummy;
-    ser.Serialise("dummy", dummy);
+    ser.Serialise("dummy"_lit, dummy);
 
     ser.EndChunk();
 
@@ -595,7 +595,7 @@ TEST_CASE("Verify multiple chunks can be merged", "[serialiser][chunks]")
     {
       SCOPED_SERIALISE_CHUNK(STRING_AND_INT);
 
-      string s = "string in STRING_AND_INT";
+      std::string s = "string in STRING_AND_INT";
       int i = 4096;
 
       SERIALISE_ELEMENT(s);
@@ -695,7 +695,7 @@ TEST_CASE("Verify multiple chunks can be merged", "[serialiser][chunks]")
         }
         case STRING_AND_INT:
         {
-          string s;
+          std::string s;
           int i = 0;
 
           SERIALISE_ELEMENT(s);
@@ -733,7 +733,7 @@ TEST_CASE("Read/write container types", "[serialiser][structured]")
       SCOPED_SERIALISE_CHUNK(5);
 
       std::vector<int> v;
-      std::pair<float, string> p;
+      rdcpair<float, std::string> p;
       std::list<uint16_t> l;
 
       v.push_back(1);
@@ -743,7 +743,7 @@ TEST_CASE("Read/write container types", "[serialiser][structured]")
       v.push_back(5);
       v.push_back(8);
 
-      p = std::make_pair(3.14159f, "M_PI");
+      p = {3.14159f, "M_PI"};
 
       l.push_back(2U);
       l.push_back(3U);
@@ -770,7 +770,7 @@ TEST_CASE("Read/write container types", "[serialiser][structured]")
     CHECK(chunkID == 5);
 
     std::vector<int> v;
-    std::pair<float, string> p;
+    rdcpair<float, std::string> p;
     std::list<uint16_t> l;
 
     SERIALISE_ELEMENT(v);
@@ -819,7 +819,7 @@ TEST_CASE("Read/write container types", "[serialiser][structured]")
     ser.ReadChunk<uint32_t>();
     {
       std::vector<int32_t> v;
-      std::pair<float, string> p;
+      rdcpair<float, std::string> p;
       std::list<uint16_t> l;
 
       SERIALISE_ELEMENT(v);
@@ -967,7 +967,7 @@ void DoSerialise(SerialiserType &ser, struct1 &el)
 
 struct struct2
 {
-  string name;
+  std::string name;
   std::vector<float> floats;
   std::vector<struct1> viewports;
 };
@@ -993,7 +993,7 @@ enum MySpecialEnum
 DECLARE_REFLECTION_ENUM(MySpecialEnum);
 
 template <>
-std::string DoStringise(const MySpecialEnum &el)
+rdcstr DoStringise(const MySpecialEnum &el)
 {
   BEGIN_ENUM_STRINGISE(MySpecialEnum);
   {
@@ -1327,7 +1327,7 @@ enum class TestEnumClass
 DECLARE_REFLECTION_ENUM(TestEnumClass);
 
 template <>
-std::string DoStringise(const TestEnumClass &el)
+rdcstr DoStringise(const TestEnumClass &el)
 {
   BEGIN_ENUM_STRINGISE(TestEnumClass)
   {
@@ -1349,7 +1349,7 @@ enum TestEnum
 DECLARE_REFLECTION_ENUM(TestEnum);
 
 template <>
-std::string DoStringise(const TestEnum &el)
+rdcstr DoStringise(const TestEnum &el)
 {
   BEGIN_ENUM_STRINGISE(TestEnum)
   {
@@ -1376,7 +1376,7 @@ DECLARE_REFLECTION_ENUM(TestBitfieldClass);
 BITMASK_OPERATORS(TestBitfieldClass);
 
 template <>
-std::string DoStringise(const TestBitfieldClass &el)
+rdcstr DoStringise(const TestBitfieldClass &el)
 {
   BEGIN_BITFIELD_STRINGISE(TestBitfieldClass)
   {
@@ -1404,7 +1404,7 @@ enum TestBitfield
 DECLARE_REFLECTION_ENUM(TestBitfield);
 
 template <>
-std::string DoStringise(const TestBitfield &el)
+rdcstr DoStringise(const TestBitfield &el)
 {
   BEGIN_BITFIELD_STRINGISE(TestBitfield)
   {

@@ -34,9 +34,9 @@ struct OpenGLGraphicsTest : public GraphicsTest
 {
   static const TestAPI API = TestAPI::OpenGL;
 
-  bool Init(int argc, char **argv);
+  void Prepare(int argc, char **argv);
+  bool Init();
   void Shutdown();
-  bool IsSupported();
   GraphicsWindow *MakeWindow(int width, int height, const char *title);
   void *MakeContext(GraphicsWindow *win, void *share);
   void DestroyContext(void *ctx);
@@ -44,7 +44,7 @@ struct OpenGLGraphicsTest : public GraphicsTest
 
   void PostInit();
 
-  GLuint MakeProgram(std::string vertSrc, std::string fragSrc, bool sep = false);
+  GLuint MakeProgram(std::string vertSrc, std::string fragSrc, std::string geomSrc = "");
   GLuint MakeProgram();
   GLuint MakePipeline();
   GLuint MakeBuffer();

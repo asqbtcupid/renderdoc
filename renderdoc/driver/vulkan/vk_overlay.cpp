@@ -40,7 +40,7 @@
 struct VulkanQuadOverdrawCallback : public VulkanDrawcallCallback
 {
   VulkanQuadOverdrawCallback(WrappedVulkan *vk, VkDescriptorSetLayout descSetLayout,
-                             VkDescriptorSet descSet, const vector<uint32_t> &events)
+                             VkDescriptorSet descSet, const std::vector<uint32_t> &events)
       : m_pDriver(vk),
         m_DescSetLayout(descSetLayout),
         m_DescSet(descSet),
@@ -65,7 +65,7 @@ struct VulkanQuadOverdrawCallback : public VulkanDrawcallCallback
     VulkanRenderState &pipestate = m_pDriver->GetRenderState();
 
     // check cache first
-    pair<uint32_t, VkPipeline> pipe = m_PipelineCache[pipestate.graphics.pipeline];
+    rdcpair<uint32_t, VkPipeline> pipe = m_PipelineCache[pipestate.graphics.pipeline];
 
     // if we don't get a hit, create a modified pipeline
     if(pipe.second == VK_NULL_HANDLE)
@@ -88,7 +88,7 @@ struct VulkanQuadOverdrawCallback : public VulkanDrawcallCallback
       // this layout has storage image and
       descSetLayouts[descSet] = m_DescSetLayout;
 
-      const vector<VkPushConstantRange> &push = c.m_PipelineLayout[p.layout].pushRanges;
+      const std::vector<VkPushConstantRange> &push = c.m_PipelineLayout[p.layout].pushRanges;
 
       VkPipelineLayoutCreateInfo pipeLayoutInfo = {
           VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
@@ -263,10 +263,10 @@ struct VulkanQuadOverdrawCallback : public VulkanDrawcallCallback
   WrappedVulkan *m_pDriver;
   VkDescriptorSetLayout m_DescSetLayout;
   VkDescriptorSet m_DescSet;
-  const vector<uint32_t> &m_Events;
+  const std::vector<uint32_t> &m_Events;
 
   // cache modified pipelines
-  map<ResourceId, pair<uint32_t, VkPipeline> > m_PipelineCache;
+  std::map<ResourceId, rdcpair<uint32_t, VkPipeline> > m_PipelineCache;
   VulkanRenderState m_PrevState;
 };
 
@@ -394,7 +394,7 @@ void VulkanDebugManager::PatchLineStripIndexBuffer(const DrawcallDescription *dr
 ResourceId VulkanReplay::RenderOverlay(ResourceId texid, CompType typeHint, DebugOverlay overlay,
                                        uint32_t eventId, const std::vector<uint32_t> &passEvents)
 {
-  const VkLayerDispatchTable *vt = ObjDisp(m_Device);
+  const VkDevDispatchTable *vt = ObjDisp(m_Device);
 
   VulkanShaderCache *shaderCache = m_pDriver->GetShaderCache();
 
@@ -1538,7 +1538,7 @@ ResourceId VulkanReplay::RenderOverlay(ResourceId texid, CompType typeHint, Debu
 
     DoPipelineBarrier(cmd, 1, &barrier);
 
-    vector<uint32_t> events = passEvents;
+    std::vector<uint32_t> events = passEvents;
 
     if(overlay == DebugOverlay::ClearBeforeDraw)
       events.clear();
@@ -1590,7 +1590,7 @@ ResourceId VulkanReplay::RenderOverlay(ResourceId texid, CompType typeHint, Debu
       m_pDriver->m_RenderState.BeginRenderPassAndApplyState(cmd, VulkanRenderState::BindGraphics);
 
       VkClearAttachment blackclear = {VK_IMAGE_ASPECT_COLOR_BIT, 0, {}};
-      vector<VkClearAttachment> atts;
+      std::vector<VkClearAttachment> atts;
 
       VulkanCreationInfo::Framebuffer &fb =
           m_pDriver->m_CreationInfo.m_Framebuffer[m_pDriver->m_RenderState.framebuffer];
@@ -1662,7 +1662,7 @@ ResourceId VulkanReplay::RenderOverlay(ResourceId texid, CompType typeHint, Debu
 
       DoPipelineBarrier(cmd, 1, &barrier);
 
-      vector<uint32_t> events = passEvents;
+      std::vector<uint32_t> events = passEvents;
 
       if(overlay == DebugOverlay::QuadOverdrawDraw)
         events.clear();
@@ -1870,6 +1870,17 @@ ResourceId VulkanReplay::RenderOverlay(ResourceId texid, CompType typeHint, Debu
   {
     VulkanRenderState prevstate = m_pDriver->m_RenderState;
 
+    VkPipelineShaderStageCreateInfo stages[3] = {
+        {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_VERTEX_BIT,
+         shaderCache->GetBuiltinModule(BuiltinShader::MeshVS), "main", NULL},
+        {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_FRAGMENT_BIT,
+         shaderCache->GetBuiltinModule(BuiltinShader::TrisizeFS), "main", NULL},
+        {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_GEOMETRY_BIT,
+         shaderCache->GetBuiltinModule(BuiltinShader::TrisizeGS), "main", NULL},
+    };
+
+    if(stages[0].module != VK_NULL_HANDLE && stages[1].module != VK_NULL_HANDLE &&
+       stages[2].module != VK_NULL_HANDLE)
     {
       SCOPED_TIMER("Triangle Size");
 
@@ -1906,7 +1917,7 @@ ResourceId VulkanReplay::RenderOverlay(ResourceId texid, CompType typeHint, Debu
       m_pDriver->SubmitCmds();
 #endif
 
-      vector<uint32_t> events = passEvents;
+      std::vector<uint32_t> events = passEvents;
 
       if(overlay == DebugOverlay::TriangleSizeDraw)
         events.clear();
@@ -2076,15 +2087,6 @@ ResourceId VulkanReplay::RenderOverlay(ResourceId texid, CompType typeHint, Debu
 
       m_pDriver->GetShaderCache()->MakeGraphicsPipelineInfo(pipeCreateInfo, state.graphics.pipeline);
 
-      VkPipelineShaderStageCreateInfo stages[3] = {
-          {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_VERTEX_BIT,
-           shaderCache->GetBuiltinModule(BuiltinShader::MeshVS), "main", NULL},
-          {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_FRAGMENT_BIT,
-           shaderCache->GetBuiltinModule(BuiltinShader::TrisizeFS), "main", NULL},
-          {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_GEOMETRY_BIT,
-           shaderCache->GetBuiltinModule(BuiltinShader::TrisizeGS), "main", NULL},
-      };
-
       VkPipelineInputAssemblyStateCreateInfo ia = {
           VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
       ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
@@ -2144,9 +2146,9 @@ ResourceId VulkanReplay::RenderOverlay(ResourceId texid, CompType typeHint, Debu
       pipeCreateInfo.pVertexInputState = &vi;
       pipeCreateInfo.pColorBlendState = &cb;
 
-      typedef std::pair<uint32_t, Topology> PipeKey;
+      typedef rdcpair<uint32_t, Topology> PipeKey;
 
-      map<PipeKey, VkPipeline> pipes;
+      std::map<PipeKey, VkPipeline> pipes;
 
       cmd = m_pDriver->GetNextCmd();
 
@@ -2186,7 +2188,7 @@ ResourceId VulkanReplay::RenderOverlay(ResourceId texid, CompType typeHint, Debu
 
             binds[0].stride = binds[1].stride = fmt.vertexByteStride;
 
-            PipeKey key = std::make_pair(fmt.vertexByteStride, fmt.topology);
+            PipeKey key = make_rdcpair(fmt.vertexByteStride, fmt.topology);
             VkPipeline pipe = pipes[key];
 
             if(pipe == VK_NULL_HANDLE)

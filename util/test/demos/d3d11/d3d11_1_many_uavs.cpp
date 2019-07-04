@@ -24,7 +24,7 @@
 
 #include "d3d11_test.h"
 
-struct Many_UAVs : D3D11GraphicsTest
+TEST(D3D11_Many_UAVs, D3D11GraphicsTest)
 {
   static constexpr const char *Description =
       "Test using more than 8 compute shader UAVs (D3D11.1 feature)";
@@ -41,12 +41,12 @@ void main()
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  int main()
   {
     d3d11_1 = true;
 
     // initialise, create window, create device, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     ID3D11ComputeShaderPtr cs = CreateCS(Compile(compute, "main", "cs_5_0"));
@@ -79,4 +79,4 @@ void main()
   }
 };
 
-REGISTER_TEST(Many_UAVs);
+REGISTER_TEST();

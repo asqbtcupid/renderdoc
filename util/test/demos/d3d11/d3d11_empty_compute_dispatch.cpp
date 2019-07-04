@@ -24,7 +24,7 @@
 
 #include "d3d11_test.h"
 
-struct Empty_Compute_Dispatch : D3D11GraphicsTest
+TEST(D3D11_Empty_Compute_Dispatch, D3D11GraphicsTest)
 {
   static constexpr const char *Description = "Test dispatching with one threadgroup count set to 0";
 
@@ -40,10 +40,10 @@ void main()
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create device, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     ID3D11ComputeShaderPtr cs = CreateCS(Compile(compute, "main", "cs_5_0"));
@@ -77,4 +77,4 @@ void main()
   }
 };
 
-REGISTER_TEST(Empty_Compute_Dispatch);
+REGISTER_TEST();

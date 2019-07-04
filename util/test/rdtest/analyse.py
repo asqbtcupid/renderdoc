@@ -84,6 +84,34 @@ class MeshAttribute:
     name: str
 
 
+def get_vsin_attrs(controller: rd.ReplayController, index_mesh: rd.MeshFormat):
+    pipe: rd.PipeState = controller.GetPipelineState()
+    inputs: List[rd.VertexInputAttribute] = pipe.GetVertexInputs()
+
+    attrs: List[MeshAttribute] = []
+    vbs: List[rd.BoundVBuffer] = pipe.GetVBuffers()
+
+    for a in inputs:
+        if not a.used:
+            continue
+
+        attr = MeshAttribute()
+        attr.name = a.name
+        attr.mesh = rd.MeshFormat(index_mesh)
+
+        attr.mesh.vertexByteStride = vbs[a.vertexBuffer].byteStride
+        attr.mesh.instStepRate = a.instanceRate
+        attr.mesh.instanced = a.perInstance
+        attr.mesh.vertexResourceId = vbs[a.vertexBuffer].resourceId
+        attr.mesh.vertexByteOffset = vbs[a.vertexBuffer].byteOffset + a.byteOffset
+
+        attr.mesh.format = a.format
+
+        attrs.append(attr)
+
+    return attrs
+
+
 def get_postvs_attrs(controller: rd.ReplayController, mesh: rd.MeshFormat, data_stage: rd.MeshDataStage):
     pipe: rd.PipeState = controller.GetPipelineState()
 
@@ -124,16 +152,24 @@ def get_postvs_attrs(controller: rd.ReplayController, mesh: rd.MeshFormat, data_
     accum_offset = 0
 
     for i in range(0, len(attrs)):
-        attrs[i].mesh.vertexByteOffset = accum_offset
-
         # Note that some APIs such as Vulkan will pad the size of the attribute here
         # while others will tightly pack
         fmt = attrs[i].mesh.format
 
-        accum_offset += (8 if fmt.compType == rd.CompType.Double else 4) * fmt.compCount
+        elem_size = (8 if fmt.compType == rd.CompType.Double else 4)
 
-        if pipe.HasAlignedPostVSData(data_stage) and (accum_offset % 16) != 0:
-            accum_offset += 16 - (accum_offset % 16)
+        alignment = elem_size
+        if fmt.compCount == 2:
+            alignment = elem_size * 2
+        elif fmt.compCount > 2:
+            alignment = elem_size * 4
+
+        if pipe.HasAlignedPostVSData(data_stage) and (accum_offset % alignment) != 0:
+            accum_offset += alignment - (accum_offset % alignment)
+
+        attrs[i].mesh.vertexByteOffset = accum_offset
+
+        accum_offset += elem_size * fmt.compCount
 
     return attrs
 
@@ -169,12 +205,14 @@ def unpack_data(fmt: rd.ResourceFormat, data: bytes, data_offset: int):
 
     # If the format needs post-processing such as normalisation, do that now
     if fmt.compType == rd.CompType.UNorm:
-        divisor = float((1 << fmt.compByteWidth) - 1)
-        value = tuple(float(value[i]) / divisor for i in value)
+        divisor = float((1 << (fmt.compByteWidth*8)) - 1)
+        value = tuple(float(i) / divisor for i in value)
     elif fmt.compType == rd.CompType.SNorm:
-        max_neg = -(1 << (fmt.compByteWidth - 1))
-        divisor = float(-(max_neg-1))
-        value = tuple((float(value[i]) if (value[i] == max_neg) else (float(value[i]) / divisor)) for i in value)
+        max_neg = -(1 << (fmt.compByteWidth*8 - 1))
+        divisor = -float(max_neg+1)
+        value = tuple(-1.0 if (i == max_neg) else float(i / divisor) for i in value)
+    elif fmt.compType == rd.CompType.UScaled or fmt.compType == rd.CompType.SScaled:
+        value = tuple(float(i) for i in value)
 
     # If the format is BGRA, swap the two components
     if fmt.BGRAOrder():
@@ -189,7 +227,7 @@ def decode_mesh_data(controller: rd.ReplayController, indices: List[int], attrs:
 
     # Calculate the strip restart index for this index width
     striprestart_index = None
-    if controller.GetPipelineState().IsStripRestartEnabled():
+    if controller.GetPipelineState().IsStripRestartEnabled() and attrs[0].mesh.indexResourceId != rd.ResourceId.Null():
         striprestart_index = (controller.GetPipelineState().GetStripRestartIndex() &
                               ((1 << (attrs[0].mesh.indexByteStride*8)) - 1))
 

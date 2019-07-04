@@ -816,8 +816,7 @@ DXGI_FORMAT GetSnormTypedFormat(DXGI_FORMAT f)
     case DXGI_FORMAT_R8_TYPELESS:
     case DXGI_FORMAT_R8_UNORM:
     case DXGI_FORMAT_R8_UINT:
-    case DXGI_FORMAT_R8_SINT:
-    case DXGI_FORMAT_A8_UNORM: return DXGI_FORMAT_R8_SNORM;
+    case DXGI_FORMAT_R8_SINT: return DXGI_FORMAT_R8_SNORM;
 
     case DXGI_FORMAT_BC4_TYPELESS:
     case DXGI_FORMAT_BC4_UNORM: return DXGI_FORMAT_BC4_SNORM;
@@ -897,8 +896,7 @@ DXGI_FORMAT GetUIntTypedFormat(DXGI_FORMAT f)
     case DXGI_FORMAT_R8_TYPELESS:
     case DXGI_FORMAT_R8_UNORM:
     case DXGI_FORMAT_R8_SNORM:
-    case DXGI_FORMAT_R8_SINT:
-    case DXGI_FORMAT_A8_UNORM: return DXGI_FORMAT_R8_UINT;
+    case DXGI_FORMAT_R8_SINT: return DXGI_FORMAT_R8_UINT;
 
     default: break;
   }
@@ -1344,8 +1342,7 @@ DXGI_FORMAT GetTypelessFormat(DXGI_FORMAT f)
     case DXGI_FORMAT_R8_UNORM:
     case DXGI_FORMAT_R8_UINT:
     case DXGI_FORMAT_R8_SNORM:
-    case DXGI_FORMAT_R8_SINT:
-    case DXGI_FORMAT_A8_UNORM: return DXGI_FORMAT_R8_TYPELESS;
+    case DXGI_FORMAT_R8_SINT: return DXGI_FORMAT_R8_TYPELESS;
 
     case DXGI_FORMAT_BC1_TYPELESS:
     case DXGI_FORMAT_BC1_UNORM:
@@ -1376,6 +1373,7 @@ DXGI_FORMAT GetTypelessFormat(DXGI_FORMAT f)
     case DXGI_FORMAT_BC7_UNORM_SRGB: return DXGI_FORMAT_BC7_TYPELESS;
 
     case DXGI_FORMAT_R1_UNORM:
+    case DXGI_FORMAT_A8_UNORM:
     case DXGI_FORMAT_R9G9B9E5_SHAREDEXP:
     case DXGI_FORMAT_B5G6R5_UNORM:
     case DXGI_FORMAT_B5G5R5A1_UNORM:
@@ -1600,12 +1598,12 @@ void WarnUnknownGUID(const char *name, REFIID riid)
   static Threading::CriticalSection lock;
   // we use a vector here, because the number of *distinct* unknown GUIDs encountered is likely to
   // be low (e.g. less than 10).
-  static std::vector<std::pair<IID, int> > warned;
+  static std::vector<rdcpair<IID, int> > warned;
 
   {
     SCOPED_LOCK(lock);
 
-    for(std::pair<IID, int> &w : warned)
+    for(rdcpair<IID, int> &w : warned)
     {
       if(w.first == riid)
       {
@@ -1619,7 +1617,7 @@ void WarnUnknownGUID(const char *name, REFIID riid)
     }
 
     RDCWARN("Querying %s for interface: %s", name, ToStr(riid).c_str());
-    warned.push_back(std::make_pair(riid, 1));
+    warned.push_back(make_rdcpair(riid, 1));
   }
 }
 
@@ -1836,6 +1834,7 @@ DXGI_FORMAT MakeDXGIFormat(ResourceFormat fmt)
         break;
       case ResourceFormatType::D24S8: ret = DXGI_FORMAT_R24G8_TYPELESS; break;
       case ResourceFormatType::D32S8: ret = DXGI_FORMAT_R32G8X24_TYPELESS; break;
+      case ResourceFormatType::A8: ret = DXGI_FORMAT_A8_UNORM; break;
       case ResourceFormatType::YUV8:
       {
         int subsampling = fmt.YUVSubsampling();
@@ -2404,6 +2403,8 @@ ResourceFormat MakeResourceFormat(DXGI_FORMAT fmt)
     case DXGI_FORMAT_X32_TYPELESS_G8X24_UINT:
     case DXGI_FORMAT_R32G8X24_TYPELESS: ret.type = ResourceFormatType::D32S8; break;
 
+    case DXGI_FORMAT_A8_UNORM: ret.type = ResourceFormatType::A8; break;
+
     case DXGI_FORMAT_BC1_TYPELESS:
     case DXGI_FORMAT_BC1_UNORM_SRGB:
     case DXGI_FORMAT_BC1_UNORM: ret.type = ResourceFormatType::BC1; break;
@@ -2575,13 +2576,12 @@ TEST_CASE("DXGI formats", "[format][d3d]")
     // gap in DXGI_FORMAT enum
     if(f > DXGI_FORMAT_B4G4R4A4_UNORM && f < DXGI_FORMAT_P208)
       return true;
-    return (f == DXGI_FORMAT_R1_UNORM || f == DXGI_FORMAT_A8_UNORM ||
-            f == DXGI_FORMAT_R8G8_B8G8_UNORM || f == DXGI_FORMAT_G8R8_G8B8_UNORM ||
-            f == DXGI_FORMAT_B8G8R8X8_TYPELESS || f == DXGI_FORMAT_B8G8R8X8_UNORM ||
-            f == DXGI_FORMAT_B8G8R8X8_UNORM_SRGB || f == DXGI_FORMAT_NV11 ||
-            f == DXGI_FORMAT_AI44 || f == DXGI_FORMAT_IA44 || f == DXGI_FORMAT_P8 ||
-            f == DXGI_FORMAT_A8P8 || f == DXGI_FORMAT_P208 || f == DXGI_FORMAT_V208 ||
-            f == DXGI_FORMAT_V408 || f == DXGI_FORMAT_420_OPAQUE);
+    return (f == DXGI_FORMAT_R1_UNORM || f == DXGI_FORMAT_R8G8_B8G8_UNORM ||
+            f == DXGI_FORMAT_G8R8_G8B8_UNORM || f == DXGI_FORMAT_B8G8R8X8_TYPELESS ||
+            f == DXGI_FORMAT_B8G8R8X8_UNORM || f == DXGI_FORMAT_B8G8R8X8_UNORM_SRGB ||
+            f == DXGI_FORMAT_NV11 || f == DXGI_FORMAT_AI44 || f == DXGI_FORMAT_IA44 ||
+            f == DXGI_FORMAT_P8 || f == DXGI_FORMAT_A8P8 || f == DXGI_FORMAT_P208 ||
+            f == DXGI_FORMAT_V208 || f == DXGI_FORMAT_V408 || f == DXGI_FORMAT_420_OPAQUE);
   };
 
   SECTION("Only DXGI_FORMAT_UNKNOWN is ResourceFormatType::Undefined")

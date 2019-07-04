@@ -24,7 +24,7 @@
 
 #include "d3d11_test.h"
 
-struct Array_Interpolator : D3D11GraphicsTest
+TEST(D3D11_Array_Interpolator, D3D11GraphicsTest)
 {
   static constexpr const char *Description =
       "Test passing an array of float2 to make sure the interpolator packing is handled by "
@@ -75,10 +75,10 @@ float4 main(v2f IN) : SV_Target0
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create device, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     ID3DBlobPtr vsblob = Compile(common + vertex, "main", "vs_5_0");
@@ -115,4 +115,4 @@ float4 main(v2f IN) : SV_Target0
   }
 };
 
-REGISTER_TEST(Array_Interpolator);
+REGISTER_TEST();

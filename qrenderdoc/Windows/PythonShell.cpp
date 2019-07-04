@@ -69,6 +69,10 @@ struct CaptureContextInvoker : ICaptureContext
   {
     return m_Ctx.TargetShaderEncodings();
   }
+  virtual rdcarray<ShaderEncoding> CustomShaderEncodings() override
+  {
+    return m_Ctx.CustomShaderEncodings();
+  }
   virtual uint32_t CurSelectedEvent() override { return m_Ctx.CurSelectedEvent(); }
   virtual uint32_t CurEvent() override { return m_Ctx.CurEvent(); }
   virtual const DrawcallDescription *CurSelectedDrawcall() override
@@ -259,6 +263,10 @@ struct CaptureContextInvoker : ICaptureContext
   {
     return InvokeRetFunction<IDebugMessageView *>(&ICaptureContext::GetDebugMessageView);
   }
+  virtual IDiagnosticLogView *GetDiagnosticLogView() override
+  {
+    return InvokeRetFunction<IDiagnosticLogView *>(&ICaptureContext::GetDiagnosticLogView);
+  }
   virtual ICommentView *GetCommentView() override
   {
     return InvokeRetFunction<ICommentView *>(&ICaptureContext::GetCommentView);
@@ -312,6 +320,10 @@ struct CaptureContextInvoker : ICaptureContext
   {
     return InvokeRetFunction<bool>(&ICaptureContext::HasDebugMessageView);
   }
+  virtual bool HasDiagnosticLogView() override
+  {
+    return InvokeRetFunction<bool>(&ICaptureContext::HasDiagnosticLogView);
+  }
   virtual bool HasCommentView() override
   {
     return InvokeRetFunction<bool>(&ICaptureContext::HasCommentView);
@@ -361,6 +373,10 @@ struct CaptureContextInvoker : ICaptureContext
   virtual void ShowDebugMessageView() override
   {
     InvokeVoidFunction(&ICaptureContext::ShowDebugMessageView);
+  }
+  virtual void ShowDiagnosticLogView() override
+  {
+    InvokeVoidFunction(&ICaptureContext::ShowDiagnosticLogView);
   }
   virtual void ShowCommentView() override { InvokeVoidFunction(&ICaptureContext::ShowCommentView); }
   virtual void ShowPerformanceCounterViewer() override

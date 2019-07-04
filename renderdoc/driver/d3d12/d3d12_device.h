@@ -46,7 +46,7 @@ struct D3D12InitParams
   D3D_FEATURE_LEVEL MinimumFeatureLevel;
 
   // check if a frame capture section version is supported
-  static const uint64_t CurrentVersion = 0x6;
+  static const uint64_t CurrentVersion = 0x7;
 
   static bool IsSupportedVersion(uint64_t ver);
 };
@@ -321,11 +321,11 @@ private:
   D3D12ShaderCache *m_ShaderCache = NULL;
   D3D12TextRenderer *m_TextRenderer = NULL;
 
-  set<ResourceId> m_UploadResourceIds;
-  map<uint64_t, ID3D12Resource *> m_UploadBuffers;
+  std::set<ResourceId> m_UploadResourceIds;
+  std::map<uint64_t, ID3D12Resource *> m_UploadBuffers;
 
   Threading::CriticalSection m_MapsLock;
-  vector<MapState> m_Maps;
+  std::vector<MapState> m_Maps;
 
   bool ProcessChunk(ReadSerialiser &ser, D3D12Chunk context);
 
@@ -347,21 +347,23 @@ private:
     size_t size;
   };
   Threading::CriticalSection m_ThreadTempMemLock;
-  vector<TempMem *> m_ThreadTempMem;
+  std::vector<TempMem *> m_ThreadTempMem;
 
-  vector<DebugMessage> m_DebugMessages;
+  std::vector<DebugMessage> m_DebugMessages;
 
   SDFile *m_StructuredFile = NULL;
   SDFile m_StoredStructuredData;
 
   uint32_t m_FrameCounter;
-  vector<FrameDescription> m_CapturedFrames;
+  std::vector<FrameDescription> m_CapturedFrames;
   FrameRecord m_FrameRecord;
-  vector<DrawcallDescription *> m_Drawcalls;
+  std::vector<DrawcallDescription *> m_Drawcalls;
 
   ReplayStatus m_FailedReplayStatus = ReplayStatus::APIReplayFailed;
 
   bool m_AppControlledCapture;
+
+  bool m_InvalidPSO = false;
 
   Threading::RWLock m_CapTransitionLock;
   CaptureState m_State;
@@ -391,12 +393,12 @@ private:
 
   // used both on capture and replay side to track resource states. Only locked
   // in capture
-  map<ResourceId, SubresourceStateVector> m_ResourceStates;
+  std::map<ResourceId, SubresourceStateVector> m_ResourceStates;
   Threading::CriticalSection m_ResourceStatesLock;
 
-  set<ResourceId> m_Cubemaps;
+  std::set<ResourceId> m_Cubemaps;
 
-  map<ResourceId, string> m_ResourceNames;
+  std::map<ResourceId, std::string> m_ResourceNames;
 
   struct SwapPresentInfo
   {
@@ -407,8 +409,8 @@ private:
     int32_t lastPresentedBuffer;
   };
 
-  map<WrappedIDXGISwapChain4 *, SwapPresentInfo> m_SwapChains;
-  map<ResourceId, DXGI_FORMAT> m_BackbufferFormat;
+  std::map<WrappedIDXGISwapChain4 *, SwapPresentInfo> m_SwapChains;
+  std::map<ResourceId, DXGI_FORMAT> m_BackbufferFormat;
 
   WrappedIDXGISwapChain4 *m_LastSwap;
 
@@ -465,7 +467,7 @@ public:
   ResourceId GetFrameCaptureResourceId() { return m_FrameCaptureRecord->GetResourceID(); }
   void AddDebugMessage(MessageCategory c, MessageSeverity sv, MessageSource src, std::string d);
   void AddDebugMessage(const DebugMessage &msg);
-  vector<DebugMessage> GetDebugMessages();
+  std::vector<DebugMessage> GetDebugMessages();
 
   void AddResource(ResourceId id, ResourceType type, const char *defaultNamePrefix);
   void DerivedResource(ResourceId parent, ResourceId child);
@@ -473,13 +475,16 @@ public:
   void AddResourceCurChunk(ResourceDescription &descr);
   void AddResourceCurChunk(ResourceId id);
 
-  const string &GetResourceName(ResourceId id) { return m_ResourceNames[id]; }
-  vector<D3D12_RESOURCE_STATES> &GetSubresourceStates(ResourceId id)
+  const std::string &GetResourceName(ResourceId id) { return m_ResourceNames[id]; }
+  std::vector<D3D12_RESOURCE_STATES> &GetSubresourceStates(ResourceId id)
   {
     return m_ResourceStates[id];
   }
-  const map<ResourceId, SubresourceStateVector> &GetSubresourceStates() { return m_ResourceStates; }
-  const map<ResourceId, DXGI_FORMAT> &GetBackbufferFormats() { return m_BackbufferFormat; }
+  const std::map<ResourceId, SubresourceStateVector> &GetSubresourceStates()
+  {
+    return m_ResourceStates;
+  }
+  const std::map<ResourceId, DXGI_FORMAT> &GetBackbufferFormats() { return m_BackbufferFormat; }
   void SetLogFile(const char *logfile);
   void SetInitParams(const D3D12InitParams &params, uint64_t sectionVersion)
   {
@@ -491,7 +496,7 @@ public:
   D3D12Replay *GetReplay() { return &m_Replay; }
   WrappedID3D12CommandQueue *GetQueue() { return m_Queue; }
   ID3D12CommandAllocator *GetAlloc() { return m_Alloc; }
-  void ApplyBarriers(vector<D3D12_RESOURCE_BARRIER> &barriers);
+  void ApplyBarriers(std::vector<D3D12_RESOURCE_BARRIER> &barriers);
 
   void GetDynamicDescriptorReferences(std::vector<D3D12Descriptor> &refs)
   {
@@ -522,11 +527,11 @@ public:
       submittedcmds.clear();
     }
 
-    vector<ID3D12GraphicsCommandList4 *> freecmds;
+    std::vector<ID3D12GraphicsCommandList4 *> freecmds;
     // -> GetNextCmd() ->
-    vector<ID3D12GraphicsCommandList4 *> pendingcmds;
+    std::vector<ID3D12GraphicsCommandList4 *> pendingcmds;
     // -> ExecuteLists() ->
-    vector<ID3D12GraphicsCommandList4 *> submittedcmds;
+    std::vector<ID3D12GraphicsCommandList4 *> submittedcmds;
     // -> FlushLists()--------back to freecmds--------^
   } m_InternalCmds;
 
@@ -671,9 +676,9 @@ public:
                                        UINT Subresource, const D3D12_BOX *pDstBox,
                                        const void *pSrcData, UINT SrcRowPitch, UINT SrcDepthPitch);
 
-  vector<MapState> GetMaps()
+  std::vector<MapState> GetMaps()
   {
-    vector<MapState> ret;
+    std::vector<MapState> ret;
     {
       SCOPED_LOCK(m_MapsLock);
       ret = m_Maps;

@@ -2903,6 +2903,155 @@ VkFormat MakeVkFormat(ResourceFormat fmt)
   return ret;
 }
 
+VkImageAspectFlags FormatImageAspects(VkFormat fmt)
+{
+  if(IsStencilOnlyFormat(fmt))
+    return VK_IMAGE_ASPECT_STENCIL_BIT;
+  else if(IsDepthOnlyFormat(fmt))
+    return VK_IMAGE_ASPECT_DEPTH_BIT;
+  else if(IsDepthAndStencilFormat(fmt))
+    return VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+  else if(GetYUVPlaneCount(fmt) == 3)
+    return VK_IMAGE_ASPECT_PLANE_0_BIT | VK_IMAGE_ASPECT_PLANE_1_BIT | VK_IMAGE_ASPECT_PLANE_2_BIT;
+  else if(GetYUVPlaneCount(fmt) == 2)
+    return VK_IMAGE_ASPECT_PLANE_0_BIT | VK_IMAGE_ASPECT_PLANE_1_BIT;
+  else
+    return VK_IMAGE_ASPECT_COLOR_BIT;
+}
+
+int ImgRefs::GetAspectCount() const
+{
+  int aspectCount = 0;
+  for(auto aspectIt = ImageAspectFlagIter::begin(aspectMask);
+      aspectIt != ImageAspectFlagIter::end(); ++aspectIt)
+  {
+    ++aspectCount;
+  }
+  return aspectCount;
+}
+
+int ImgRefs::AspectIndex(VkImageAspectFlagBits aspect) const
+{
+  int aspectIndex = 0;
+  if(areAspectsSplit)
+  {
+    for(auto aspectIt = ImageAspectFlagIter::begin(aspectMask);
+        aspectIt != ImageAspectFlagIter::end(); ++aspectIt)
+    {
+      if(*aspectIt == aspect)
+        break;
+      ++aspectIndex;
+    }
+  }
+  return aspectIndex;
+}
+
+int ImgRefs::SubresourceIndex(int aspectIndex, int level, int layer) const
+{
+  if(!areAspectsSplit)
+    aspectIndex = 0;
+  int splitLevelCount = 1;
+  if(areLevelsSplit)
+    splitLevelCount = imageInfo.levelCount;
+  else
+    level = 0;
+  int splitLayerCount = 1;
+  if(areLayersSplit)
+    splitLayerCount = imageInfo.layerCount;
+  else
+    layer = 0;
+  return (aspectIndex * splitLevelCount + level) * splitLayerCount + layer;
+}
+
+std::vector<rdcpair<VkImageSubresourceRange, InitReqType> > ImgRefs::SubresourceRangeInitReqs(
+    VkImageSubresourceRange range) const
+{
+  VkImageSubresourceRange out(range);
+  std::vector<rdcpair<VkImageSubresourceRange, InitReqType> > res;
+  std::vector<VkImageAspectFlags> splitAspects;
+  if(areAspectsSplit)
+  {
+    for(auto aspectIt = ImageAspectFlagIter::begin(aspectMask & range.aspectMask);
+        aspectIt != ImageAspectFlagIter::end(); ++aspectIt)
+    {
+      splitAspects.push_back(*aspectIt);
+    }
+  }
+  else
+  {
+    splitAspects.push_back(range.aspectMask);
+  }
+
+  int splitLevelCount = 1;
+  if(areLevelsSplit || range.baseMipLevel != 0 || range.levelCount < (uint32_t)imageInfo.levelCount)
+  {
+    splitLevelCount = range.levelCount;
+    out.levelCount = 1;
+  }
+  int splitLayerCount = 1;
+  if(areLayersSplit || range.baseArrayLayer != 0 || range.layerCount < (uint32_t)imageInfo.layerCount)
+  {
+    splitLayerCount = range.layerCount;
+    out.layerCount = 1;
+  }
+  int aspectIndex = 0;
+  for(auto aspectIt = splitAspects.begin(); aspectIt != splitAspects.end(); ++aspectIt, ++aspectIndex)
+  {
+    out.aspectMask = *aspectIt;
+    for(int level = range.baseMipLevel; level < splitLevelCount; ++level)
+    {
+      out.baseMipLevel = level;
+      for(int layer = range.baseArrayLayer; layer < splitLayerCount; ++layer)
+      {
+        out.baseArrayLayer = layer;
+        res.push_back(make_rdcpair(out, SubresourceInitReq(aspectIndex, level, layer)));
+      }
+    }
+  }
+  return res;
+}
+
+void ImgRefs::Split(bool splitAspects, bool splitLevels, bool splitLayers)
+{
+  int newSplitAspectCount = 1;
+  if(splitAspects || areAspectsSplit)
+  {
+    newSplitAspectCount = GetAspectCount();
+  }
+
+  int oldSplitLevelCount = areLevelsSplit ? imageInfo.levelCount : 1;
+  int newSplitLevelCount = splitLevels ? imageInfo.levelCount : oldSplitLevelCount;
+
+  int oldSplitLayerCount = areLayersSplit ? imageInfo.layerCount : 1;
+  int newSplitLayerCount = splitLayers ? imageInfo.layerCount : oldSplitLayerCount;
+
+  int newSize = newSplitAspectCount * newSplitLevelCount * newSplitLayerCount;
+  if(newSize == (int)rangeRefs.size())
+    return;
+  rangeRefs.resize(newSize);
+
+  for(int newAspectIndex = newSplitAspectCount - 1; newAspectIndex >= 0; --newAspectIndex)
+  {
+    int oldAspectIndex = areAspectsSplit ? newAspectIndex : 0;
+    for(int newLevel = newSplitLevelCount - 1; newLevel >= 0; --newLevel)
+    {
+      int oldLevel = areLevelsSplit ? newLevel : 0;
+      for(int newLayer = newSplitLayerCount - 1; newLayer >= 0; --newLayer)
+      {
+        int oldLayer = areLayersSplit ? newLayer : 0;
+        int oldIndex =
+            (oldAspectIndex * oldSplitLevelCount + oldLevel) * oldSplitLayerCount + oldLayer;
+        int newIndex =
+            (newAspectIndex * newSplitLevelCount + newLevel) * newSplitLayerCount + newLayer;
+        rangeRefs[newIndex] = rangeRefs[oldIndex];
+      }
+    }
+  }
+  areAspectsSplit = newSplitAspectCount > 1;
+  areLevelsSplit = newSplitLevelCount > 1;
+  areLayersSplit = newSplitLayerCount > 1;
+}
+
 VkResourceRecord::~VkResourceRecord()
 {
   VkResourceType resType = Resource != NULL ? IdentifyTypeByPtr(Resource) : eResUnknown;
@@ -2948,6 +3097,61 @@ VkResourceRecord::~VkResourceRecord()
     SAFE_DELETE(descTemplateInfo);
 }
 
+void VkResourceRecord::MarkImageFrameReferenced(VkResourceRecord *img, const ImageRange &range,
+                                                FrameRefType refType)
+{
+  // mark backing memory as read
+  MarkResourceFrameReferenced(img->baseResource, eFrameRef_Read);
+
+  ResourceId id = img->GetResourceID();
+  if(refType != eFrameRef_Read && refType != eFrameRef_None)
+    cmdInfo->dirtied.insert(id);
+  if(img->resInfo && img->resInfo->IsSparse())
+    cmdInfo->sparse.insert(img->resInfo);
+
+  FrameRefType maxRef =
+      MarkImageReferenced(cmdInfo->imgFrameRefs, id, img->resInfo->imageInfo, range, refType);
+
+  // maintain the reference type of the image itself as the maximum reference type of any
+  // subresource
+  MarkResourceFrameReferenced(
+      id, maxRef, [](FrameRefType x, FrameRefType y) -> FrameRefType { return std::max(x, y); });
+}
+
+void VkResourceRecord::MarkImageViewFrameReferenced(VkResourceRecord *view, const ImageRange &range,
+                                                    FrameRefType refType)
+{
+  ResourceId img = view->baseResource;
+  ResourceId mem = view->baseResourceMem;
+
+  // mark image view as read
+  MarkResourceFrameReferenced(view->GetResourceID(), eFrameRef_Read);
+
+  // mark memory backing image as read
+  MarkResourceFrameReferenced(mem, eFrameRef_Read);
+
+  if(refType != eFrameRef_Read && refType != eFrameRef_None)
+    cmdInfo->dirtied.insert(img);
+
+  ImageRange imgRange;
+  imgRange.aspectMask = view->viewRange.aspectMask;
+  imgRange.baseMipLevel = view->viewRange.baseMipLevel + range.baseMipLevel;
+  imgRange.levelCount = range.levelCount;
+  imgRange.baseArrayLayer = view->viewRange.baseArrayLayer + range.baseArrayLayer;
+  imgRange.layerCount = range.layerCount;
+  imgRange.offset = range.offset;
+  imgRange.extent = range.extent;
+  imgRange.viewType = view->viewRange.viewType();
+
+  FrameRefType maxRef =
+      MarkImageReferenced(cmdInfo->imgFrameRefs, img, view->resInfo->imageInfo, imgRange, refType);
+
+  // maintain the reference type of the image itself as the maximum reference type of any
+  // subresource
+  MarkResourceFrameReferenced(
+      img, maxRef, [](FrameRefType x, FrameRefType y) -> FrameRefType { return std::max(x, y); });
+}
+
 void VkResourceRecord::MarkMemoryFrameReferenced(ResourceId mem, VkDeviceSize offset,
                                                  VkDeviceSize size, FrameRefType refType)
 {
@@ -2968,35 +3172,42 @@ void VkResourceRecord::MarkBufferFrameReferenced(VkResourceRecord *buf, VkDevice
   {
     size = buf->memSize;
   }
-  if(buf->resInfo)
+  if(buf->resInfo && buf->resInfo->IsSparse())
     cmdInfo->sparse.insert(buf->resInfo);
   if(buf->baseResource != ResourceId())
     MarkMemoryFrameReferenced(buf->baseResource, buf->memOffset + offset, size, refType);
 }
 
-void VkResourceRecord::MarkBufferImageCopyFrameReferenced(
-    VkResourceRecord *buf, VkResourceRecord *img, const ImageLayouts &layout, uint32_t regionCount,
-    const VkBufferImageCopy *regions, FrameRefType bufRefType, FrameRefType imgRefType)
+void VkResourceRecord::MarkBufferImageCopyFrameReferenced(VkResourceRecord *buf,
+                                                          VkResourceRecord *img, uint32_t regionCount,
+                                                          const VkBufferImageCopy *regions,
+                                                          FrameRefType bufRefType,
+                                                          FrameRefType imgRefType)
 {
-  MarkResourceFrameReferenced(img->GetResourceID(), imgRefType);
-  MarkResourceFrameReferenced(img->baseResource, imgRefType);
-
   if(IsDirtyFrameRef(imgRefType))
     cmdInfo->dirtied.insert(img->GetResourceID());
 
   // mark buffer just as read
   MarkResourceFrameReferenced(buf->GetResourceID(), eFrameRef_Read);
 
+  VkFormat imgFormat = img->resInfo->imageInfo.format;
+
   for(uint32_t ri = 0; ri < regionCount; ri++)
   {
     const VkBufferImageCopy &region = regions[ri];
 
-    VkFormat regionFormat = layout.format;
+    ImageRange range(region.imageSubresource);
+    range.offset = region.imageOffset;
+    range.extent = region.imageExtent;
+
+    MarkImageFrameReferenced(img, range, imgRefType);
+
+    VkFormat regionFormat = imgFormat;
     uint32_t plane = 0;
     switch(region.imageSubresource.aspectMask)
     {
       case VK_IMAGE_ASPECT_STENCIL_BIT: regionFormat = VK_FORMAT_S8_UINT; break;
-      case VK_IMAGE_ASPECT_DEPTH_BIT: regionFormat = GetDepthOnlyFormat(layout.format); break;
+      case VK_IMAGE_ASPECT_DEPTH_BIT: regionFormat = GetDepthOnlyFormat(imgFormat); break;
       case VK_IMAGE_ASPECT_PLANE_1_BIT: plane = 1; break;
       case VK_IMAGE_ASPECT_PLANE_2_BIT: plane = 2; break;
       default: break;
@@ -3078,7 +3289,7 @@ void VkResourceRecord::MarkBufferViewFrameReferenced(VkResourceRecord *bufView, 
   if(bufView->baseResource != ResourceId())
     MarkResourceFrameReferenced(bufView->baseResource, eFrameRef_Read);
 
-  if(bufView->resInfo)
+  if(bufView->resInfo && bufView->resInfo->IsSparse())
     cmdInfo->sparse.insert(bufView->resInfo);
   if(bufView->baseResourceMem != ResourceId())
     MarkMemoryFrameReferenced(bufView->baseResourceMem, bufView->memOffset, bufView->memSize,
@@ -3096,7 +3307,7 @@ void ResourceInfo::Update(uint32_t numBindings, const VkSparseImageMemoryBind *p
     // VKTODOMED handle sparse image arrays or sparse images with mips
     RDCASSERT(newBind.subresource.arrayLayer == 0 && newBind.subresource.mipLevel == 0);
 
-    pair<VkDeviceMemory, VkDeviceSize> *pageTable = pages[newBind.subresource.aspectMask];
+    rdcpair<VkDeviceMemory, VkDeviceSize> *pageTable = pages[newBind.subresource.aspectMask];
 
     VkOffset3D offsInPages = newBind.offset;
     offsInPages.x /= pagedim.width;
@@ -3108,7 +3319,8 @@ void ResourceInfo::Update(uint32_t numBindings, const VkSparseImageMemoryBind *p
     extInPages.height /= pagedim.height;
     extInPages.depth /= pagedim.depth;
 
-    pair<VkDeviceMemory, VkDeviceSize> mempair = std::make_pair(newBind.memory, newBind.memoryOffset);
+    rdcpair<VkDeviceMemory, VkDeviceSize> mempair =
+        make_rdcpair(newBind.memory, newBind.memoryOffset);
 
     for(uint32_t z = offsInPages.z; z < offsInPages.z + extInPages.depth; z++)
     {
@@ -3823,7 +4035,7 @@ TEST_CASE("Vulkan formats", "[format][vulkan]")
   {
     const uint32_t width = 24, height = 24;
 
-    std::vector<std::pair<VkFormat, std::vector<uint32_t> > > tests = {
+    std::vector<rdcpair<VkFormat, std::vector<uint32_t> > > tests = {
         {VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM, {576, 144, 144}},
         {VK_FORMAT_G8_B8R8_2PLANE_420_UNORM, {576, 288}},
         {VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM, {576, 288, 288}},
@@ -3846,7 +4058,7 @@ TEST_CASE("Vulkan formats", "[format][vulkan]")
         {VK_FORMAT_G16_B16_R16_3PLANE_444_UNORM, {1152, 1152, 1152}},
     };
 
-    for(std::pair<VkFormat, std::vector<uint32_t> > e : tests)
+    for(rdcpair<VkFormat, std::vector<uint32_t> > e : tests)
     {
       INFO("Format is " << ToStr(e.first));
       for(uint32_t p = 0; p < e.second.size(); p++)

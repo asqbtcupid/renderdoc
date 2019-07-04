@@ -36,8 +36,6 @@
 #define SPDBLOG(...) (void)(__VA_ARGS__)
 #endif
 
-using std::make_pair;
-
 namespace DXBC
 {
 static const uint32_t FOURCC_SPDB = MAKE_FOURCC('S', 'P', 'D', 'B');
@@ -86,7 +84,7 @@ SPDBChunk::SPDBChunk(DXBCFile *dxbc, void *chunk)
   PageMapping directoryMapping(pages, header->PageSize, (uint32_t *)rootdirIndices, rootdirCount);
   const uint32_t *dirContents = (const uint32_t *)directoryMapping.Data();
 
-  vector<PDBStream> streams;
+  std::vector<PDBStream> streams;
 
   streams.resize(*dirContents);
   dirContents++;
@@ -132,7 +130,7 @@ SPDBChunk::SPDBChunk(DXBCFile *dxbc, void *chunk)
   RDCASSERT(hashtable[0] == 0);
   hashtable++;
 
-  map<string, uint32_t> StreamNames;
+  std::map<std::string, uint32_t> StreamNames;
 
   uint32_t numset = 0;
   for(uint32_t i = 0; i < maxBit; i++)
@@ -171,7 +169,7 @@ SPDBChunk::SPDBChunk(DXBCFile *dxbc, void *chunk)
       if(filename[0] == 0)
         filename = "shader";
 
-      Files.push_back(make_pair(filename, (char *)fileContents.Data()));
+      Files.push_back({filename, (char *)fileContents.Data()});
     }
   }
 
@@ -675,7 +673,7 @@ SPDBChunk::SPDBChunk(DXBCFile *dxbc, void *chunk)
     m_Functions[0] = mainFunc;
   }
 
-  map<uint32_t, string> Names;
+  std::map<uint32_t, std::string> Names;
 
   if(StreamNames.find("/names") != StreamNames.end())
   {
@@ -713,7 +711,7 @@ SPDBChunk::SPDBChunk(DXBCFile *dxbc, void *chunk)
     }
   }
 
-  vector<DBIModule> modules;
+  std::vector<DBIModule> modules;
 
   {
     PageMapping dbiMapping(pages, header->PageSize, &streams[3].pageIndices[0],
@@ -728,7 +726,7 @@ SPDBChunk::SPDBChunk(DXBCFile *dxbc, void *chunk)
     while(cur < end)
     {
       DBIModule *mod = (DBIModule *)cur;
-      cur += sizeof(DBIModule) - sizeof(string) * 2;
+      cur += sizeof(DBIModule) - sizeof(std::string) * 2;
 
       char *moduleName = (char *)cur;
       cur += strlen(moduleName) + 1;
@@ -741,7 +739,7 @@ SPDBChunk::SPDBChunk(DXBCFile *dxbc, void *chunk)
         cur++;
 
       DBIModule m;
-      memcpy(&m, mod, sizeof(DBIModule) - sizeof(string) * 2);
+      memcpy(&m, mod, sizeof(DBIModule) - sizeof(std::string) * 2);
       m.moduleName = moduleName;
       m.objectName = objectName;
 
@@ -756,7 +754,7 @@ SPDBChunk::SPDBChunk(DXBCFile *dxbc, void *chunk)
 
   PROCSYM32 main = {};
 
-  map<uint32_t, int32_t> FileMapping;    // mapping from hash chunk to index in Files[], or -1
+  std::map<uint32_t, int32_t> FileMapping;    // mapping from hash chunk to index in Files[], or -1
 
   for(size_t m = 0; m < modules.size(); m++)
   {
@@ -865,7 +863,7 @@ SPDBChunk::SPDBChunk(DXBCFile *dxbc, void *chunk)
           }
           else if(!strcmp(key, "hlslDefines"))
           {
-            string cmdlineDefines = "// Command line defines:\n\n";
+            std::string cmdlineDefines = "// Command line defines:\n\n";
 
             char *c = value;
 
@@ -912,13 +910,14 @@ SPDBChunk::SPDBChunk(DXBCFile *dxbc, void *chunk)
                   char *valend = c;
 
                   cmdlineDefines += "#define ";
-                  cmdlineDefines += string(defstart, defend) + " " + string(valstart, valend);
+                  cmdlineDefines +=
+                      std::string(defstart, defend) + " " + std::string(valstart, valend);
                   cmdlineDefines += "\n";
                 }
                 else
                 {
                   cmdlineDefines += "#define ";
-                  cmdlineDefines += string(defstart, defend);
+                  cmdlineDefines += std::string(defstart, defend);
                   cmdlineDefines += "\n";
                 }
               }
@@ -928,7 +927,7 @@ SPDBChunk::SPDBChunk(DXBCFile *dxbc, void *chunk)
               }
             }
 
-            Files.push_back(make_pair("@cmdline", cmdlineDefines));
+            Files.push_back({"@cmdline", cmdlineDefines});
           }
 
           key = value + strlen(value) + 1;
@@ -1487,7 +1486,7 @@ SPDBChunk::SPDBChunk(DXBCFile *dxbc, void *chunk)
             // source according to #line
             if(!name.empty())
             {
-              Files.push_back(make_pair(name, ""));
+              Files.push_back({name, ""});
 
               FileMapping[chunkOffs] = (int32_t)Files.size() - 1;
             }
@@ -1665,8 +1664,8 @@ SPDBChunk::SPDBChunk(DXBCFile *dxbc, void *chunk)
 
   // Sort files according to the order they come in the Names array, this seems to be more reliable
   // about placing the main file first.
-  std::sort(Files.begin(), Files.end(), [&Names](const std::pair<std::string, std::string> &a,
-                                                 const std::pair<std::string, std::string> &b) {
+  std::sort(Files.begin(), Files.end(), [&Names](const rdcpair<std::string, std::string> &a,
+                                                 const rdcpair<std::string, std::string> &b) {
     // any entries that aren't found in Names at all (like @cmdline that we add) will be sorted to
     // the end.
     size_t aIdx = ~0U, bIdx = ~0U;

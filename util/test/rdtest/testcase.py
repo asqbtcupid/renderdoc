@@ -5,6 +5,7 @@ import re
 import renderdoc as rd
 from . import util
 from . import analyse
+from . import capture
 from .logging import log, TestFailureException
 
 
@@ -126,8 +127,22 @@ class ConstantBufferChecker:
 
 class TestCase:
     slow_test = False
-    platform = ''
-    platform_version = 0
+    demos_test_name = ''
+    demos_frame_cap = 5
+    _test_list = {}
+
+    @staticmethod
+    def set_test_list(tests):
+        TestCase._test_list = tests
+
+    def check_support(self):
+        if self.demos_test_name != '':
+            if self.demos_test_name not in TestCase._test_list:
+                return False,'Test {} not in compiled tests'.format(self.demos_test_name)
+            return TestCase._test_list[self.demos_test_name]
+
+        # Otherwise assume we can run - child tests can override if they want to do some other check
+        return True,""
 
     def __init__(self):
         self.capture_filename = ""
@@ -161,6 +176,10 @@ class TestCase:
         :return: The path to the capture to open. If in a temporary path, it will be
           deleted if the test completes.
         """
+
+        if self.demos_test_name != '':
+            return capture.run_and_capture(util.get_demos_binary(), self.demos_test_name, self.demos_frame_cap)
+
         raise NotImplementedError("If run() is not implemented in a test, then"
                                   "get_capture() and check_capture() must be.")
 
@@ -202,6 +221,29 @@ class TestCase:
 
         return self._find_draw(name, start_event, self.controller.GetDrawcalls())
 
+    def get_vsin(self, draw: rd.DrawcallDescription, first_index: int=0, num_indices: int=0, instance: int=0, view: int=0):
+        ib: rd.BoundVBuffer = self.controller.GetPipelineState().GetIBuffer()
+
+        if num_indices == 0:
+            num_indices = draw.numIndices
+        else:
+            num_indices = min(num_indices, draw.numIndices)
+
+        mesh = rd.MeshFormat()
+        mesh.numIndices = num_indices
+        mesh.indexByteOffset = ib.byteOffset + draw.indexOffset * draw.indexByteWidth
+        mesh.indexByteStride = draw.indexByteWidth
+        mesh.indexResourceId = ib.resourceId
+        mesh.baseVertex = draw.baseVertex
+
+        attrs = analyse.get_vsin_attrs(self.controller, mesh)
+
+        first_index = min(first_index, draw.numIndices-1)
+
+        indices = analyse.fetch_indices(self.controller, mesh, 0, first_index, num_indices)
+
+        return analyse.decode_mesh_data(self.controller, indices, attrs, 0)
+
     def get_postvs(self, data_stage: rd.MeshDataStage, first_index: int=0, num_indices: int=0, instance: int=0, view: int=0):
         mesh: rd.MeshFormat = self.controller.GetPostVSData(instance, view, data_stage)
 
@@ -225,16 +267,16 @@ class TestCase:
         for idx in mesh_ref:
             ref = mesh_ref[idx]
             if idx >= len(mesh_data):
-                raise TestFailureException('PostVS data doesn\'t have expected element {}'.format(idx))
+                raise TestFailureException('Mesh data doesn\'t have expected element {}'.format(idx))
 
             data = mesh_data[idx]
 
             for key in ref:
                 if key not in data:
-                    raise TestFailureException('PostVS data[{}] doesn\'t contain data {} as expected. Data is: {}'.format(idx, key, list(data.keys())))
+                    raise TestFailureException('Mesh data[{}] doesn\'t contain data {} as expected. Data is: {}'.format(idx, key, list(data.keys())))
 
                 if not util.value_compare(ref[key], data[key]):
-                    raise TestFailureException('PostVS data[{}] \'{}\': {} is not as expected: {}'.format(idx, key, data[key], ref[key]))
+                    raise TestFailureException('Mesh data[{}] \'{}\': {} is not as expected: {}'.format(idx, key, data[key], ref[key]))
 
         log.success("Mesh data is identical to reference")
 
@@ -271,6 +313,16 @@ class TestCase:
             t: rd.TextureDescription
             if t.resourceId == id:
                 return t
+
+        return None
+
+    def get_resource(self, id: rd.ResourceId):
+        resources = self.controller.GetResources()
+
+        for r in resources:
+            r: rd.ResourceDescription
+            if r.resourceId == id:
+                return r
 
         return None
 

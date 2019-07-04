@@ -37,7 +37,7 @@
 ///////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////
 
-struct D3D12_Video_Textures : D3D12GraphicsTest
+TEST(D3D12_Video_Textures, D3D12GraphicsTest)
 {
   static constexpr const char *Description = "Tests of YUV textures";
 
@@ -170,10 +170,10 @@ float4 main(v2f IN) : SV_Target0
     ID3D12ResourcePtr cb;
   };
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create device, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     ID3DBlobPtr vsblob = Compile(D3DDefaultVertex, "main", "vs_4_0");
@@ -700,4 +700,4 @@ float4 main(v2f IN) : SV_Target0
   }
 };
 
-REGISTER_TEST(D3D12_Video_Textures);
+REGISTER_TEST();

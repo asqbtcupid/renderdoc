@@ -55,7 +55,7 @@ win32 {
 	swig.name = SWIG ${QMAKE_FILE_IN}
 	swig.input = SWIGSOURCES
 	swig.output = ${QMAKE_FILE_BASE}_python.cxx
-	swig.commands = $$_PRO_FILE_PWD_/3rdparty/swig/swig.exe -v -Wextra -Werror -O -c++ -python -modern -modernargs -enumclass -fastunpack -py3 -builtin -I$$_PRO_FILE_PWD_ -I$$_PRO_FILE_PWD_/../renderdoc/api/replay -outdir . -o ${QMAKE_FILE_BASE}_python.cxx ${QMAKE_FILE_IN}
+	swig.commands = $$_PRO_FILE_PWD_/3rdparty/swig/swig.exe -v -Wextra -Werror -O -interface ${QMAKE_FILE_BASE} -c++ -python -modern -modernargs -enumclass -fastunpack -py3 -builtin -I$$_PRO_FILE_PWD_ -I$$_PRO_FILE_PWD_/../renderdoc/api/replay -outdir . -o ${QMAKE_FILE_BASE}_python.cxx ${QMAKE_FILE_IN}
 	swig.CONFIG += target_predeps
 	swig.variable_out = GENERATED_SOURCES
 	silent:swig.commands = @echo SWIG ${QMAKE_FILE_IN} && $$swig.commands
@@ -76,16 +76,18 @@ win32 {
 	}
 
 	# Include and link against PySide2
-	DEFINES += PYSIDE2_ENABLED=1
-	INCLUDEPATH += $$_PRO_FILE_PWD_/3rdparty/pyside/include/shiboken2
-	INCLUDEPATH += $$_PRO_FILE_PWD_/3rdparty/pyside/include/PySide2
-	INCLUDEPATH += $$_PRO_FILE_PWD_/3rdparty/pyside/include/PySide2/QtCore
-	INCLUDEPATH += $$_PRO_FILE_PWD_/3rdparty/pyside/include/PySide2/QtGui
-	INCLUDEPATH += $$_PRO_FILE_PWD_/3rdparty/pyside/include/PySide2/QtWidgets
-	!contains(QMAKE_TARGET.arch, x86_64) {
-		LIBS += $$_PRO_FILE_PWD_/3rdparty/pyside/Win32/shiboken2.lib
-	} else {
-		LIBS += $$_PRO_FILE_PWD_/3rdparty/pyside/x64/shiboken2.lib
+	exists( $$_PRO_FILE_PWD_/3rdparty/pyside/include/PySide2/pyside.h ) {
+		DEFINES += PYSIDE2_ENABLED=1
+		INCLUDEPATH += $$_PRO_FILE_PWD_/3rdparty/pyside/include/shiboken2
+		INCLUDEPATH += $$_PRO_FILE_PWD_/3rdparty/pyside/include/PySide2
+		INCLUDEPATH += $$_PRO_FILE_PWD_/3rdparty/pyside/include/PySide2/QtCore
+		INCLUDEPATH += $$_PRO_FILE_PWD_/3rdparty/pyside/include/PySide2/QtGui
+		INCLUDEPATH += $$_PRO_FILE_PWD_/3rdparty/pyside/include/PySide2/QtWidgets
+		!contains(QMAKE_TARGET.arch, x86_64) {
+			LIBS += $$_PRO_FILE_PWD_/3rdparty/pyside/Win32/shiboken2.lib
+		} else {
+			LIBS += $$_PRO_FILE_PWD_/3rdparty/pyside/x64/shiboken2.lib
+		}
 	}
 
 	LIBS += user32.lib
@@ -123,8 +125,6 @@ win32 {
 	SOURCES += $$CMAKE_DIR/qrenderdoc/renderdoc.py.c
 	SOURCES += $$CMAKE_DIR/qrenderdoc/qrenderdoc_python.cxx
 	SOURCES += $$CMAKE_DIR/qrenderdoc/qrenderdoc.py.c
-
-	SOURCES += $$_PRO_FILE_PWD_/../renderdoc/api/replay/version.cpp
 
 	CONFIG += warn_off
 	CONFIG += c++14
@@ -213,6 +213,7 @@ SOURCES += Code/qrenderdoc.cpp \
     Windows/BufferViewer.cpp \
     Widgets/Extended/RDTableView.cpp \
     Windows/DebugMessageView.cpp \
+    Windows/LogView.cpp \
     Windows/CommentView.cpp \
     Windows/StatisticsViewer.cpp \
     Windows/TimelineBar.cpp \
@@ -289,6 +290,7 @@ HEADERS += Code/CaptureContext.h \
     Windows/BufferViewer.h \
     Widgets/Extended/RDTableView.h \
     Windows/DebugMessageView.h \
+    Windows/LogView.h \
     Windows/CommentView.h \
     Windows/StatisticsViewer.h \
     Windows/TimelineBar.h \
@@ -333,6 +335,7 @@ FORMS    += Windows/Dialogs/AboutDialog.ui \
     Windows/BufferViewer.ui \
     Windows/ShaderViewer.ui \
     Windows/DebugMessageView.ui \
+    Windows/LogView.ui \
     Windows/CommentView.ui \
     Windows/StatisticsViewer.ui \
     Windows/Dialogs/SettingsDialog.ui \

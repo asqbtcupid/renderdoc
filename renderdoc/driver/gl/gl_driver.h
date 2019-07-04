@@ -29,7 +29,7 @@
 #include "common/common.h"
 #include "common/timing.h"
 #include "core/core.h"
-#include "driver/shaders/spirv/spirv_common.h"
+#include "driver/shaders/spirv/spirv_reflect.h"
 #include "replay/replay_driver.h"
 #include "gl_common.h"
 #include "gl_dispatch_table.h"
@@ -38,7 +38,11 @@
 #include "gl_replay.h"
 #include "gl_resources.h"
 
-using std::list;
+namespace glslang
+{
+class TShader;
+class TProgram;
+};
 
 struct GLInitParams
 {
@@ -81,12 +85,12 @@ private:
 
   GLPlatform &m_Platform;
 
-  vector<DebugMessage> m_DebugMessages;
+  std::vector<DebugMessage> m_DebugMessages;
   template <typename SerialiserType>
   void Serialise_DebugMessages(SerialiserType &ser);
-  vector<DebugMessage> GetDebugMessages();
+  std::vector<DebugMessage> GetDebugMessages();
 
-  string m_DebugMsgContext;
+  std::string m_DebugMsgContext;
 
   bool m_SuppressDebugMessages;
 
@@ -164,8 +168,6 @@ private:
   ResourceId m_ContextResourceID;
   GLResourceRecord *m_ContextRecord;
 
-  set<ResourceId> m_MissingTracks;
-
   GLResourceManager *m_ResourceManager;
 
   SDFile *m_StructuredFile;
@@ -186,7 +188,7 @@ private:
   CaptureFailReason m_FailureReason;
   bool m_SuccessfulCapture;
 
-  set<ResourceId> m_HighTrafficResources;
+  std::set<ResourceId> m_HighTrafficResources;
 
   int m_ReplayEventCount = 0;
 
@@ -194,12 +196,12 @@ private:
   // we need to flush both types of maps, but for implicit sync points we only
   // want to consider coherent maps, and since that happens often we want it to
   // be as efficient as possible.
-  set<GLResourceRecord *> m_CoherentMaps;
-  set<GLResourceRecord *> m_PersistentMaps;
+  std::set<GLResourceRecord *> m_CoherentMaps;
+  std::set<GLResourceRecord *> m_PersistentMaps;
 
   // this function iterates over all the maps, checking for any changes between
   // the shadow pointers, and propogates that to 'real' GL
-  void PersistentMapMemoryBarrier(const set<GLResourceRecord *> &maps);
+  void PersistentMapMemoryBarrier(const std::set<GLResourceRecord *> &maps);
 
   // this function is called at any point that could possibly pick up a change
   // in a coherent persistent mapped buffer, to propogate changes across. In most
@@ -217,13 +219,13 @@ private:
     }
   }
 
-  vector<FrameDescription> m_CapturedFrames;
+  std::vector<FrameDescription> m_CapturedFrames;
   FrameRecord m_FrameRecord;
-  vector<DrawcallDescription *> m_Drawcalls;
+  std::vector<DrawcallDescription *> m_Drawcalls;
 
   // replay
 
-  vector<APIEvent> m_CurEvents, m_Events;
+  std::vector<APIEvent> m_CurEvents, m_Events;
   bool m_AddedDrawcall;
 
   bool HasNonDebugMarkers();
@@ -240,14 +242,14 @@ private:
 
   DrawcallDescription m_ParentDrawcall;
 
-  list<DrawcallDescription *> m_DrawcallStack;
+  std::list<DrawcallDescription *> m_DrawcallStack;
 
-  map<ResourceId, vector<EventUsage>> m_ResourceUses;
+  std::map<ResourceId, std::vector<EventUsage>> m_ResourceUses;
 
   bool m_FetchCounters;
 
   // buffer used
-  vector<byte> m_ScratchBuf;
+  std::vector<byte> m_ScratchBuf;
 
   struct BufferData
   {
@@ -257,9 +259,9 @@ private:
     uint64_t size;
   };
 
-  map<ResourceId, BufferData> m_Buffers;
+  std::map<ResourceId, BufferData> m_Buffers;
 
-  vector<pair<ResourceId, Replacement>> m_DependentReplacements;
+  std::vector<rdcpair<ResourceId, Replacement>> m_DependentReplacements;
 
   // this object is only created on old captures where VAO0 was a single global object. In new
   // captures each context has its own VAO0.
@@ -358,7 +360,7 @@ private:
     // the last time a window was seen/associated with this context.
     // Decays after a few seconds since there's no good explicit
     // 'remove' type call for GL, only wglCreateContext/wglMakeCurrent
-    map<void *, uint64_t> windows;
+    std::map<void *, uint64_t> windows;
 
     // a window is only associated with one context at once, so any
     // time we associate a window, it broadcasts to all other
@@ -384,8 +386,8 @@ private:
     float CharAspect;
 
     // extensions
-    vector<string> glExts;
-    string glExtsString;
+    std::vector<std::string> glExts;
+    std::string glExtsString;
 
     // state
     GLResourceRecord *m_BufferRecord[16];
@@ -404,6 +406,8 @@ private:
     }
     void SetActiveTexRecord(GLenum target, GLResourceRecord *record)
     {
+      if(IsProxyTarget(target))
+        return;
       m_TextureRecord[TextureIdx(target)][m_TextureUnit] = record;
     }
     GLResourceRecord *GetTexUnitRecord(GLenum target, GLenum texunit)
@@ -422,6 +426,8 @@ private:
     // modern DSA bindings set by index, not enum
     void SetTexUnitRecordIndexed(GLenum target, uint32_t unitidx, GLResourceRecord *record)
     {
+      if(IsProxyTarget(target))
+        return;
       m_TextureRecord[TextureIdx(target)][unitidx] = record;
     }
 
@@ -479,8 +485,8 @@ private:
     }
   };
 
-  vector<QueuedResource> m_QueuedInitialFetches;
-  vector<QueuedResource> m_QueuedReleases;
+  std::vector<QueuedResource> m_QueuedInitialFetches;
+  std::vector<QueuedResource> m_QueuedReleases;
 
   void QueuePrepareInitialState(GLResource res);
   void QueueResourceRelease(GLResource res);
@@ -498,13 +504,13 @@ private:
                               std::string bbname);
 
   RenderDoc::FramePixels *SaveBackbufferImage();
-  map<void *, RenderDoc::FramePixels *> m_BackbufferImages;
+  std::map<void *, RenderDoc::FramePixels *> m_BackbufferImages;
 
   void BuildGLExtensions();
   void BuildGLESExtensions();
 
-  vector<string> m_GLExtensions;
-  vector<string> m_GLESExtensions;
+  std::vector<std::string> m_GLExtensions;
+  std::vector<std::string> m_GLESExtensions;
 
   std::set<uint32_t> m_UnsafeDraws;
 
@@ -560,7 +566,6 @@ public:
   void RegisterDebugCallback();
 
   bool IsUnsafeDraw(uint32_t eventId) { return m_UnsafeDraws.find(eventId) != m_UnsafeDraws.end(); }
-  void AddMissingTrack(ResourceId id) { m_MissingTracks.insert(id); }
   // replay interface
   void Initialise(GLInitParams &params, uint64_t sectionVersion);
   void ReplayLog(uint32_t startEventID, uint32_t endEventID, ReplayLogType replayType);
@@ -575,7 +580,7 @@ public:
   const DrawcallDescription *GetDrawcall(uint32_t eventId);
 
   void SuppressDebugMessages(bool suppress) { m_SuppressDebugMessages = suppress; }
-  vector<EventUsage> GetUsage(ResourceId id) { return m_ResourceUses[id]; }
+  std::vector<EventUsage> GetUsage(ResourceId id) { return m_ResourceUses[id]; }
   void CreateContext(GLWindowingData winData, void *shareContext, GLInitParams initParams,
                      bool core, bool attribsCreate);
   void RegisterReplayContext(GLWindowingData winData, void *shareContext, bool core,
@@ -604,8 +609,8 @@ public:
   {
     ShaderData() : type(eGL_NONE), version(0) {}
     GLenum type;
-    vector<string> sources;
-    vector<string> includepaths;
+    std::vector<std::string> sources;
+    std::vector<std::string> includepaths;
     SPVModule spirv;
     std::string disassembly;
     ShaderReflection reflection;
@@ -616,6 +621,7 @@ public:
 
     // used for if the application actually uploaded SPIR-V
     std::vector<uint32_t> spirvWords;
+    SPIRVPatchData patchData;
 
     // the parameters passed to glSpecializeShader
     std::string entryPoint;
@@ -634,9 +640,9 @@ public:
   struct ProgramData
   {
     ProgramData() : linked(false) { RDCEraseEl(stageShaders); }
-    vector<ResourceId> shaders;
+    std::vector<ResourceId> shaders;
 
-    map<GLint, GLint> locationTranslate;
+    std::map<GLint, GLint> locationTranslate;
 
     // this flag indicates the program was created with glCreateShaderProgram and cannot be relinked
     // again (because that function implicitly detaches and destroys the shader). However we only
@@ -674,6 +680,25 @@ public:
   std::map<ResourceId, ShaderData> m_Shaders;
   std::map<ResourceId, ProgramData> m_Programs;
   std::map<ResourceId, PipelineData> m_Pipelines;
+
+  void FillReflectionArray(ResourceId program, PerStageReflections &stages)
+  {
+    ProgramData &progdata = m_Programs[program];
+    for(size_t i = 0; i < ARRAY_COUNT(progdata.stageShaders); i++)
+    {
+      ResourceId shadId = progdata.stageShaders[i];
+      if(shadId != ResourceId())
+      {
+        stages.refls[i] = &m_Shaders[shadId].reflection;
+        stages.mappings[i] = &m_Shaders[shadId].mapping;
+      }
+    }
+  }
+
+  void FillReflectionArray(GLResource program, PerStageReflections &stages)
+  {
+    FillReflectionArray(GetResourceManager()->GetID(program), stages);
+  }
 
   struct TextureData
   {

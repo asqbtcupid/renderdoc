@@ -104,7 +104,7 @@ bool WrappedVulkan::Serialise_vkCreateFence(SerialiserType &ser, VkDevice device
   SERIALISE_ELEMENT(device);
   SERIALISE_ELEMENT_LOCAL(CreateInfo, *pCreateInfo);
   SERIALISE_ELEMENT_OPT(pAllocator);
-  SERIALISE_ELEMENT_LOCAL(Fence, GetResID(*pFence)).TypedAs("VkFence");
+  SERIALISE_ELEMENT_LOCAL(Fence, GetResID(*pFence)).TypedAs("VkFence"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -322,7 +322,7 @@ bool WrappedVulkan::Serialise_vkCreateEvent(SerialiserType &ser, VkDevice device
   SERIALISE_ELEMENT(device);
   SERIALISE_ELEMENT_LOCAL(CreateInfo, *pCreateInfo);
   SERIALISE_ELEMENT_OPT(pAllocator);
-  SERIALISE_ELEMENT_LOCAL(Event, GetResID(*pEvent)).TypedAs("VkEvent");
+  SERIALISE_ELEMENT_LOCAL(Event, GetResID(*pEvent)).TypedAs("VkEvent"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -512,7 +512,7 @@ bool WrappedVulkan::Serialise_vkCreateSemaphore(SerialiserType &ser, VkDevice de
   SERIALISE_ELEMENT(device);
   SERIALISE_ELEMENT_LOCAL(CreateInfo, *pCreateInfo);
   SERIALISE_ELEMENT_OPT(pAllocator);
-  SERIALISE_ELEMENT_LOCAL(Semaphore, GetResID(*pSemaphore)).TypedAs("VkSemaphore");
+  SERIALISE_ELEMENT_LOCAL(Semaphore, GetResID(*pSemaphore)).TypedAs("VkSemaphore"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -615,7 +615,7 @@ bool WrappedVulkan::Serialise_vkCmdSetEvent(SerialiserType &ser, VkCommandBuffer
 {
   SERIALISE_ELEMENT(commandBuffer);
   SERIALISE_ELEMENT(event);
-  SERIALISE_ELEMENT_TYPED(VkPipelineStageFlagBits, stageMask).TypedAs("VkPipelineStageFlags");
+  SERIALISE_ELEMENT_TYPED(VkPipelineStageFlagBits, stageMask).TypedAs("VkPipelineStageFlags"_lit);
 
   Serialise_DebugMessages(ser);
 
@@ -670,7 +670,7 @@ bool WrappedVulkan::Serialise_vkCmdResetEvent(SerialiserType &ser, VkCommandBuff
 {
   SERIALISE_ELEMENT(commandBuffer);
   SERIALISE_ELEMENT(event);
-  SERIALISE_ELEMENT_TYPED(VkPipelineStageFlagBits, stageMask).TypedAs("VkPipelineStageFlags");
+  SERIALISE_ELEMENT_TYPED(VkPipelineStageFlagBits, stageMask).TypedAs("VkPipelineStageFlags"_lit);
 
   Serialise_DebugMessages(ser);
 
@@ -735,8 +735,10 @@ bool WrappedVulkan::Serialise_vkCmdWaitEvents(
   SERIALISE_ELEMENT(eventCount);
   SERIALISE_ELEMENT_ARRAY(pEvents, eventCount);
 
-  SERIALISE_ELEMENT_TYPED(VkPipelineStageFlagBits, srcStageMask).TypedAs("VkPipelineStageFlags");
-  SERIALISE_ELEMENT_TYPED(VkPipelineStageFlagBits, dstStageMask).TypedAs("VkPipelineStageFlags");
+  SERIALISE_ELEMENT_TYPED(VkPipelineStageFlagBits, srcStageMask)
+      .TypedAs("VkPipelineStageFlags"_lit);
+  SERIALISE_ELEMENT_TYPED(VkPipelineStageFlagBits, dstStageMask)
+      .TypedAs("VkPipelineStageFlags"_lit);
 
   SERIALISE_ELEMENT(memoryBarrierCount);
   SERIALISE_ELEMENT_ARRAY(pMemoryBarriers, memoryBarrierCount);
@@ -777,8 +779,6 @@ bool WrappedVulkan::Serialise_vkCmdWaitEvents(
       {
         imgBarriers.push_back(pImageMemoryBarriers[i]);
         imgBarriers.back().image = Unwrap(imgBarriers.back().image);
-        ReplacePresentableImageLayout(imgBarriers.back().oldLayout);
-        ReplacePresentableImageLayout(imgBarriers.back().newLayout);
 
         RemapQueueFamilyIndices(imgBarriers.back().srcQueueFamilyIndex,
                                 imgBarriers.back().dstQueueFamilyIndex);
@@ -814,18 +814,25 @@ bool WrappedVulkan::Serialise_vkCmdWaitEvents(
       m_PersistentEvents.push_back(ev);
     }
 
+    ResourceId cmd = GetResID(commandBuffer);
+    GetResourceManager()->RecordBarriers(m_BakedCmdBufferInfo[cmd].imgbarriers, m_ImageLayouts,
+                                         (uint32_t)imgBarriers.size(), &imgBarriers[0]);
+
     if(commandBuffer != VK_NULL_HANDLE)
     {
+      // now sanitise layouts before passing to vulkan
+      for(VkImageMemoryBarrier &barrier : imgBarriers)
+      {
+        SanitiseOldImageLayout(barrier.oldLayout);
+        SanitiseNewImageLayout(barrier.newLayout);
+      }
+
       ObjDisp(commandBuffer)->CmdSetEvent(Unwrap(commandBuffer), ev, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
       ObjDisp(commandBuffer)
           ->CmdWaitEvents(Unwrap(commandBuffer), 1, &ev, srcStageMask, dstStageMask,
                           memoryBarrierCount, pMemoryBarriers, (uint32_t)bufBarriers.size(),
                           bufBarriers.data(), (uint32_t)imgBarriers.size(), imgBarriers.data());
     }
-
-    ResourceId cmd = GetResID(commandBuffer);
-    GetResourceManager()->RecordBarriers(m_BakedCmdBufferInfo[cmd].imgbarriers, m_ImageLayouts,
-                                         (uint32_t)imgBarriers.size(), &imgBarriers[0]);
   }
 
   return true;

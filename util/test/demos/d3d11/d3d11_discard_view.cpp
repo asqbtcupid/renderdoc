@@ -24,7 +24,7 @@
 
 #include "d3d11_test.h"
 
-struct Discard_View : D3D11GraphicsTest
+TEST(D3D11_Discard_View, D3D11GraphicsTest)
 {
   static constexpr const char *Description = "Test that discards an RTV";
 
@@ -42,12 +42,12 @@ float4 main() : SV_Target0
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  int main()
   {
     d3d11_1 = true;
 
     // initialise, create window, create device, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     ID3DBlobPtr vsblob = Compile(D3DFullscreenQuadVertex, "main", "vs_5_0");
@@ -131,4 +131,4 @@ float4 main() : SV_Target0
   }
 };
 
-REGISTER_TEST(Discard_View);
+REGISTER_TEST();

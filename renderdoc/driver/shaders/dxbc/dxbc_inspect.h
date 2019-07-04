@@ -33,11 +33,6 @@
 #include "common/common.h"
 #include "dxbc_disassemble.h"
 
-using std::vector;
-using std::pair;
-using std::string;
-using std::map;
-
 // matches D3D11_SHADER_VERSION_TYPE from d3d11shader.h
 enum D3D11_ShaderType
 {
@@ -119,7 +114,7 @@ enum VariableType
 
 struct ShaderInputBind
 {
-  string name;
+  std::string name;
 
   enum InputType
   {
@@ -259,22 +254,22 @@ struct CBufferVariableType
     uint32_t elements;
     uint32_t members;
     uint32_t bytesize;
-    string name;
+    std::string name;
   } descriptor;
 
   // if a struct, these are variables for each member (this can obviously nest). Not all
   // elements of the nested member descriptor are valid, as this might not be in a cbuffer,
   // but might be a loose structure
-  vector<CBufferVariable> members;
+  std::vector<CBufferVariable> members;
 };
 
 struct CBufferVariable
 {
-  string name;
+  std::string name;
 
   struct
   {
-    string name;
+    std::string name;
     uint32_t offset;    // offset in parent (cbuffer or nested struct)
     uint32_t flags;
     std::vector<uint8_t> defaultValue;
@@ -290,7 +285,7 @@ struct CBufferVariable
 
 struct CBuffer
 {
-  string name;
+  std::string name;
 
   uint32_t space;
   uint32_t reg;
@@ -298,7 +293,7 @@ struct CBuffer
 
   struct Descriptor
   {
-    string name;
+    std::string name;
 
     enum Type
     {
@@ -322,13 +317,13 @@ class DXBCDebugChunk
 {
 public:
   virtual ~DXBCDebugChunk() {}
-  virtual string GetCompilerSig() const = 0;
-  virtual string GetEntryFunction() const = 0;
-  virtual string GetShaderProfile() const = 0;
+  virtual std::string GetCompilerSig() const = 0;
+  virtual std::string GetEntryFunction() const = 0;
+  virtual std::string GetShaderProfile() const = 0;
 
   virtual uint32_t GetShaderCompileFlags() const = 0;
 
-  vector<pair<string, string> > Files;    // <filename, source>
+  std::vector<rdcpair<std::string, std::string> > Files;    // <filename, source>
 
   virtual void GetLineInfo(size_t instruction, uintptr_t offset, LineColumnInfo &lineInfo) const = 0;
 
@@ -357,31 +352,31 @@ public:
   ShaderStatistics m_ShaderStats;
   DXBCDebugChunk *m_DebugInfo;
 
-  vector<uint32_t> m_Immediate;
+  std::vector<uint32_t> m_Immediate;
 
   bool m_GuessedResources;
-  vector<ShaderInputBind> m_SRVs;
-  vector<ShaderInputBind> m_UAVs;
+  std::vector<ShaderInputBind> m_SRVs;
+  std::vector<ShaderInputBind> m_UAVs;
 
-  vector<ShaderInputBind> m_Samplers;
+  std::vector<ShaderInputBind> m_Samplers;
 
-  vector<CBuffer> m_CBuffers;
+  std::vector<CBuffer> m_CBuffers;
 
   CBuffer m_Interfaces;
 
-  map<string, CBufferVariableType> m_ResourceBinds;
+  std::map<std::string, CBufferVariableType> m_ResourceBinds;
 
-  vector<SigParameter> m_InputSig;
-  vector<SigParameter> m_OutputSig;
-  vector<SigParameter> m_PatchConstantSig;
+  std::vector<SigParameter> m_InputSig;
+  std::vector<SigParameter> m_OutputSig;
+  std::vector<SigParameter> m_PatchConstantSig;
 
   uint32_t DispatchThreadsDimension[3];
 
-  vector<uint32_t> m_HexDump;
+  std::vector<uint32_t> m_HexDump;
 
-  vector<byte> m_ShaderBlob;
+  std::vector<byte> m_ShaderBlob;
 
-  const string &GetDisassembly()
+  const std::string &GetDisassembly()
   {
     if(m_Disassembly.empty())
       MakeDisassemblyString();
@@ -397,7 +392,8 @@ public:
   static void GetHash(uint32_t hash[4], const void *ByteCode, size_t BytecodeLength);
 
   static bool CheckForDebugInfo(const void *ByteCode, size_t ByteCodeLength);
-  static string GetDebugBinaryPath(const void *ByteCode, size_t ByteCodeLength);
+  static bool CheckForShaderCode(const void *ByteCode, size_t ByteCodeLength);
+  static std::string GetDebugBinaryPath(const void *ByteCode, size_t ByteCodeLength);
 
 private:
   DXBCFile(const DXBCFile &o);
@@ -418,15 +414,15 @@ private:
   bool IsDeclaration(OpcodeType op);
 
   CBufferVariableType ParseRDEFType(RDEFHeader *h, char *chunk, uint32_t offset);
-  map<uint32_t, CBufferVariableType> m_Variables;
+  std::map<uint32_t, CBufferVariableType> m_Variables;
 
   bool m_Disassembled;
 
-  vector<ASMDecl>
+  std::vector<ASMDecl>
       m_Declarations;    // declarations of inputs, outputs, constant buffers, temp registers etc.
-  vector<ASMOperation> m_Instructions;
+  std::vector<ASMOperation> m_Instructions;
 
-  string m_Disassembly;
+  std::string m_Disassembly;
 };
 
 };    // namespace DXBC

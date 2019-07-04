@@ -24,7 +24,7 @@
 
 #include "d3d11_test.h"
 
-struct Structured_Buffer_MisalignedDirty : D3D11GraphicsTest
+TEST(D3D11_Structured_Buffer_MisalignedDirty, D3D11GraphicsTest)
 {
   static constexpr const char *Description =
       "Test updating a misaligned chunk of a structured buffer";
@@ -51,10 +51,10 @@ float4 main() : SV_Target0
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create device, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     if(!opts.MapNoOverwriteOnDynamicBufferSRV)
@@ -141,4 +141,4 @@ float4 main() : SV_Target0
   }
 };
 
-REGISTER_TEST(Structured_Buffer_MisalignedDirty);
+REGISTER_TEST();

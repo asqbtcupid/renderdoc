@@ -30,9 +30,6 @@
 #include "replay/replay_driver.h"
 #include "gl_common.h"
 
-using std::map;
-using std::pair;
-
 class AMDCounters;
 class IntelGlCounters;
 class WrappedOpenGL;
@@ -108,12 +105,13 @@ public:
   rdcarray<ShaderEntryPoint> GetShaderEntryPoints(ResourceId shader);
   ShaderReflection *GetShader(ResourceId shader, ShaderEntryPoint entry);
 
-  vector<string> GetDisassemblyTargets();
-  string DisassembleShader(ResourceId pipeline, const ShaderReflection *refl, const string &target);
+  std::vector<std::string> GetDisassemblyTargets();
+  std::string DisassembleShader(ResourceId pipeline, const ShaderReflection *refl,
+                                const std::string &target);
 
-  vector<DebugMessage> GetDebugMessages();
+  std::vector<DebugMessage> GetDebugMessages();
 
-  vector<EventUsage> GetUsage(ResourceId id);
+  std::vector<EventUsage> GetUsage(ResourceId id);
 
   FrameRecord GetFrameRecord();
 
@@ -128,15 +126,17 @@ public:
   void ReplayLog(uint32_t endEventID, ReplayLogType replayType);
   const SDFile &GetStructuredFile();
 
-  vector<uint32_t> GetPassEvents(uint32_t eventId);
+  std::vector<uint32_t> GetPassEvents(uint32_t eventId);
 
-  vector<WindowingSystem> GetSupportedWindowSystems();
+  std::vector<WindowingSystem> GetSupportedWindowSystems();
 
   AMDRGPControl *GetRGPControl() { return NULL; }
   uint64_t MakeOutputWindow(WindowingData window, bool depth);
   void DestroyOutputWindow(uint64_t id);
   bool CheckResizeOutputWindow(uint64_t id);
   void GetOutputWindowDimensions(uint64_t id, int32_t &w, int32_t &h);
+  void SetOutputWindowDimensions(uint64_t id, int32_t w, int32_t h);
+  void GetOutputWindowData(uint64_t id, bytebuf &retData);
   void ClearOutputWindowColor(uint64_t id, FloatVector col);
   void ClearOutputWindowDepth(uint64_t id, float depth, uint8_t stencil);
   void BindOutputWindow(uint64_t id, bool depth);
@@ -144,7 +144,7 @@ public:
   void FlipOutputWindow(uint64_t id);
 
   void InitPostVSBuffers(uint32_t eventId);
-  void InitPostVSBuffers(const vector<uint32_t> &passEvents);
+  void InitPostVSBuffers(const std::vector<uint32_t> &passEvents);
 
   ResourceId GetLiveID(ResourceId id);
 
@@ -152,7 +152,7 @@ public:
                  CompType typeHint, float *minval, float *maxval);
   bool GetHistogram(ResourceId texid, uint32_t sliceFace, uint32_t mip, uint32_t sample,
                     CompType typeHint, float minval, float maxval, bool channels[4],
-                    vector<uint32_t> &histogram);
+                    std::vector<uint32_t> &histogram);
 
   MeshFormat GetPostVSBuffers(uint32_t eventId, uint32_t instID, uint32_t viewID,
                               MeshDataStage stage);
@@ -164,18 +164,21 @@ public:
   void ReplaceResource(ResourceId from, ResourceId to);
   void RemoveReplacement(ResourceId id);
 
-  vector<GPUCounter> EnumerateCounters();
+  std::vector<GPUCounter> EnumerateCounters();
   CounterDescription DescribeCounter(GPUCounter counterID);
-  vector<CounterResult> FetchCounters(const vector<GPUCounter> &counters);
+  std::vector<CounterResult> FetchCounters(const std::vector<GPUCounter> &counters);
 
-  void RenderMesh(uint32_t eventId, const vector<MeshFormat> &secondaryDraws, const MeshDisplay &cfg);
+  void RenderMesh(uint32_t eventId, const std::vector<MeshFormat> &secondaryDraws,
+                  const MeshDisplay &cfg);
 
+  rdcarray<ShaderEncoding> GetCustomShaderEncodings() { return {ShaderEncoding::GLSL}; }
   rdcarray<ShaderEncoding> GetTargetShaderEncodings() { return {ShaderEncoding::GLSL}; }
-  void BuildTargetShader(ShaderEncoding sourceEncoding, bytebuf source, string entry,
+  void BuildTargetShader(ShaderEncoding sourceEncoding, bytebuf source, const std::string &entry,
                          const ShaderCompileFlags &compileFlags, ShaderStage type, ResourceId *id,
-                         string *errors);
-  void BuildCustomShader(string source, string entry, const ShaderCompileFlags &compileFlags,
-                         ShaderStage type, ResourceId *id, string *errors);
+                         std::string *errors);
+  void BuildCustomShader(ShaderEncoding sourceEncoding, bytebuf source, const std::string &entry,
+                         const ShaderCompileFlags &compileFlags, ShaderStage type, ResourceId *id,
+                         std::string *errors);
   void FreeCustomShader(ResourceId id);
 
   enum TexDisplayFlags
@@ -191,12 +194,12 @@ public:
 
   void RenderHighlightBox(float w, float h, float scale);
 
-  void FillCBufferVariables(ResourceId shader, string entryPoint, uint32_t cbufSlot,
+  void FillCBufferVariables(ResourceId shader, std::string entryPoint, uint32_t cbufSlot,
                             rdcarray<ShaderVariable> &outvars, const bytebuf &data);
 
-  vector<PixelModification> PixelHistory(vector<EventUsage> events, ResourceId target, uint32_t x,
-                                         uint32_t y, uint32_t slice, uint32_t mip,
-                                         uint32_t sampleIdx, CompType typeHint);
+  std::vector<PixelModification> PixelHistory(std::vector<EventUsage> events, ResourceId target,
+                                              uint32_t x, uint32_t y, uint32_t slice, uint32_t mip,
+                                              uint32_t sampleIdx, CompType typeHint);
   ShaderDebugTrace DebugVertex(uint32_t eventId, uint32_t vertid, uint32_t instid, uint32_t idx,
                                uint32_t instOffset, uint32_t vertOffset);
   ShaderDebugTrace DebugPixel(uint32_t eventId, uint32_t x, uint32_t y, uint32_t sample,
@@ -209,7 +212,7 @@ public:
                       uint32_t x, uint32_t y);
 
   ResourceId RenderOverlay(ResourceId id, CompType typeHint, DebugOverlay overlay, uint32_t eventId,
-                           const vector<uint32_t> &passEvents);
+                           const std::vector<uint32_t> &passEvents);
   ResourceId ApplyCustomShader(ResourceId shader, ResourceId texid, uint32_t mip, uint32_t arrayIdx,
                                uint32_t sampleIdx, CompType typeHint);
 
@@ -237,7 +240,8 @@ private:
                  CompType typeHint, bool stencil, float *minval, float *maxval);
 
   void CreateCustomShaderTex(uint32_t w, uint32_t h);
-  void CreateOverlayProgram(GLuint Program, GLuint Pipeline, GLuint fragShader);
+  bool CreateOverlayProgram(GLuint Program, GLuint Pipeline, GLuint fragShader,
+                            GLuint fragShaderSPIRV);
 
   void CopyArrayToTex2DMS(GLuint destMS, GLuint srcArray, GLint width, GLint height,
                           GLint arraySize, GLint samples, GLenum intFormat, uint32_t selectedSlice);
@@ -279,6 +283,7 @@ private:
       GLuint readFBO = 0;
     } BlitData;
 
+    WindowingSystem system = WindowingSystem::Headless;
     int width = 1, height = 1;
   };
 
@@ -340,6 +345,7 @@ private:
     GLuint checkerProg;
 
     GLuint fixedcolFragShader;
+    GLuint fixedcolFragShaderSPIRV;
 
     // 0 = both floats, 1 = position doubles, 2 = secondary doubles, 3 = both doubles
     GLuint meshProg[4];
@@ -366,6 +372,7 @@ private:
     GLuint dummyTexBufferStore;
 
     GLuint quadoverdrawFragShader;
+    GLuint quadoverdrawFragShaderSPIRV;
     GLuint quadoverdrawResolveProg;
 
     ResourceId overlayTexId;
@@ -384,7 +391,7 @@ private:
   HighlightCache m_HighlightCache;
 
   // eventId -> data
-  map<uint32_t, GLPostVSData> m_PostVSData;
+  std::map<uint32_t, GLPostVSData> m_PostVSData;
 
   void ClearPostVSCache();
 
@@ -402,9 +409,10 @@ private:
   void CheckGLSLVersion(const char *sl, int &glslVersion);
 
   void FillTimers(GLCounterContext &ctx, const DrawcallDescription &drawnode,
-                  const vector<GPUCounter> &counters);
+                  const std::vector<GPUCounter> &counters);
 
   GLuint CreateShader(GLenum shaderType, const std::string &src);
+  GLuint CreateSPIRVShader(GLenum shaderType, const std::string &src);
   GLuint CreateShaderProgram(const std::string &vs, const std::string &fs,
                              const std::string &gs = "");
   GLuint CreateShaderProgram(GLuint vs, GLuint fs, GLuint gs = 0);
@@ -422,13 +430,13 @@ private:
   void CloseReplayContext();
 
   uint64_t m_OutputWindowID;
-  map<uint64_t, OutputWindow> m_OutputWindows;
+  std::map<uint64_t, OutputWindow> m_OutputWindows;
 
   bool m_Proxy;
 
   void CacheTexture(ResourceId id);
 
-  map<ResourceId, TextureDescription> m_CachedTextures;
+  std::map<ResourceId, TextureDescription> m_CachedTextures;
 
   WrappedOpenGL *m_pDriver;
 
@@ -442,16 +450,16 @@ private:
   // AMD counter instance
   AMDCounters *m_pAMDCounters = NULL;
 
-  void FillTimersAMD(uint32_t *eventStartID, uint32_t *sampleIndex, vector<uint32_t> *eventIDs,
+  void FillTimersAMD(uint32_t *eventStartID, uint32_t *sampleIndex, std::vector<uint32_t> *eventIDs,
                      const DrawcallDescription &drawnode);
 
-  vector<CounterResult> FetchCountersAMD(const vector<GPUCounter> &counters);
+  std::vector<CounterResult> FetchCountersAMD(const std::vector<GPUCounter> &counters);
 
   // Intel counter instance
   IntelGlCounters *m_pIntelCounters = NULL;
 
-  void FillTimersIntel(uint32_t *eventStartID, uint32_t *sampleIndex, vector<uint32_t> *eventIDs,
-                       const DrawcallDescription &drawnode);
+  void FillTimersIntel(uint32_t *eventStartID, uint32_t *sampleIndex,
+                       std::vector<uint32_t> *eventIDs, const DrawcallDescription &drawnode);
 
-  vector<CounterResult> FetchCountersIntel(const vector<GPUCounter> &counters);
+  std::vector<CounterResult> FetchCountersIntel(const std::vector<GPUCounter> &counters);
 };

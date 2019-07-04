@@ -33,9 +33,6 @@
 #include "d3d11_manager.h"
 #include "d3d11_video.h"
 
-using std::map;
-using std::list;
-
 struct MapIntercept
 {
   MapIntercept()
@@ -121,11 +118,11 @@ private:
     }
   };
 
-  set<ResourceId> m_DeferredDirty;
-  set<ResourceId> m_DeferredReferences;
+  std::set<ResourceId> m_DeferredDirty;
+  std::set<ResourceId> m_DeferredReferences;
 
-  set<ResourceId> m_HighTrafficResources;
-  map<MappedResource, MapIntercept> m_OpenMaps;
+  std::set<ResourceId> m_HighTrafficResources;
+  std::map<MappedResource, MapIntercept> m_OpenMaps;
 
   struct StreamOutData
   {
@@ -135,9 +132,9 @@ private:
     uint64_t numPrims;
   };
 
-  map<ResourceId, StreamOutData> m_StreamOutCounters;
+  std::map<ResourceId, StreamOutData> m_StreamOutCounters;
 
-  map<ResourceId, vector<EventUsage> > m_ResourceUses;
+  std::map<ResourceId, std::vector<EventUsage> > m_ResourceUses;
 
   WrappedID3D11Device *m_pDevice;
   ID3D11DeviceContext *m_pRealContext;
@@ -159,9 +156,7 @@ private:
 
   StreamReader *m_FrameReader = NULL;
 
-  map<ResourceId, int> m_MapResourceRecordAllocs;
-
-  set<ResourceId> m_MissingTracks;
+  std::map<ResourceId, size_t> m_MapResourceRecordAllocs;
 
   ResourceId m_ResourceID;
   D3D11ResourceRecord *m_ContextRecord;
@@ -190,7 +185,7 @@ private:
 
   D3D11RenderState *m_DeferredSavedState;
 
-  vector<APIEvent> m_CurEvents, m_Events;
+  std::vector<APIEvent> m_CurEvents, m_Events;
   bool m_AddedDrawcall;
 
   bool HasNonMarkerEvents();
@@ -209,7 +204,7 @@ private:
     uint32_t m_Col;
     std::wstring m_Name;
   };
-  vector<Annotation> m_AnnotationQueue;
+  std::vector<Annotation> m_AnnotationQueue;
   Threading::CriticalSection m_AnnotLock;
 
   SDFile *m_StructuredFile = NULL;
@@ -221,9 +216,9 @@ private:
   ReplayStatus m_FailedReplayStatus = ReplayStatus::APIReplayFailed;
 
   DrawcallDescription m_ParentDrawcall;
-  map<ResourceId, DrawcallDescription> m_CmdLists;
+  std::map<ResourceId, DrawcallDescription> m_CmdLists;
 
-  list<DrawcallDescription *> m_DrawcallStack;
+  std::list<DrawcallDescription *> m_DrawcallStack;
 
   D3D11ResourceManager *GetResourceManager();
   static std::string GetChunkName(uint32_t idx);
@@ -321,11 +316,11 @@ public:
   void SetFrameReader(StreamReader *reader) { m_FrameReader = reader; }
   void MarkResourceReferenced(ResourceId id, FrameRefType refType);
 
-  vector<EventUsage> GetUsage(ResourceId id) { return m_ResourceUses[id]; }
+  std::vector<EventUsage> GetUsage(ResourceId id) { return m_ResourceUses[id]; }
   void ClearMaps();
 
   uint32_t GetEventID() { return m_CurEventID; }
-  const APIEvent &GetEvent(uint32_t eventId);
+  const APIEvent &GetEvent(uint32_t eventId) const;
 
   const DrawcallDescription &GetRootDraw() { return m_ParentDrawcall; }
   void ThreadSafe_SetMarker(uint32_t col, const wchar_t *name);

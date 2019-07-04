@@ -30,16 +30,6 @@
 #include "d3d12_manager.h"
 #include "d3d12_resources.h"
 
-bool D3D12ResourceManager::Force_InitialState(ID3D12DeviceChild *res, bool prepare)
-{
-  return false;
-}
-
-bool D3D12ResourceManager::Need_InitialStateChunk(ID3D12DeviceChild *res)
-{
-  return true;
-}
-
 bool D3D12ResourceManager::Prepare_InitialState(ID3D12DeviceChild *res)
 {
   ResourceId id = GetResID(res);
@@ -73,10 +63,31 @@ bool D3D12ResourceManager::Prepare_InitialState(ID3D12DeviceChild *res)
       D3D12_HEAP_PROPERTIES heapProps;
       r->GetHeapProperties(&heapProps, NULL);
 
+      HRESULT hr = S_OK;
+
       if(heapProps.Type == D3D12_HEAP_TYPE_READBACK)
       {
-        // already on readback heap, just mark that we can map it directly and continue
-        SetInitialContents(GetResID(r), D3D12InitialContents(D3D12InitialContents::MapDirect));
+        // readback resources can't be copied by the GPU but are always immediately CPU readable, so
+        // copy to a buffer now
+        size_t size = size_t(desc.Width);
+        byte *buffer = AllocAlignedBuffer(RDCMAX(desc.Width, 64ULL));
+
+        byte *bufData = NULL;
+        hr = r->GetReal()->Map(0, NULL, (void **)&bufData);
+
+        if(SUCCEEDED(hr))
+        {
+          memcpy(buffer, bufData, size);
+
+          D3D12_RANGE range = {};
+          r->GetReal()->Unmap(0, &range);
+        }
+        else
+        {
+          RDCERR("Couldn't map directly readback buffer: HRESULT: %s", ToStr(hr).c_str());
+        }
+
+        SetInitialContents(GetResID(r), D3D12InitialContents(buffer, size));
         return true;
       }
 
@@ -89,14 +100,15 @@ bool D3D12ResourceManager::Prepare_InitialState(ID3D12DeviceChild *res)
       desc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
       ID3D12Resource *copyDst = NULL;
-      HRESULT hr = m_Device->GetReal()->CreateCommittedResource(
-          &heapProps, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COPY_DEST, NULL,
-          __uuidof(ID3D12Resource), (void **)&copyDst);
+      hr = m_Device->GetReal()->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc,
+                                                        D3D12_RESOURCE_STATE_COPY_DEST, NULL,
+                                                        __uuidof(ID3D12Resource), (void **)&copyDst);
 
       if(nonresident)
         m_Device->MakeResident(1, &pageable);
 
-      const vector<D3D12_RESOURCE_STATES> &states = m_Device->GetSubresourceStates(GetResID(res));
+      const std::vector<D3D12_RESOURCE_STATES> &states =
+          m_Device->GetSubresourceStates(GetResID(res));
       RDCASSERT(states.size() == 1);
 
       D3D12_RESOURCE_BARRIER barrier;
@@ -145,6 +157,14 @@ bool D3D12ResourceManager::Prepare_InitialState(ID3D12DeviceChild *res)
 
         m_Device->Evict(1, &pageable);
       }
+      else
+      {
+#if ENABLED(SINGLE_FLUSH_VALIDATE)
+        m_Device->CloseInitialStateList();
+        m_Device->ExecuteLists(NULL, true);
+        m_Device->FlushLists(true);
+#endif
+      }
 
       SetInitialContents(GetResID(r), D3D12InitialContents(copyDst));
       return true;
@@ -192,10 +212,11 @@ bool D3D12ResourceManager::Prepare_InitialState(ID3D12DeviceChild *res)
 
       ID3D12GraphicsCommandList *list = Unwrap(m_Device->GetInitialStateList());
 
-      vector<D3D12_RESOURCE_BARRIER> barriers;
+      std::vector<D3D12_RESOURCE_BARRIER> barriers;
 
       {
-        const vector<D3D12_RESOURCE_STATES> &states = m_Device->GetSubresourceStates(GetResID(r));
+        const std::vector<D3D12_RESOURCE_STATES> &states =
+            m_Device->GetSubresourceStates(GetResID(r));
 
         barriers.reserve(states.size());
 
@@ -331,6 +352,14 @@ bool D3D12ResourceManager::Prepare_InitialState(ID3D12DeviceChild *res)
         if(nonresident)
           m_Device->Evict(1, &pageable);
       }
+      else
+      {
+#if ENABLED(SINGLE_FLUSH_VALIDATE)
+        m_Device->CloseInitialStateList();
+        m_Device->ExecuteLists(NULL, true);
+        m_Device->FlushLists(true);
+#endif
+      }
 
       SAFE_RELEASE(arrayTexture);
       SAFE_DELETE_ARRAY(layouts);
@@ -347,70 +376,55 @@ bool D3D12ResourceManager::Prepare_InitialState(ID3D12DeviceChild *res)
   return false;
 }
 
-uint32_t D3D12ResourceManager::GetSize_InitialState(ResourceId id, ID3D12DeviceChild *res)
+uint64_t D3D12ResourceManager::GetSize_InitialState(ResourceId id, const D3D12InitialContents &data)
 {
-  D3D12ResourceRecord *record = GetResourceRecord(id);
-  D3D12InitialContents initContents = GetInitialContents(id);
-
-  if(record->type == Resource_DescriptorHeap)
+  if(data.resourceType == Resource_DescriptorHeap)
   {
     // the initial contents are just the descriptors. Estimate the serialise size here
-    const uint32_t descriptorSerSize = 40 + sizeof(D3D12_SAMPLER_DESC);
+    const uint64_t descriptorSerSize = 40 + sizeof(D3D12_SAMPLER_DESC);
 
     // add a little extra room for fixed overhead
-    return 64 + initContents.numDescriptors * descriptorSerSize;
+    return 64 + data.numDescriptors * descriptorSerSize;
   }
-  else if(record->type == Resource_Resource)
+  else if(data.resourceType == Resource_Resource)
   {
-    ID3D12Resource *buf = (ID3D12Resource *)initContents.resource;
+    ID3D12Resource *buf = (ID3D12Resource *)data.resource;
 
-    if(initContents.tag == D3D12InitialContents::MapDirect)
-    {
-      buf = (ID3D12Resource *)res;
-    }
+    // readback heaps have already been copied to a buffer, so use that length
+    if(data.tag == D3D12InitialContents::MapDirect)
+      return WriteSerialiser::GetChunkAlignment() + 16 + uint64_t(data.dataSize);
 
-    return (uint32_t)WriteSerialiser::GetChunkAlignment() + 16 +
-           uint32_t(buf ? buf->GetDesc().Width : 0);
+    return WriteSerialiser::GetChunkAlignment() + 16 + uint64_t(buf ? buf->GetDesc().Width : 0);
   }
   else
   {
-    RDCERR("Unexpected type needing an initial state serialised: %d", record->type);
+    RDCERR("Unexpected type needing an initial state serialised: %d", data.resourceType);
   }
 
   return 16;
 }
 
 template <typename SerialiserType>
-bool D3D12ResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId resid,
-                                                  ID3D12DeviceChild *liveRes)
+bool D3D12ResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId id,
+                                                  D3D12ResourceRecord *record,
+                                                  const D3D12InitialContents *initial)
 {
   m_State = m_Device->GetState();
 
-  D3D12ResourceRecord *record = NULL;
-  D3D12InitialContents initContents;
-  if(ser.IsWriting())
-  {
-    record = GetResourceRecord(resid);
-    initContents = GetInitialContents(resid);
-  }
-
   bool ret = true;
 
-  SERIALISE_ELEMENT_LOCAL(id, resid).TypedAs("ID3D12DeviceChild *");
+  SERIALISE_ELEMENT(id).TypedAs("ID3D12DeviceChild *"_lit);
   SERIALISE_ELEMENT_LOCAL(type, record->type);
 
   if(IsReplayingAndReading())
   {
-    liveRes = GetLiveResource(id);
-    RDCASSERT(liveRes);
-
     m_Device->AddResourceCurChunk(id);
   }
 
   if(type == Resource_DescriptorHeap)
   {
-    D3D12Descriptor *Descriptors = initContents.descriptors;
-    uint32_t numElems = initContents.numDescriptors;
+    D3D12Descriptor *Descriptors = initial ? initial->descriptors : NULL;
+    uint32_t numElems = initial ? initial->numDescriptors : 0;
 
     SERIALISE_ELEMENT_ARRAY(Descriptors, numElems);
     SERIALISE_ELEMENT(numElems);
@@ -419,7 +433,7 @@ bool D3D12ResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceI
 
     if(IsReplayingAndReading())
     {
-      WrappedID3D12DescriptorHeap *heap = (WrappedID3D12DescriptorHeap *)liveRes;
+      WrappedID3D12DescriptorHeap *heap = (WrappedID3D12DescriptorHeap *)GetLiveResource(id);
 
       D3D12_DESCRIPTOR_HEAP_DESC desc = heap->GetDesc();
 
@@ -466,19 +480,30 @@ bool D3D12ResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceI
     byte *dummy = NULL;
     ID3D12Resource *mappedBuffer = NULL;
 
+    ID3D12Resource *liveRes = NULL;
+
+    if(IsReplayingAndReading())
+    {
+      liveRes = (ID3D12Resource *)GetLiveResource(id);
+    }
+
     if(ser.IsWriting())
     {
       m_Device->ExecuteLists(NULL, true);
       m_Device->FlushLists();
 
-      mappedBuffer = (ID3D12Resource *)initContents.resource;
+      RDCASSERT(initial);
 
-      if(initContents.tag == D3D12InitialContents::MapDirect)
+      mappedBuffer = (ID3D12Resource *)initial->resource;
+
+      if(initial->tag == D3D12InitialContents::MapDirect)
       {
-        mappedBuffer = (ID3D12Resource *)liveRes;
+        // this was a readback heap, so we did the readback in Prepare already to a buffer
+        ResourceContents = initial->srcData;
+        ContentsLength = uint64_t(initial->dataSize);
+        mappedBuffer = NULL;
       }
-
-      if(mappedBuffer)
+      else if(mappedBuffer)
       {
         HRESULT hr = mappedBuffer->Map(0, NULL, (void **)&ResourceContents);
         ContentsLength = mappedBuffer->GetDesc().Width;
@@ -501,27 +526,25 @@ bool D3D12ResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceI
     // only map on replay if we haven't encountered any errors so far
     if(IsReplayingAndReading() && !ser.IsErrored())
     {
-      D3D12_RESOURCE_DESC resDesc = ((ID3D12Resource *)liveRes)->GetDesc();
+      D3D12_RESOURCE_DESC resDesc = liveRes->GetDesc();
 
       D3D12_HEAP_PROPERTIES heapProps = {};
-      ((ID3D12Resource *)liveRes)->GetHeapProperties(&heapProps, NULL);
+      liveRes->GetHeapProperties(&heapProps, NULL);
 
       if(heapProps.Type == D3D12_HEAP_TYPE_UPLOAD)
       {
         // if destination is on the upload heap, it's impossible to copy via the device,
         // so we have to CPU copy. To save time and make a more optimal copy, we just keep the data
         // CPU-side
-        initContents.tag = D3D12InitialContents::Copy;
-
         mappedBuffer = NULL;
+
+        D3D12InitialContents initContents(D3D12InitialContents::Copy, type);
         ResourceContents = initContents.srcData = AllocAlignedBuffer(RDCMAX(ContentsLength, 64ULL));
         initContents.resourceType = Resource_Resource;
         SetInitialContents(id, initContents);
       }
       else
       {
-        initContents.tag = D3D12InitialContents::Copy;
-
         // create an upload buffer to contain the contents
         heapProps.Type = D3D12_HEAP_TYPE_UPLOAD;
         heapProps.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
@@ -579,7 +602,7 @@ bool D3D12ResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceI
 
     // not using SERIALISE_ELEMENT_ARRAY so we can deliberately avoid allocation - we serialise
     // directly into upload memory
-    ser.Serialise("ResourceContents", ResourceContents, ContentsLength, SerialiserFlags::NoFlags);
+    ser.Serialise("ResourceContents"_lit, ResourceContents, ContentsLength, SerialiserFlags::NoFlags);
 
     if(mappedBuffer)
       mappedBuffer->Unmap(0, NULL);
@@ -590,10 +613,11 @@ bool D3D12ResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceI
 
     if(IsReplayingAndReading() && mappedBuffer)
     {
+      D3D12InitialContents initContents(D3D12InitialContents::Copy, type);
       initContents.resourceType = Resource_Resource;
       initContents.resource = mappedBuffer;
 
-      D3D12_RESOURCE_DESC resDesc = ((ID3D12Resource *)liveRes)->GetDesc();
+      D3D12_RESOURCE_DESC resDesc = liveRes->GetDesc();
 
       // for MSAA textures we upload to an MSAA texture here so we're ready to copy the image in
       // Apply_InitState
@@ -608,7 +632,7 @@ bool D3D12ResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceI
         else
         {
           D3D12_HEAP_PROPERTIES heapProps = {};
-          ((ID3D12Resource *)liveRes)->GetHeapProperties(&heapProps, NULL);
+          liveRes->GetHeapProperties(&heapProps, NULL);
 
           ID3D12GraphicsCommandList *list = Unwrap(m_Device->GetInitialStateList());
 
@@ -746,10 +770,12 @@ bool D3D12ResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceI
   return ret;
 }
 
-template bool D3D12ResourceManager::Serialise_InitialState(ReadSerialiser &ser, ResourceId resid,
-                                                           ID3D12DeviceChild *liveRes);
-template bool D3D12ResourceManager::Serialise_InitialState(WriteSerialiser &ser, ResourceId resid,
-                                                           ID3D12DeviceChild *liveRes);
+template bool D3D12ResourceManager::Serialise_InitialState(ReadSerialiser &ser, ResourceId id,
+                                                           D3D12ResourceRecord *record,
+                                                           const D3D12InitialContents *initial);
+template bool D3D12ResourceManager::Serialise_InitialState(WriteSerialiser &ser, ResourceId id,
+                                                           D3D12ResourceRecord *record,
+                                                           const D3D12InitialContents *initial);
 
 void D3D12ResourceManager::Create_InitialState(ResourceId id, ID3D12DeviceChild *live, bool hasData)
 {
@@ -773,7 +799,8 @@ void D3D12ResourceManager::Create_InitialState(ResourceId id, ID3D12DeviceChild 
   }
 }
 
-void D3D12ResourceManager::Apply_InitialState(ID3D12DeviceChild *live, D3D12InitialContents data)
+void D3D12ResourceManager::Apply_InitialState(ID3D12DeviceChild *live,
+                                              const D3D12InitialContents &data)
 {
   D3D12ResourceType type = (D3D12ResourceType)data.resourceType;
 
@@ -900,9 +927,10 @@ void D3D12ResourceManager::Apply_InitialState(ID3D12DeviceChild *live, D3D12Init
 
         ID3D12GraphicsCommandList *list = Unwrap(m_Device->GetInitialStateList());
 
-        vector<D3D12_RESOURCE_BARRIER> barriers;
+        std::vector<D3D12_RESOURCE_BARRIER> barriers;
 
-        const vector<D3D12_RESOURCE_STATES> &states = m_Device->GetSubresourceStates(GetResID(live));
+        const std::vector<D3D12_RESOURCE_STATES> &states =
+            m_Device->GetSubresourceStates(GetResID(live));
 
         barriers.reserve(states.size());
 

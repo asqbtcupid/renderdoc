@@ -1,4 +1,4 @@
-set(sources renderdoccmd.cpp ${CMAKE_SOURCE_DIR}/renderdoc/api/replay/version.cpp)
+set(sources renderdoccmd.cpp)
 set(includes PRIVATE ${CMAKE_SOURCE_DIR}/renderdoc/api)
 set(libraries PRIVATE renderdoc)
 
@@ -67,7 +67,7 @@ if(ANDROID)
     set(SAVE_JAVA_HOME $ENV{JAVA_HOME})
 
     set(ENV{JAVA_HOME} "")
-    find_package(Java)
+    find_package(Java REQUIRED)
     set(ENV{JAVA_HOME} ${SAVE_JAVA_HOME})
 
     if(${Java_VERSION} VERSION_LESS 1.8)

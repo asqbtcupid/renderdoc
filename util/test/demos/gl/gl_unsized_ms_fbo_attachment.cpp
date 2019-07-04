@@ -24,7 +24,7 @@
 
 #include "gl_test.h"
 
-struct Unsized_MS_FBO_Attachment : OpenGLGraphicsTest
+TEST(GL_Unsized_MS_FBO_Attachment, OpenGLGraphicsTest)
 {
   static constexpr const char *Description =
       "Creates a MS FBO with one attachment created with an unsized internal format";
@@ -73,10 +73,10 @@ void main()
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create context, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     GLuint vao = MakeVAO();
@@ -161,4 +161,4 @@ void main()
   }
 };
 
-REGISTER_TEST(Unsized_MS_FBO_Attachment);
+REGISTER_TEST();

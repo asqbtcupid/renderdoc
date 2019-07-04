@@ -79,7 +79,7 @@ static uint32_t GetNumCaptures()
 
 static uint32_t GetCapture(uint32_t idx, char *filename, uint32_t *pathlength, uint64_t *timestamp)
 {
-  vector<CaptureData> caps = RenderDoc::Inst().GetCaptures();
+  std::vector<CaptureData> caps = RenderDoc::Inst().GetCaptures();
 
   if(idx >= (uint32_t)caps.size())
   {
@@ -109,7 +109,7 @@ static void SetCaptureFileComments(const char *filePath, const char *comments)
   std::string path;
   if(filePath == NULL || filePath[0] == 0)
   {
-    vector<CaptureData> caps = RenderDoc::Inst().GetCaptures();
+    std::vector<CaptureData> caps = RenderDoc::Inst().GetCaptures();
     if(caps.empty())
     {
       RDCERR(
@@ -194,12 +194,12 @@ static uint32_t IsTargetControlConnected()
 
 static uint32_t LaunchReplayUI(uint32_t connectTargetControl, const char *cmdline)
 {
-  string replayapp = FileIO::GetReplayAppFilename();
+  std::string replayapp = FileIO::GetReplayAppFilename();
 
   if(replayapp.empty())
     return 0;
 
-  string cmd = cmdline ? cmdline : "";
+  std::string cmd = cmdline ? cmdline : "";
   if(connectTargetControl)
     cmd += StringFormat::Fmt(" --targetcontrol localhost:%u",
                              RenderDoc::Inst().GetTargetControlIdent());
@@ -312,7 +312,7 @@ extern "C" RENDERDOC_API int RENDERDOC_CC RENDERDOC_GetAPI(RENDERDOC_Version ver
   int ret = 0;
   int major = 0, minor = 0, patch = 0;
 
-  string supportedVersions = "";
+  std::string supportedVersions = "";
 
 #define API_VERSION_HANDLE(enumver, actualver)                     \
   supportedVersions += " " STRINGIZE(CONCAT(API_, enumver));       \

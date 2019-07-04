@@ -24,7 +24,7 @@
 
 #include "d3d11_test.h"
 
-struct Simple_Dispatch : D3D11GraphicsTest
+TEST(D3D11_Simple_Dispatch, D3D11GraphicsTest)
 {
   static constexpr const char *Description =
       "Test that just does a dispatch and some copies, for checking basic compute stuff";
@@ -46,10 +46,10 @@ void main()
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create device, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     ID3D11ComputeShaderPtr cs = CreateCS(Compile(compute, "main", "cs_5_0"));
@@ -98,4 +98,4 @@ void main()
   }
 };
 
-REGISTER_TEST(Simple_Dispatch);
+REGISTER_TEST();

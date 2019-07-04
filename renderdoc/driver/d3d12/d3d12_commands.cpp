@@ -391,13 +391,14 @@ std::string WrappedID3D12CommandQueue::GetChunkName(uint32_t idx)
 
 const APIEvent &WrappedID3D12CommandQueue::GetEvent(uint32_t eventId)
 {
-  for(const APIEvent &e : m_Cmd.m_Events)
-  {
-    if(e.eventId >= eventId)
-      return e;
-  }
+  // start at where the requested eventId would be
+  size_t idx = eventId;
 
-  return m_Cmd.m_Events.back();
+  // find the next valid event (some may be skipped)
+  while(idx < m_Cmd.m_Events.size() - 1 && m_Cmd.m_Events[idx].eventId == 0)
+    idx++;
+
+  return m_Cmd.m_Events[RDCMIN(idx, m_Cmd.m_Events.size() - 1)];
 }
 
 bool WrappedID3D12CommandQueue::ProcessChunk(ReadSerialiser &ser, D3D12Chunk chunk)
@@ -634,7 +635,7 @@ bool WrappedID3D12CommandQueue::ProcessChunk(ReadSerialiser &ser, D3D12Chunk chu
 
       if(system == SystemChunk::CaptureEnd)
       {
-        SERIALISE_ELEMENT_LOCAL(PresentedImage, ResourceId()).TypedAs("ID3D12Resource *");
+        SERIALISE_ELEMENT_LOCAL(PresentedImage, ResourceId()).TypedAs("ID3D12Resource *"_lit);
 
         SERIALISE_CHECK_READ_ERRORS();
 
@@ -840,11 +841,6 @@ ReplayStatus WrappedID3D12CommandQueue::ReplayLog(CaptureState readType, uint32_
     ser.GetStructuredFile().Swap(m_pDevice->GetStructuredFile());
 
   m_StructuredFile = NULL;
-
-  if(IsLoading(m_State))
-  {
-    std::sort(m_Cmd.m_Events.begin(), m_Cmd.m_Events.end());
-  }
 
   for(size_t i = 0; i < m_Cmd.m_RerecordCmdList.size(); i++)
     SAFE_RELEASE(m_Cmd.m_RerecordCmdList[i]);
@@ -1392,7 +1388,8 @@ void D3D12CommandData::AddEvent()
   else
   {
     m_RootEvents.push_back(apievent);
-    m_Events.push_back(apievent);
+    m_Events.resize(apievent.eventId + 1);
+    m_Events[apievent.eventId] = apievent;
 
     for(auto it = m_EventMessages.begin(); it != m_EventMessages.end(); ++it)
       m_pDevice->AddDebugMessage(*it);
@@ -1407,7 +1404,7 @@ void D3D12CommandData::AddUsage(D3D12DrawcallTreeNode &drawNode, ResourceId id, 
   if(id == ResourceId())
     return;
 
-  drawNode.resourceUsage.push_back(std::make_pair(id, EventUsage(EID, usage)));
+  drawNode.resourceUsage.push_back(make_rdcpair(id, EventUsage(EID, usage)));
 }
 
 void D3D12CommandData::AddUsage(const D3D12RenderState &state, D3D12DrawcallTreeNode &drawNode)
@@ -1434,38 +1431,38 @@ void D3D12CommandData::AddUsage(const D3D12RenderState &state, D3D12DrawcallTree
 
     if(d.flags & DrawFlags::Indexed && state.ibuffer.buf != ResourceId())
       drawNode.resourceUsage.push_back(
-          std::make_pair(state.ibuffer.buf, EventUsage(e, ResourceUsage::IndexBuffer)));
+          make_rdcpair(state.ibuffer.buf, EventUsage(e, ResourceUsage::IndexBuffer)));
 
     for(size_t i = 0; i < state.vbuffers.size(); i++)
     {
       if(state.vbuffers[i].buf != ResourceId())
         drawNode.resourceUsage.push_back(
-            std::make_pair(state.vbuffers[i].buf, EventUsage(e, ResourceUsage::VertexBuffer)));
+            make_rdcpair(state.vbuffers[i].buf, EventUsage(e, ResourceUsage::VertexBuffer)));
     }
 
     for(size_t i = 0; i < state.streamouts.size(); i++)
     {
       if(state.streamouts[i].buf != ResourceId())
         drawNode.resourceUsage.push_back(
-            std::make_pair(state.streamouts[i].buf, EventUsage(e, ResourceUsage::StreamOut)));
+            make_rdcpair(state.streamouts[i].buf, EventUsage(e, ResourceUsage::StreamOut)));
       if(state.streamouts[i].countbuf != ResourceId())
         drawNode.resourceUsage.push_back(
-            std::make_pair(state.streamouts[i].countbuf, EventUsage(e, ResourceUsage::StreamOut)));
+            make_rdcpair(state.streamouts[i].countbuf, EventUsage(e, ResourceUsage::StreamOut)));
     }
 
-    vector<ResourceId> rts = state.GetRTVIDs();
+    std::vector<ResourceId> rts = state.GetRTVIDs();
 
     for(size_t i = 0; i < rts.size(); i++)
     {
       if(rts[i] != ResourceId())
         drawNode.resourceUsage.push_back(
-            std::make_pair(rts[i], EventUsage(e, ResourceUsage::ColorTarget)));
+            make_rdcpair(rts[i], EventUsage(e, ResourceUsage::ColorTarget)));
     }
 
     ResourceId id = state.GetDSVID();
     if(id != ResourceId())
       drawNode.resourceUsage.push_back(
-          std::make_pair(id, EventUsage(e, ResourceUsage::DepthStencilTarget)));
+          make_rdcpair(id, EventUsage(e, ResourceUsage::DepthStencilTarget)));
   }
 
   if(rootdata)
@@ -1619,7 +1616,7 @@ void D3D12CommandData::AddDrawcall(const DrawcallDescription &d, bool hasEvents,
     draw.topology = MakePrimitiveTopology(m_BakedCmdListInfo[m_LastCmdListID].state.topo);
     draw.indexByteWidth = m_BakedCmdListInfo[m_LastCmdListID].state.ibuffer.bytewidth;
 
-    vector<ResourceId> rts = m_BakedCmdListInfo[m_LastCmdListID].state.GetRTVIDs();
+    std::vector<ResourceId> rts = m_BakedCmdListInfo[m_LastCmdListID].state.GetRTVIDs();
 
     for(size_t i = 0; i < ARRAY_COUNT(draw.outputs); i++)
     {
@@ -1645,9 +1642,9 @@ void D3D12CommandData::AddDrawcall(const DrawcallDescription &d, bool hasEvents,
 
   if(hasEvents)
   {
-    vector<APIEvent> &srcEvents = m_LastCmdListID != ResourceId()
-                                      ? m_BakedCmdListInfo[m_LastCmdListID].curEvents
-                                      : m_RootEvents;
+    std::vector<APIEvent> &srcEvents = m_LastCmdListID != ResourceId()
+                                           ? m_BakedCmdListInfo[m_LastCmdListID].curEvents
+                                           : m_RootEvents;
 
     draw.events = srcEvents;
     srcEvents.clear();
@@ -1672,7 +1669,7 @@ void D3D12CommandData::AddDrawcall(const DrawcallDescription &d, bool hasEvents,
 }
 
 void D3D12CommandData::InsertDrawsAndRefreshIDs(ResourceId cmd,
-                                                vector<D3D12DrawcallTreeNode> &cmdBufNodes)
+                                                std::vector<D3D12DrawcallTreeNode> &cmdBufNodes)
 {
   // assign new drawcall IDs
   for(size_t i = 0; i < cmdBufNodes.size(); i++)
@@ -1694,7 +1691,8 @@ void D3D12CommandData::InsertDrawsAndRefreshIDs(ResourceId cmd,
     for(APIEvent &ev : n.draw.events)
     {
       ev.eventId += m_RootEventID;
-      m_Events.push_back(ev);
+      m_Events.resize(ev.eventId + 1);
+      m_Events[ev.eventId] = ev;
     }
 
     DrawcallUse use(m_Events.back().fileOffset, n.draw.eventId, cmd, cmdBufNodes[i].draw.eventId);

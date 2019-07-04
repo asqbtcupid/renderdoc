@@ -45,7 +45,7 @@
 
 // this one is done by hand as we format it
 template <>
-std::string DoStringise(const ResourceId &el)
+rdcstr DoStringise(const ResourceId &el)
 {
   RDCCOMPILE_ASSERT(sizeof(el) == sizeof(uint64_t), "ResourceId is no longer 1:1 with uint64_t");
 
@@ -102,7 +102,7 @@ INSTANTIATE_SERIALISE_TYPE(ResourceId);
 ReplayStatus IMG_CreateReplayDevice(RDCFile *rdc, IReplayDriver **driver);
 
 template <>
-std::string DoStringise(const RDCDriver &el)
+rdcstr DoStringise(const RDCDriver &el)
 {
   BEGIN_ENUM_STRINGISE(RDCDriver);
   {
@@ -122,7 +122,7 @@ std::string DoStringise(const RDCDriver &el)
 }
 
 template <>
-std::string DoStringise(const ReplayLogType &el)
+rdcstr DoStringise(const ReplayLogType &el)
 {
   BEGIN_ENUM_STRINGISE(ReplayLogType);
   {
@@ -134,7 +134,7 @@ std::string DoStringise(const ReplayLogType &el)
 }
 
 template <>
-std::string DoStringise(const VendorExtensions &el)
+rdcstr DoStringise(const VendorExtensions &el)
 {
   BEGIN_ENUM_STRINGISE(VendorExtensions);
   {
@@ -146,7 +146,7 @@ std::string DoStringise(const VendorExtensions &el)
 }
 
 template <>
-std::string DoStringise(const RENDERDOC_InputButton &el)
+rdcstr DoStringise(const RENDERDOC_InputButton &el)
 {
   char alphanumericbuf[2] = {'A', 0};
 
@@ -194,7 +194,7 @@ std::string DoStringise(const RENDERDOC_InputButton &el)
 }
 
 template <>
-std::string DoStringise(const SystemChunk &el)
+rdcstr DoStringise(const SystemChunk &el)
 {
   BEGIN_ENUM_STRINGISE(SystemChunk);
   {
@@ -316,7 +316,7 @@ void RenderDoc::Initialise()
   // set default capture log - useful for when hooks aren't setup
   // through the UI (and a log file isn't set manually)
   {
-    string capture_filename;
+    std::string capture_filename;
 
     const char *base = "RenderDoc_app";
     if(IsReplayApp())
@@ -361,14 +361,14 @@ void RenderDoc::Initialise()
   m_ExHandler = NULL;
 
   {
-    string curFile;
+    std::string curFile;
     FileIO::GetExecutableFilename(curFile);
 
-    string f = strlower(curFile);
+    std::string f = strlower(curFile);
 
     // only create crash handler when we're not in renderdoccmd.exe (to prevent infinite loop as
     // the crash handler itself launches renderdoccmd.exe)
-    if(f.find("renderdoccmd.exe") == string::npos)
+    if(f.find("renderdoccmd.exe") == std::string::npos)
     {
       RecreateCrashHandler();
     }
@@ -584,7 +584,7 @@ bool RenderDoc::IsTargetControlConnected()
   return !RenderDoc::Inst().m_SingleClientName.empty();
 }
 
-string RenderDoc::GetTargetControlUsername()
+std::string RenderDoc::GetTargetControlUsername()
 {
   SCOPED_LOCK(RenderDoc::Inst().m_SingleClientLock);
   return RenderDoc::Inst().m_SingleClientName;
@@ -643,7 +643,7 @@ void RenderDoc::CycleActiveWindow()
   }
 }
 
-string RenderDoc::GetOverlayText(RDCDriver driver, uint32_t frameNumber, int flags)
+std::string RenderDoc::GetOverlayText(RDCDriver driver, uint32_t frameNumber, int flags)
 {
   const bool activeWindow = (flags & eOverlay_ActiveWindow);
   const bool capturesEnabled = (flags & eOverlay_CaptureDisabled) == 0;
@@ -654,7 +654,7 @@ string RenderDoc::GetOverlayText(RDCDriver driver, uint32_t frameNumber, int fla
 
   if(activeWindow)
   {
-    vector<RENDERDOC_InputButton> keys = GetCaptureKeys();
+    std::vector<RENDERDOC_InputButton> keys = GetCaptureKeys();
 
     if(capturesEnabled)
     {
@@ -716,7 +716,7 @@ string RenderDoc::GetOverlayText(RDCDriver driver, uint32_t frameNumber, int fla
   }
   else if(capturesEnabled)
   {
-    vector<RENDERDOC_InputButton> keys = GetFocusKeys();
+    std::vector<RENDERDOC_InputButton> keys = GetFocusKeys();
 
     overlayText += "Inactive window.";
 
@@ -746,7 +746,7 @@ bool RenderDoc::ShouldTriggerCapture(uint32_t frameNumber)
   if(m_Cap > 0)
     m_Cap--;
 
-  set<uint32_t> frames;
+  std::set<uint32_t> frames;
   frames.swap(m_QueuedFrameCaptures);
   for(auto it = frames.begin(); it != frames.end(); ++it)
   {
@@ -931,8 +931,6 @@ RDCFile *RenderDoc::CreateRDC(RDCDriver driver, uint32_t frameNum, const FramePi
     ResamplePixels(fp, outRaw);
     EncodePixelsPNG(outRaw, outPng);
   }
-
-  RDCASSERT(outPng.pixels != NULL);
 
   ret->SetData(driver, ToStr(driver).c_str(), OSUtility::GetMachineIdent(), &outPng);
 
@@ -1222,17 +1220,17 @@ std::map<RDCDriver, bool> RenderDoc::GetActiveDrivers()
   return ret;
 }
 
-map<RDCDriver, string> RenderDoc::GetReplayDrivers()
+std::map<RDCDriver, std::string> RenderDoc::GetReplayDrivers()
 {
-  map<RDCDriver, string> ret;
+  std::map<RDCDriver, std::string> ret;
   for(auto it = m_ReplayDriverProviders.begin(); it != m_ReplayDriverProviders.end(); ++it)
     ret[it->first] = ToStr(it->first);
   return ret;
 }
 
-map<RDCDriver, string> RenderDoc::GetRemoteDrivers()
+std::map<RDCDriver, std::string> RenderDoc::GetRemoteDrivers()
 {
-  map<RDCDriver, string> ret;
+  std::map<RDCDriver, std::string> ret;
 
   for(auto it = m_RemoteDriverProviders.begin(); it != m_RemoteDriverProviders.end(); ++it)
     ret[it->first] = ToStr(it->first);

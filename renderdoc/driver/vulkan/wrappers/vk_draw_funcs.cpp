@@ -599,7 +599,7 @@ bool WrappedVulkan::Serialise_vkCmdDrawIndirect(SerialiserType &ser, VkCommandBu
       m_IndirectBufferSize = RDCMAX(m_IndirectBufferSize, sizeof(VkDrawIndirectCommand) +
                                                               (count > 0 ? count - 1 : 0) * stride);
 
-      string name = "vkCmdDrawIndirect";
+      std::string name = "vkCmdDrawIndirect";
 
       if(!IsDrawInRenderPass())
       {
@@ -626,9 +626,9 @@ bool WrappedVulkan::Serialise_vkCmdDrawIndirect(SerialiserType &ser, VkCommandBu
         {
           StructuredSerialiser structuriser(fakeChunk, ser.GetChunkLookup());
 
-          structuriser.Serialise<uint32_t>("drawIndex", 0U);
-          structuriser.Serialise("offset", offset);
-          structuriser.Serialise("command", VkDrawIndirectCommand());
+          structuriser.Serialise<uint32_t>("drawIndex"_lit, 0U);
+          structuriser.Serialise("offset"_lit, offset);
+          structuriser.Serialise("command"_lit, VkDrawIndirectCommand());
         }
 
         m_StructuredFile->chunks.insert(m_StructuredFile->chunks.size() - 1, fakeChunk);
@@ -646,7 +646,7 @@ bool WrappedVulkan::Serialise_vkCmdDrawIndirect(SerialiserType &ser, VkCommandBu
 
         drawNode.indirectPatch = indirectPatch;
 
-        drawNode.resourceUsage.push_back(std::make_pair(
+        drawNode.resourceUsage.push_back(make_rdcpair(
             GetResID(buffer), EventUsage(drawNode.draw.eventId, ResourceUsage::Indirect)));
 
         return true;
@@ -669,7 +669,7 @@ bool WrappedVulkan::Serialise_vkCmdDrawIndirect(SerialiserType &ser, VkCommandBu
 
       drawNode.indirectPatch = indirectPatch;
 
-      drawNode.resourceUsage.push_back(std::make_pair(
+      drawNode.resourceUsage.push_back(make_rdcpair(
           GetResID(buffer), EventUsage(drawNode.draw.eventId, ResourceUsage::Indirect)));
 
       if(count > 0)
@@ -692,9 +692,9 @@ bool WrappedVulkan::Serialise_vkCmdDrawIndirect(SerialiserType &ser, VkCommandBu
         {
           StructuredSerialiser structuriser(fakeChunk, ser.GetChunkLookup());
 
-          structuriser.Serialise<uint32_t>("drawIndex", 0U);
-          structuriser.Serialise("offset", offset);
-          structuriser.Serialise("command", VkDrawIndirectCommand());
+          structuriser.Serialise<uint32_t>("drawIndex"_lit, 0U);
+          structuriser.Serialise("offset"_lit, offset);
+          structuriser.Serialise("command"_lit, VkDrawIndirectCommand());
         }
 
         m_StructuredFile->chunks.push_back(fakeChunk);
@@ -977,7 +977,7 @@ bool WrappedVulkan::Serialise_vkCmdDrawIndexedIndirect(SerialiserType &ser,
       m_IndirectBufferSize = RDCMAX(m_IndirectBufferSize, sizeof(VkDrawIndexedIndirectCommand) +
                                                               (count > 0 ? count - 1 : 0) * stride);
 
-      string name = "vkCmdDrawIndexedIndirect";
+      std::string name = "vkCmdDrawIndexedIndirect";
 
       if(!IsDrawInRenderPass())
       {
@@ -1004,9 +1004,9 @@ bool WrappedVulkan::Serialise_vkCmdDrawIndexedIndirect(SerialiserType &ser,
         {
           StructuredSerialiser structuriser(fakeChunk, ser.GetChunkLookup());
 
-          structuriser.Serialise<uint32_t>("drawIndex", 0U);
-          structuriser.Serialise("offset", offset);
-          structuriser.Serialise("command", VkDrawIndexedIndirectCommand());
+          structuriser.Serialise<uint32_t>("drawIndex"_lit, 0U);
+          structuriser.Serialise("offset"_lit, offset);
+          structuriser.Serialise("command"_lit, VkDrawIndexedIndirectCommand());
         }
 
         m_StructuredFile->chunks.insert(m_StructuredFile->chunks.size() - 1, fakeChunk);
@@ -1025,7 +1025,7 @@ bool WrappedVulkan::Serialise_vkCmdDrawIndexedIndirect(SerialiserType &ser,
 
         drawNode.indirectPatch = indirectPatch;
 
-        drawNode.resourceUsage.push_back(std::make_pair(
+        drawNode.resourceUsage.push_back(make_rdcpair(
             GetResID(buffer), EventUsage(drawNode.draw.eventId, ResourceUsage::Indirect)));
 
         return true;
@@ -1049,7 +1049,7 @@ bool WrappedVulkan::Serialise_vkCmdDrawIndexedIndirect(SerialiserType &ser,
 
       drawNode.indirectPatch = indirectPatch;
 
-      drawNode.resourceUsage.push_back(std::make_pair(
+      drawNode.resourceUsage.push_back(make_rdcpair(
           GetResID(buffer), EventUsage(drawNode.draw.eventId, ResourceUsage::Indirect)));
 
       if(count > 0)
@@ -1073,9 +1073,9 @@ bool WrappedVulkan::Serialise_vkCmdDrawIndexedIndirect(SerialiserType &ser,
         {
           StructuredSerialiser structuriser(fakeChunk, ser.GetChunkLookup());
 
-          structuriser.Serialise<uint32_t>("drawIndex", 0U);
-          structuriser.Serialise("offset", offset);
-          structuriser.Serialise("command", VkDrawIndexedIndirectCommand());
+          structuriser.Serialise<uint32_t>("drawIndex"_lit, 0U);
+          structuriser.Serialise("offset"_lit, offset);
+          structuriser.Serialise("command"_lit, VkDrawIndexedIndirectCommand());
         }
 
         m_StructuredFile->chunks.push_back(fakeChunk);
@@ -1263,7 +1263,7 @@ bool WrappedVulkan::Serialise_vkCmdDispatchIndirect(SerialiserType &ser,
 
         drawNode.indirectPatch = indirectPatch;
 
-        drawNode.resourceUsage.push_back(std::make_pair(
+        drawNode.resourceUsage.push_back(make_rdcpair(
             GetResID(buffer), EventUsage(drawNode.draw.eventId, ResourceUsage::Indirect)));
       }
     }
@@ -1369,14 +1369,14 @@ bool WrappedVulkan::Serialise_vkCmdBlitImage(SerialiserType &ser, VkCommandBuffe
 
         if(srcImage == destImage)
         {
-          drawNode.resourceUsage.push_back(std::make_pair(
+          drawNode.resourceUsage.push_back(make_rdcpair(
               GetResID(srcImage), EventUsage(drawNode.draw.eventId, ResourceUsage::Resolve)));
         }
         else
         {
-          drawNode.resourceUsage.push_back(std::make_pair(
+          drawNode.resourceUsage.push_back(make_rdcpair(
               GetResID(srcImage), EventUsage(drawNode.draw.eventId, ResourceUsage::ResolveSrc)));
-          drawNode.resourceUsage.push_back(std::make_pair(
+          drawNode.resourceUsage.push_back(make_rdcpair(
               GetResID(destImage), EventUsage(drawNode.draw.eventId, ResourceUsage::ResolveSrc)));
         }
       }
@@ -1411,15 +1411,32 @@ void WrappedVulkan::vkCmdBlitImage(VkCommandBuffer commandBuffer, VkImage srcIma
 
     record->AddChunk(scope.Get());
 
-    record->MarkResourceFrameReferenced(GetResID(srcImage), eFrameRef_Read);
-    record->MarkResourceFrameReferenced(GetRecord(srcImage)->baseResource, eFrameRef_Read);
-    record->MarkResourceFrameReferenced(GetResID(destImage), eFrameRef_PartialWrite);
-    record->MarkResourceFrameReferenced(GetRecord(destImage)->baseResource, eFrameRef_Read);
-    record->cmdInfo->dirtied.insert(GetResID(destImage));
-    if(GetRecord(srcImage)->resInfo)
-      record->cmdInfo->sparse.insert(GetRecord(srcImage)->resInfo);
-    if(GetRecord(destImage)->resInfo)
-      record->cmdInfo->sparse.insert(GetRecord(destImage)->resInfo);
+    for(uint32_t i = 0; i < regionCount; i++)
+    {
+      const VkImageBlit &region = pRegions[i];
+
+      ImageRange srcRange(region.srcSubresource);
+
+      srcRange.offset = {std::min(region.srcOffsets[0].x, region.srcOffsets[1].x),
+                         std::min(region.srcOffsets[0].y, region.srcOffsets[1].y),
+                         std::min(region.srcOffsets[0].z, region.srcOffsets[1].z)};
+      srcRange.extent = {
+          (uint32_t)(std::max(region.srcOffsets[0].x, region.srcOffsets[1].x) - srcRange.offset.x),
+          (uint32_t)(std::max(region.srcOffsets[0].y, region.srcOffsets[1].y) - srcRange.offset.y),
+          (uint32_t)(std::max(region.srcOffsets[0].z, region.srcOffsets[1].z) - srcRange.offset.z)};
+
+      ImageRange dstRange(region.dstSubresource);
+      dstRange.offset = {std::min(region.dstOffsets[0].x, region.dstOffsets[1].x),
+                         std::min(region.dstOffsets[0].y, region.dstOffsets[1].y),
+                         std::min(region.dstOffsets[0].z, region.dstOffsets[1].z)};
+      dstRange.extent = {
+          (uint32_t)(std::max(region.dstOffsets[0].x, region.dstOffsets[1].x) - dstRange.offset.x),
+          (uint32_t)(std::max(region.dstOffsets[0].y, region.dstOffsets[1].y) - dstRange.offset.y),
+          (uint32_t)(std::max(region.dstOffsets[0].z, region.dstOffsets[1].z) - dstRange.offset.z)};
+
+      record->MarkImageFrameReferenced(GetRecord(srcImage), srcRange, eFrameRef_Read);
+      record->MarkImageFrameReferenced(GetRecord(destImage), dstRange, eFrameRef_CompleteWrite);
+    }
   }
 }
 
@@ -1493,14 +1510,14 @@ bool WrappedVulkan::Serialise_vkCmdResolveImage(SerialiserType &ser, VkCommandBu
 
         if(srcImage == destImage)
         {
-          drawNode.resourceUsage.push_back(std::make_pair(
+          drawNode.resourceUsage.push_back(make_rdcpair(
               GetResID(srcImage), EventUsage(drawNode.draw.eventId, ResourceUsage::Resolve)));
         }
         else
         {
-          drawNode.resourceUsage.push_back(std::make_pair(
+          drawNode.resourceUsage.push_back(make_rdcpair(
               GetResID(srcImage), EventUsage(drawNode.draw.eventId, ResourceUsage::ResolveSrc)));
-          drawNode.resourceUsage.push_back(std::make_pair(
+          drawNode.resourceUsage.push_back(make_rdcpair(
               GetResID(destImage), EventUsage(drawNode.draw.eventId, ResourceUsage::ResolveDst)));
         }
       }
@@ -1535,15 +1552,21 @@ void WrappedVulkan::vkCmdResolveImage(VkCommandBuffer commandBuffer, VkImage src
 
     record->AddChunk(scope.Get());
 
-    record->MarkResourceFrameReferenced(GetResID(srcImage), eFrameRef_Read);
-    record->MarkResourceFrameReferenced(GetRecord(srcImage)->baseResource, eFrameRef_Read);
-    record->MarkResourceFrameReferenced(GetResID(destImage), eFrameRef_PartialWrite);
-    record->MarkResourceFrameReferenced(GetRecord(destImage)->baseResource, eFrameRef_Read);
-    record->cmdInfo->dirtied.insert(GetResID(destImage));
-    if(GetRecord(srcImage)->resInfo)
-      record->cmdInfo->sparse.insert(GetRecord(srcImage)->resInfo);
-    if(GetRecord(destImage)->resInfo)
-      record->cmdInfo->sparse.insert(GetRecord(destImage)->resInfo);
+    for(uint32_t i = 0; i < regionCount; i++)
+    {
+      const VkImageResolve &region = pRegions[i];
+
+      ImageRange srcRange(region.srcSubresource);
+      srcRange.offset = region.srcOffset;
+      srcRange.extent = region.extent;
+
+      ImageRange dstRange(region.dstSubresource);
+      dstRange.offset = region.dstOffset;
+      dstRange.extent = region.extent;
+
+      record->MarkImageFrameReferenced(GetRecord(srcImage), srcRange, eFrameRef_Read);
+      record->MarkImageFrameReferenced(GetRecord(destImage), dstRange, eFrameRef_CompleteWrite);
+    }
   }
 }
 
@@ -1617,14 +1640,14 @@ bool WrappedVulkan::Serialise_vkCmdCopyImage(SerialiserType &ser, VkCommandBuffe
 
         if(srcImage == destImage)
         {
-          drawNode.resourceUsage.push_back(std::make_pair(
+          drawNode.resourceUsage.push_back(make_rdcpair(
               GetResID(srcImage), EventUsage(drawNode.draw.eventId, ResourceUsage::Copy)));
         }
         else
         {
-          drawNode.resourceUsage.push_back(std::make_pair(
+          drawNode.resourceUsage.push_back(make_rdcpair(
               GetResID(srcImage), EventUsage(drawNode.draw.eventId, ResourceUsage::CopySrc)));
-          drawNode.resourceUsage.push_back(std::make_pair(
+          drawNode.resourceUsage.push_back(make_rdcpair(
               GetResID(destImage), EventUsage(drawNode.draw.eventId, ResourceUsage::CopyDst)));
         }
       }
@@ -1657,15 +1680,21 @@ void WrappedVulkan::vkCmdCopyImage(VkCommandBuffer commandBuffer, VkImage srcIma
                              destImageLayout, regionCount, pRegions);
 
     record->AddChunk(scope.Get());
-    record->MarkResourceFrameReferenced(GetResID(srcImage), eFrameRef_Read);
-    record->MarkResourceFrameReferenced(GetRecord(srcImage)->baseResource, eFrameRef_Read);
-    record->MarkResourceFrameReferenced(GetResID(destImage), eFrameRef_PartialWrite);
-    record->MarkResourceFrameReferenced(GetRecord(destImage)->baseResource, eFrameRef_Read);
-    record->cmdInfo->dirtied.insert(GetResID(destImage));
-    if(GetRecord(srcImage)->resInfo)
-      record->cmdInfo->sparse.insert(GetRecord(srcImage)->resInfo);
-    if(GetRecord(destImage)->resInfo)
-      record->cmdInfo->sparse.insert(GetRecord(destImage)->resInfo);
+    for(uint32_t i = 0; i < regionCount; i++)
+    {
+      const VkImageCopy &region = pRegions[i];
+
+      ImageRange srcRange(region.srcSubresource);
+      srcRange.offset = region.srcOffset;
+      srcRange.extent = region.extent;
+
+      ImageRange dstRange(region.dstSubresource);
+      dstRange.offset = region.dstOffset;
+      dstRange.extent = region.extent;
+
+      record->MarkImageFrameReferenced(GetRecord(srcImage), srcRange, eFrameRef_Read);
+      record->MarkImageFrameReferenced(GetRecord(destImage), dstRange, eFrameRef_CompleteWrite);
+    }
   }
 }
 
@@ -1735,9 +1764,9 @@ bool WrappedVulkan::Serialise_vkCmdCopyBufferToImage(
 
         VulkanDrawcallTreeNode &drawNode = GetDrawcallStack().back()->children.back();
 
-        drawNode.resourceUsage.push_back(std::make_pair(
+        drawNode.resourceUsage.push_back(make_rdcpair(
             GetResID(srcBuffer), EventUsage(drawNode.draw.eventId, ResourceUsage::CopySrc)));
-        drawNode.resourceUsage.push_back(std::make_pair(
+        drawNode.resourceUsage.push_back(make_rdcpair(
             GetResID(destImage), EventUsage(drawNode.draw.eventId, ResourceUsage::CopyDst)));
       }
     }
@@ -1770,8 +1799,8 @@ void WrappedVulkan::vkCmdCopyBufferToImage(VkCommandBuffer commandBuffer, VkBuff
 
     record->AddChunk(scope.Get());
     record->MarkBufferImageCopyFrameReferenced(GetRecord(srcBuffer), GetRecord(destImage),
-                                               m_ImageLayouts[GetResID(destImage)], regionCount,
-                                               pRegions, eFrameRef_Read, eFrameRef_PartialWrite);
+                                               regionCount, pRegions, eFrameRef_Read,
+                                               eFrameRef_CompleteWrite);
   }
 }
 
@@ -1843,9 +1872,9 @@ bool WrappedVulkan::Serialise_vkCmdCopyImageToBuffer(SerialiserType &ser,
 
         VulkanDrawcallTreeNode &drawNode = GetDrawcallStack().back()->children.back();
 
-        drawNode.resourceUsage.push_back(std::make_pair(
+        drawNode.resourceUsage.push_back(make_rdcpair(
             GetResID(srcImage), EventUsage(drawNode.draw.eventId, ResourceUsage::CopySrc)));
-        drawNode.resourceUsage.push_back(std::make_pair(
+        drawNode.resourceUsage.push_back(make_rdcpair(
             GetResID(destBuffer), EventUsage(drawNode.draw.eventId, ResourceUsage::CopyDst)));
       }
     }
@@ -1878,8 +1907,8 @@ void WrappedVulkan::vkCmdCopyImageToBuffer(VkCommandBuffer commandBuffer, VkImag
 
     record->AddChunk(scope.Get());
     record->MarkBufferImageCopyFrameReferenced(GetRecord(destBuffer), GetRecord(srcImage),
-                                               m_ImageLayouts[GetResID(srcImage)], regionCount,
-                                               pRegions, eFrameRef_CompleteWrite, eFrameRef_Read);
+                                               regionCount, pRegions, eFrameRef_CompleteWrite,
+                                               eFrameRef_Read);
   }
 }
 
@@ -1950,14 +1979,14 @@ bool WrappedVulkan::Serialise_vkCmdCopyBuffer(SerialiserType &ser, VkCommandBuff
 
         if(srcBuffer == destBuffer)
         {
-          drawNode.resourceUsage.push_back(std::make_pair(
+          drawNode.resourceUsage.push_back(make_rdcpair(
               GetResID(srcBuffer), EventUsage(drawNode.draw.eventId, ResourceUsage::Copy)));
         }
         else
         {
-          drawNode.resourceUsage.push_back(std::make_pair(
+          drawNode.resourceUsage.push_back(make_rdcpair(
               GetResID(srcBuffer), EventUsage(drawNode.draw.eventId, ResourceUsage::CopySrc)));
-          drawNode.resourceUsage.push_back(std::make_pair(
+          drawNode.resourceUsage.push_back(make_rdcpair(
               GetResID(destBuffer), EventUsage(drawNode.draw.eventId, ResourceUsage::CopyDst)));
         }
       }
@@ -2065,8 +2094,8 @@ bool WrappedVulkan::Serialise_vkCmdClearColorImage(SerialiserType &ser, VkComman
 
         VulkanDrawcallTreeNode &drawNode = GetDrawcallStack().back()->children.back();
 
-        drawNode.resourceUsage.push_back(std::make_pair(
-            GetResID(image), EventUsage(drawNode.draw.eventId, ResourceUsage::Clear)));
+        drawNode.resourceUsage.push_back(
+            make_rdcpair(GetResID(image), EventUsage(drawNode.draw.eventId, ResourceUsage::Clear)));
       }
     }
   }
@@ -2096,10 +2125,16 @@ void WrappedVulkan::vkCmdClearColorImage(VkCommandBuffer commandBuffer, VkImage 
                                    pRanges);
 
     record->AddChunk(scope.Get());
-    record->MarkResourceFrameReferenced(GetResID(image), eFrameRef_PartialWrite);
     record->MarkResourceFrameReferenced(GetRecord(image)->baseResource, eFrameRef_Read);
-    if(GetRecord(image)->resInfo)
-      record->cmdInfo->sparse.insert(GetRecord(image)->resInfo);
+    record->cmdInfo->dirtied.insert(GetResID(image));
+    VkResourceRecord *imageRecord = GetRecord(image);
+    if(imageRecord->resInfo && imageRecord->resInfo->IsSparse())
+      record->cmdInfo->sparse.insert(imageRecord->resInfo);
+
+    for(uint32_t i = 0; i < rangeCount; i++)
+    {
+      record->MarkImageFrameReferenced(imageRecord, pRanges[i], eFrameRef_CompleteWrite);
+    }
   }
 }
 
@@ -2169,8 +2204,8 @@ bool WrappedVulkan::Serialise_vkCmdClearDepthStencilImage(
 
         VulkanDrawcallTreeNode &drawNode = GetDrawcallStack().back()->children.back();
 
-        drawNode.resourceUsage.push_back(std::make_pair(
-            GetResID(image), EventUsage(drawNode.draw.eventId, ResourceUsage::Clear)));
+        drawNode.resourceUsage.push_back(
+            make_rdcpair(GetResID(image), EventUsage(drawNode.draw.eventId, ResourceUsage::Clear)));
       }
     }
   }
@@ -2205,8 +2240,15 @@ void WrappedVulkan::vkCmdClearDepthStencilImage(VkCommandBuffer commandBuffer, V
     record->AddChunk(scope.Get());
     record->MarkResourceFrameReferenced(GetResID(image), eFrameRef_PartialWrite);
     record->MarkResourceFrameReferenced(GetRecord(image)->baseResource, eFrameRef_Read);
-    if(GetRecord(image)->resInfo)
-      record->cmdInfo->sparse.insert(GetRecord(image)->resInfo);
+    record->cmdInfo->dirtied.insert(GetResID(image));
+    VkResourceRecord *imageRecord = GetRecord(image);
+    if(imageRecord->resInfo && imageRecord->resInfo->IsSparse())
+      record->cmdInfo->sparse.insert(imageRecord->resInfo);
+
+    for(uint32_t i = 0; i < rangeCount; i++)
+    {
+      record->MarkImageFrameReferenced(imageRecord, pRanges[i], eFrameRef_CompleteWrite);
+    }
   }
 }
 
@@ -2263,7 +2305,7 @@ bool WrappedVulkan::Serialise_vkCmdClearAttachments(SerialiserType &ser,
       {
         AddEvent();
 
-        string name = "vkCmdClearAttachments(";
+        std::string name = "vkCmdClearAttachments(";
         for(uint32_t a = 0; a < attachmentCount; a++)
         {
           name += ToStr(pAttachments[a].colorAttachment);
@@ -2306,9 +2348,9 @@ bool WrappedVulkan::Serialise_vkCmdClearAttachments(SerialiserType &ser,
               {
                 att = rp.subpasses[state.subpass].colorAttachments[att];
                 drawNode.resourceUsage.push_back(
-                    std::make_pair(m_CreationInfo.m_ImageView[fb.attachments[att].view].image,
-                                   EventUsage(drawNode.draw.eventId, ResourceUsage::Clear,
-                                              fb.attachments[att].view)));
+                    make_rdcpair(m_CreationInfo.m_ImageView[fb.attachments[att].view].image,
+                                 EventUsage(drawNode.draw.eventId, ResourceUsage::Clear,
+                                            fb.attachments[att].view)));
               }
             }
             else if(pAttachments[a].aspectMask & VK_IMAGE_ASPECT_DEPTH_BIT)
@@ -2317,9 +2359,9 @@ bool WrappedVulkan::Serialise_vkCmdClearAttachments(SerialiserType &ser,
               {
                 att = (uint32_t)rp.subpasses[state.subpass].depthstencilAttachment;
                 drawNode.resourceUsage.push_back(
-                    std::make_pair(m_CreationInfo.m_ImageView[fb.attachments[att].view].image,
-                                   EventUsage(drawNode.draw.eventId, ResourceUsage::Clear,
-                                              fb.attachments[att].view)));
+                    make_rdcpair(m_CreationInfo.m_ImageView[fb.attachments[att].view].image,
+                                 EventUsage(drawNode.draw.eventId, ResourceUsage::Clear,
+                                            fb.attachments[att].view)));
               }
             }
           }
@@ -2664,7 +2706,7 @@ bool WrappedVulkan::Serialise_vkCmdDrawIndirectCountKHR(
           RDCMAX(m_IndirectBufferSize,
                  sizeof(VkDrawIndirectCommand) + (maxDrawCount > 0 ? maxDrawCount - 1 : 0) * stride);
 
-      string name = "vkCmdDrawIndirectCountKHR";
+      std::string name = "vkCmdDrawIndirectCountKHR";
 
       if(!IsDrawInRenderPass())
       {
@@ -2690,7 +2732,7 @@ bool WrappedVulkan::Serialise_vkCmdDrawIndirectCountKHR(
 
       drawNode.indirectPatch = indirectPatch;
 
-      drawNode.resourceUsage.push_back(std::make_pair(
+      drawNode.resourceUsage.push_back(make_rdcpair(
           GetResID(buffer), EventUsage(drawNode.draw.eventId, ResourceUsage::Indirect)));
 
       m_BakedCmdBufferInfo[m_LastCmdBufferID].curEventID++;
@@ -2712,9 +2754,9 @@ bool WrappedVulkan::Serialise_vkCmdDrawIndirectCountKHR(
         {
           StructuredSerialiser structuriser(fakeChunk, ser.GetChunkLookup());
 
-          structuriser.Serialise<uint32_t>("drawIndex", 0U);
-          structuriser.Serialise("offset", offset);
-          structuriser.Serialise("command", VkDrawIndirectCommand());
+          structuriser.Serialise<uint32_t>("drawIndex"_lit, 0U);
+          structuriser.Serialise("offset"_lit, offset);
+          structuriser.Serialise("command"_lit, VkDrawIndirectCommand());
         }
 
         m_StructuredFile->chunks.push_back(fakeChunk);
@@ -2978,7 +3020,7 @@ bool WrappedVulkan::Serialise_vkCmdDrawIndexedIndirectCountKHR(
           RDCMAX(m_IndirectBufferSize, sizeof(VkDrawIndexedIndirectCommand) +
                                            (maxDrawCount > 0 ? maxDrawCount - 1 : 0) * stride);
 
-      string name = "vkCmdDrawIndexedIndirectCountKHR";
+      std::string name = "vkCmdDrawIndexedIndirectCountKHR";
 
       if(!IsDrawInRenderPass())
       {
@@ -3004,7 +3046,7 @@ bool WrappedVulkan::Serialise_vkCmdDrawIndexedIndirectCountKHR(
 
       drawNode.indirectPatch = indirectPatch;
 
-      drawNode.resourceUsage.push_back(std::make_pair(
+      drawNode.resourceUsage.push_back(make_rdcpair(
           GetResID(buffer), EventUsage(drawNode.draw.eventId, ResourceUsage::Indirect)));
 
       m_BakedCmdBufferInfo[m_LastCmdBufferID].curEventID++;
@@ -3027,9 +3069,9 @@ bool WrappedVulkan::Serialise_vkCmdDrawIndexedIndirectCountKHR(
         {
           StructuredSerialiser structuriser(fakeChunk, ser.GetChunkLookup());
 
-          structuriser.Serialise<uint32_t>("drawIndex", 0U);
-          structuriser.Serialise("offset", offset);
-          structuriser.Serialise("command", VkDrawIndexedIndirectCommand());
+          structuriser.Serialise<uint32_t>("drawIndex"_lit, 0U);
+          structuriser.Serialise("offset"_lit, offset);
+          structuriser.Serialise("command"_lit, VkDrawIndexedIndirectCommand());
         }
 
         m_StructuredFile->chunks.push_back(fakeChunk);
@@ -3139,7 +3181,7 @@ bool WrappedVulkan::Serialise_vkCmdDrawIndirectByteCountEXT(
                                         Unwrap(counterBuffer), counterBufferOffset, counterOffset,
                                         vertexStride);
 
-      string name = "vkCmdDrawIndirectByteCountEXT";
+      std::string name = "vkCmdDrawIndirectByteCountEXT";
 
       if(!IsDrawInRenderPass())
       {
@@ -3164,7 +3206,7 @@ bool WrappedVulkan::Serialise_vkCmdDrawIndirectByteCountEXT(
 
       drawNode.indirectPatch = indirectPatch;
 
-      drawNode.resourceUsage.push_back(std::make_pair(
+      drawNode.resourceUsage.push_back(make_rdcpair(
           GetResID(counterBuffer), EventUsage(drawNode.draw.eventId, ResourceUsage::Indirect)));
 
       return true;

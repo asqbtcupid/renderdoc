@@ -26,10 +26,11 @@
 #include <algorithm>
 #include <functional>
 #include "3rdparty/glslang/glslang/Public/ShaderLang.h"
+#include "driver/shaders/spirv/glslang_compile.h"
 #include "gl_driver.h"
 
 template <>
-std::string DoStringise(const FFVertexOutput &el)
+rdcstr DoStringise(const FFVertexOutput &el)
 {
   BEGIN_ENUM_STRINGISE(FFVertexOutput);
   {
@@ -96,7 +97,7 @@ void CheckVertexOutputUses(const std::vector<std::string> &sources,
       {
         offs = s.find(name, offs);
 
-        if(offs == string::npos)
+        if(offs == std::string::npos)
           break;
 
         while(offs < s.length())
@@ -179,12 +180,12 @@ static bool iswhitespace(char c)
   return isspacetab(c) || isnewline(c);
 }
 
-GLuint MakeSeparableShaderProgram(WrappedOpenGL &drv, GLenum type, vector<string> sources,
-                                  vector<string> *includepaths)
+GLuint MakeSeparableShaderProgram(WrappedOpenGL &drv, GLenum type, std::vector<std::string> sources,
+                                  std::vector<std::string> *includepaths)
 {
   // in and out blocks are added separately, in case one is there already
   const char *blockIdentifiers[2] = {"in gl_PerVertex", "out gl_PerVertex"};
-  string blocks[2] = {"", ""};
+  std::string blocks[2] = {"", ""};
 
   if(type == eGL_VERTEX_SHADER)
   {
@@ -269,7 +270,7 @@ GLuint MakeSeparableShaderProgram(WrappedOpenGL &drv, GLenum type, vector<string
 
         glslang::TShader::ForbidIncluder incl;
 
-        bool success = sh.preprocess(&DefaultResources, 100, ENoProfile, false, false,
+        bool success = sh.preprocess(GetDefaultResources(), 100, ENoProfile, false, false,
                                      EShMsgOnlyPreprocessor, &src, incl);
 
         if(!success)
@@ -285,13 +286,13 @@ GLuint MakeSeparableShaderProgram(WrappedOpenGL &drv, GLenum type, vector<string
         if(type == eGL_VERTEX_SHADER && blocktype == 0)
           continue;
 
-        string block = blocks[blocktype];
+        std::string block = blocks[blocktype];
         const char *identifier = blockIdentifiers[blocktype];
 
         // if we find the 'identifier' (ie. the block name),
         // assume this block is already present and stop.
         // only try and insert this block if the shader doesn't already have it
-        if(src.find(identifier) != string::npos)
+        if(src.find(identifier) != std::string::npos)
         {
           continue;
         }
@@ -302,11 +303,11 @@ GLuint MakeSeparableShaderProgram(WrappedOpenGL &drv, GLenum type, vector<string
           // find if this source contains a #version, accounting for whitespace
           size_t it = 0;
 
-          while(it != string::npos)
+          while(it != std::string::npos)
           {
             it = src.find("#", it);
 
-            if(it == string::npos)
+            if(it == std::string::npos)
               break;
 
             // advance past the #
@@ -324,7 +325,7 @@ GLuint MakeSeparableShaderProgram(WrappedOpenGL &drv, GLenum type, vector<string
           }
 
           // no #version found
-          if(it == string::npos)
+          if(it == std::string::npos)
           {
             // insert at the start
             it = 0;
@@ -1050,8 +1051,8 @@ int ParseVersionStatement(const char *version)
   return ret;
 }
 
-static void AddSigParameter(vector<SigParameter> &sigs, uint32_t &regIndex, const SigParameter &sig,
-                            const char *nm, int rows, int arrayIdx)
+static void AddSigParameter(std::vector<SigParameter> &sigs, uint32_t &regIndex,
+                            const SigParameter &sig, const char *nm, int rows, int arrayIdx)
 {
   if(rows == 1)
   {
@@ -1623,7 +1624,7 @@ void MakeShaderReflection(GLenum shadType, GLuint sepProg, ShaderReflection &ref
     GL.glGetProgramResourceName(sepProg, eGL_UNIFORM, u, values[1], NULL, namebuf);
     namebuf[values[1]] = 0;
 
-    string name = namebuf;
+    std::string name = namebuf;
 
     delete[] namebuf;
 
@@ -1640,7 +1641,7 @@ void MakeShaderReflection(GLenum shadType, GLuint sepProg, ShaderReflection &ref
       name = name.substr(0, name.length() - 3);    // trim off [0] on the end
       for(int i = 1; i < values[4]; i++)
       {
-        string arrname = StringFormat::Fmt("%s[%d]", name.c_str(), i);
+        std::string arrname = StringFormat::Fmt("%s[%d]", name.c_str(), i);
 
         res.bindPoint = (int32_t)reslist.size();
         res.name = arrname;
@@ -1650,7 +1651,7 @@ void MakeShaderReflection(GLenum shadType, GLuint sepProg, ShaderReflection &ref
     }
   }
 
-  vector<int32_t> ssbos;
+  std::vector<int32_t> ssbos;
   uint32_t ssboMembers = 0;
 
   GLint numSSBOs = 0;
@@ -1708,7 +1709,7 @@ void MakeShaderReflection(GLenum shadType, GLuint sepProg, ShaderReflection &ref
     {
       sort(members[ssbo]);
 
-      if(rwresources[ssbos[ssbo]].name == members[ssbo][0].name)
+      if(!members[ssbo].empty() && rwresources[ssbos[ssbo]].name == members[ssbo][0].name)
         std::swap(rwresources[ssbos[ssbo]].variableType.members, members[ssbo][0].type.members);
       else
         std::swap(rwresources[ssbos[ssbo]].variableType.members, members[ssbo]);
@@ -1742,7 +1743,7 @@ void MakeShaderReflection(GLenum shadType, GLuint sepProg, ShaderReflection &ref
   rdcarray<ShaderConstant> globalUniforms;
 
   GLint numUBOs = 0;
-  vector<string> uboNames;
+  std::vector<std::string> uboNames;
   rdcarray<ShaderConstant> *ubos = NULL;
 
   {
@@ -1821,7 +1822,7 @@ void MakeShaderReflection(GLenum shadType, GLuint sepProg, ShaderReflection &ref
 
     if(numInputs > 0)
     {
-      vector<SigParameter> sigs;
+      std::vector<SigParameter> sigs;
       sigs.reserve(numInputs);
 
       uint32_t regIndex = 0;
@@ -2579,7 +2580,7 @@ void EvaluateSPIRVBindpointMapping(GLuint curProg, int shadIdx, const ShaderRefl
 }
 
 // first int - the mapping index, second int - the binding
-typedef std::vector<std::pair<size_t, int> > Permutation;
+typedef std::vector<rdcpair<size_t, int> > Permutation;
 
 // copy permutation by value since we mutate it to track the algorithm
 static void ApplyPermutation(Permutation permutation, std::function<void(size_t, size_t)> DoSwap)
@@ -2679,7 +2680,7 @@ void ResortBindings(ShaderReflection *refl, ShaderBindpointMapping *mapping)
   // sort by the binding
   struct permutation_sort
   {
-    bool operator()(const std::pair<size_t, int> &a, const std::pair<size_t, int> &b) const
+    bool operator()(const rdcpair<size_t, int> &a, const rdcpair<size_t, int> &b) const
     {
       return a.second < b.second;
     }
@@ -2687,7 +2688,7 @@ void ResortBindings(ShaderReflection *refl, ShaderBindpointMapping *mapping)
 
   permutation.resize(mapping->readOnlyResources.size());
   for(size_t i = 0; i < mapping->readOnlyResources.size(); i++)
-    permutation[i] = std::make_pair(i, mapping->readOnlyResources[i].bind);
+    permutation[i] = make_rdcpair(i, mapping->readOnlyResources[i].bind);
 
   std::sort(permutation.begin(), permutation.end(), permutation_sort());
 
@@ -2702,7 +2703,7 @@ void ResortBindings(ShaderReflection *refl, ShaderBindpointMapping *mapping)
 
   permutation.resize(mapping->readWriteResources.size());
   for(size_t i = 0; i < mapping->readWriteResources.size(); i++)
-    permutation[i] = std::make_pair(i, mapping->readWriteResources[i].bind);
+    permutation[i] = make_rdcpair(i, mapping->readWriteResources[i].bind);
 
   std::sort(permutation.begin(), permutation.end(), permutation_sort());
 
@@ -2715,7 +2716,7 @@ void ResortBindings(ShaderReflection *refl, ShaderBindpointMapping *mapping)
 
   permutation.resize(mapping->constantBlocks.size());
   for(size_t i = 0; i < mapping->constantBlocks.size(); i++)
-    permutation[i] = std::make_pair(i, mapping->constantBlocks[i].bind);
+    permutation[i] = make_rdcpair(i, mapping->constantBlocks[i].bind);
 
   std::sort(permutation.begin(), permutation.end(), permutation_sort());
 

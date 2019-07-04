@@ -27,16 +27,8 @@
 #include <comdef.h>
 #include "dx/d3d_helpers.h"
 #include "dx/official/d3d12.h"
-#include "dx/official/dxgi1_4.h"
-
-#define COM_SMARTPTR(classname) _COM_SMARTPTR_TYPEDEF(classname, __uuidof(classname))
 
 COM_SMARTPTR(ID3DBlob);
-COM_SMARTPTR(IDXGISwapChain);
-COM_SMARTPTR(IDXGISwapChain1);
-COM_SMARTPTR(IDXGIFactory4);
-COM_SMARTPTR(IDXGIAdapter);
-COM_SMARTPTR(IDXGISurface);
 
 COM_SMARTPTR(ID3D12Debug);
 COM_SMARTPTR(ID3D12Debug1);
@@ -257,7 +249,7 @@ D3D12_ROOT_PARAMETER1 cbvParam(D3D12_SHADER_VISIBILITY vis, UINT space, UINT reg
 D3D12_ROOT_PARAMETER1 constParam(D3D12_SHADER_VISIBILITY vis, UINT space, UINT reg, UINT num);
 
 D3D12_ROOT_PARAMETER1 tableParam(D3D12_SHADER_VISIBILITY vis, D3D12_DESCRIPTOR_RANGE_TYPE type,
-                                 UINT space, UINT basereg, UINT numreg);
+                                 UINT space, UINT basereg, UINT numreg, UINT descOffset = 0);
 
 #define GET_REFCOUNT(val, obj) \
   do                           \

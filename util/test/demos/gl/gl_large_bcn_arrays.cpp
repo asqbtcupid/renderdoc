@@ -24,7 +24,7 @@
 
 #include "gl_test.h"
 
-struct Large_BCn_Arrays : OpenGLGraphicsTest
+TEST(GL_Large_BCn_Arrays, OpenGLGraphicsTest)
 {
   static constexpr const char *Description =
       "Test creating large texture 2D arrays of BC4, BC5, BC6, BC7 textures";
@@ -73,10 +73,10 @@ void main()
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create context, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     GLuint vao = MakeVAO();
@@ -96,7 +96,6 @@ void main()
     glEnableVertexAttribArray(2);
 
     GLuint program = MakeProgram(common + vertex, common + pixel);
-    glObjectLabel(GL_PROGRAM, program, -1, "Full program");
 
     const int width = 4;
     const int height = 4;
@@ -185,4 +184,4 @@ void main()
   }
 };
 
-REGISTER_TEST(Large_BCn_Arrays);
+REGISTER_TEST();

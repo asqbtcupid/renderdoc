@@ -207,9 +207,6 @@ std::vector<VkImageMemoryBarrier> WrappedVulkan::GetImplicitRenderPassBarriers(u
       }
     }
 
-    ReplacePresentableImageLayout(barrier.oldLayout);
-    ReplacePresentableImageLayout(barrier.newLayout);
-
     ret.push_back(barrier);
   }
 
@@ -225,16 +222,16 @@ std::vector<VkImageMemoryBarrier> WrappedVulkan::GetImplicitRenderPassBarriers(u
   return ret;
 }
 
-string WrappedVulkan::MakeRenderPassOpString(bool store)
+std::string WrappedVulkan::MakeRenderPassOpString(bool store)
 {
-  string opDesc = "";
+  std::string opDesc = "";
 
   const VulkanCreationInfo::RenderPass &info =
       m_CreationInfo.m_RenderPass[m_BakedCmdBufferInfo[m_LastCmdBufferID].state.renderPass];
   const VulkanCreationInfo::Framebuffer &fbinfo =
       m_CreationInfo.m_Framebuffer[m_BakedCmdBufferInfo[m_LastCmdBufferID].state.framebuffer];
 
-  const vector<VulkanCreationInfo::RenderPass::Attachment> &atts = info.attachments;
+  const std::vector<VulkanCreationInfo::RenderPass::Attachment> &atts = info.attachments;
 
   if(atts.empty())
   {
@@ -368,7 +365,7 @@ bool WrappedVulkan::Serialise_vkCreateCommandPool(SerialiserType &ser, VkDevice 
   SERIALISE_ELEMENT(device);
   SERIALISE_ELEMENT_LOCAL(CreateInfo, *pCreateInfo);
   SERIALISE_ELEMENT_OPT(pAllocator);
-  SERIALISE_ELEMENT_LOCAL(CmdPool, GetResID(*pCmdPool)).TypedAs("VkCommandPool");
+  SERIALISE_ELEMENT_LOCAL(CmdPool, GetResID(*pCmdPool)).TypedAs("VkCommandPool"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -458,7 +455,7 @@ bool WrappedVulkan::Serialise_vkAllocateCommandBuffers(SerialiserType &ser, VkDe
 {
   SERIALISE_ELEMENT(device);
   SERIALISE_ELEMENT_LOCAL(AllocateInfo, *pAllocateInfo);
-  SERIALISE_ELEMENT_LOCAL(CommandBuffer, GetResID(*pCommandBuffers)).TypedAs("VkCommandBuffer");
+  SERIALISE_ELEMENT_LOCAL(CommandBuffer, GetResID(*pCommandBuffers)).TypedAs("VkCommandBuffer"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -602,7 +599,7 @@ bool WrappedVulkan::Serialise_vkBeginCommandBuffer(SerialiserType &ser, VkComman
     AllocateInfo = record->cmdInfo->allocInfo;
   }
 
-  SERIALISE_ELEMENT_LOCAL(CommandBuffer, GetResID(commandBuffer)).TypedAs("VkCommandBuffer");
+  SERIALISE_ELEMENT_LOCAL(CommandBuffer, GetResID(commandBuffer)).TypedAs("VkCommandBuffer"_lit);
   SERIALISE_ELEMENT_LOCAL(BeginInfo, *pBeginInfo);
   SERIALISE_ELEMENT(BakedCommandBuffer);
   SERIALISE_ELEMENT(device);
@@ -914,7 +911,7 @@ bool WrappedVulkan::Serialise_vkEndCommandBuffer(SerialiserType &ser, VkCommandB
       BakedCommandBuffer = record->bakedCommands->GetResourceID();
   }
 
-  SERIALISE_ELEMENT_LOCAL(CommandBuffer, GetResID(commandBuffer)).TypedAs("VkCommandBuffer");
+  SERIALISE_ELEMENT_LOCAL(CommandBuffer, GetResID(commandBuffer)).TypedAs("VkCommandBuffer"_lit);
   SERIALISE_ELEMENT(BakedCommandBuffer);
 
   SERIALISE_CHECK_READ_ERRORS();
@@ -960,7 +957,7 @@ bool WrappedVulkan::Serialise_vkEndCommandBuffer(SerialiserType &ser, VkCommandB
           // subpass
           uint32_t &sub = m_BakedCmdBufferInfo[m_LastCmdBufferID].state.subpass;
 
-          std::vector<std::pair<ResourceId, ImageRegionState> > imgbarriers;
+          std::vector<rdcpair<ResourceId, ImageRegionState> > imgbarriers;
 
           for(sub = m_RenderState.subpass; sub < numSubpasses - 1; sub++)
           {
@@ -998,8 +995,14 @@ bool WrappedVulkan::Serialise_vkEndCommandBuffer(SerialiserType &ser, VkCommandB
 
             barrier.subresourceRange = it->second.subresourceRange;
 
-            if(barrier.oldLayout != barrier.newLayout)
+            if(barrier.oldLayout != barrier.newLayout &&
+               barrier.newLayout != VK_IMAGE_LAYOUT_UNDEFINED)
+            {
+              SanitiseOldImageLayout(barrier.oldLayout);
+              SanitiseNewImageLayout(barrier.newLayout);
+
               revertBarriers.push_back(barrier);
+            }
           }
 
           if(!revertBarriers.empty())
@@ -1246,12 +1249,7 @@ void WrappedVulkan::vkCmdBeginRenderPass(VkCommandBuffer commandBuffer,
       if(att == NULL)
         break;
 
-      record->MarkResourceFrameReferenced(att->baseResource, eFrameRef_ReadBeforeWrite);
-      if(att->baseResourceMem != ResourceId())
-        record->MarkResourceFrameReferenced(att->baseResourceMem, eFrameRef_Read);
-      if(att->resInfo)
-        record->cmdInfo->sparse.insert(att->resInfo);
-      record->cmdInfo->dirtied.insert(att->baseResource);
+      record->MarkImageViewFrameReferenced(att, ImageRange(), eFrameRef_ReadBeforeWrite);
     }
 
     record->cmdInfo->framebuffer = fb;
@@ -1594,7 +1592,7 @@ void WrappedVulkan::vkCmdBeginRenderPass2KHR(VkCommandBuffer commandBuffer,
       record->MarkResourceFrameReferenced(att->baseResource, eFrameRef_ReadBeforeWrite);
       if(att->baseResourceMem != ResourceId())
         record->MarkResourceFrameReferenced(att->baseResourceMem, eFrameRef_Read);
-      if(att->resInfo)
+      if(att->resInfo && att->resInfo->IsSparse())
         record->cmdInfo->sparse.insert(att->resInfo);
       record->cmdInfo->dirtied.insert(att->baseResource);
     }
@@ -2429,7 +2427,7 @@ bool WrappedVulkan::Serialise_vkCmdPushConstants(SerialiserType &ser, VkCommandB
 {
   SERIALISE_ELEMENT(commandBuffer);
   SERIALISE_ELEMENT(layout);
-  SERIALISE_ELEMENT_TYPED(VkShaderStageFlagBits, stageFlags).TypedAs("VkShaderStageFlags");
+  SERIALISE_ELEMENT_TYPED(VkShaderStageFlagBits, stageFlags).TypedAs("VkShaderStageFlags"_lit);
   SERIALISE_ELEMENT(start);
   SERIALISE_ELEMENT(length);
   SERIALISE_ELEMENT_ARRAY(values, length);
@@ -2505,9 +2503,11 @@ bool WrappedVulkan::Serialise_vkCmdPipelineBarrier(
     uint32_t imageMemoryBarrierCount, const VkImageMemoryBarrier *pImageMemoryBarriers)
 {
   SERIALISE_ELEMENT(commandBuffer);
-  SERIALISE_ELEMENT_TYPED(VkPipelineStageFlagBits, srcStageMask).TypedAs("VkPipelineStageFlags");
-  SERIALISE_ELEMENT_TYPED(VkPipelineStageFlagBits, destStageMask).TypedAs("VkPipelineStageFlags");
-  SERIALISE_ELEMENT_TYPED(VkDependencyFlagBits, dependencyFlags).TypedAs("VkDependencyFlags");
+  SERIALISE_ELEMENT_TYPED(VkPipelineStageFlagBits, srcStageMask)
+      .TypedAs("VkPipelineStageFlags"_lit);
+  SERIALISE_ELEMENT_TYPED(VkPipelineStageFlagBits, destStageMask)
+      .TypedAs("VkPipelineStageFlags"_lit);
+  SERIALISE_ELEMENT_TYPED(VkDependencyFlagBits, dependencyFlags).TypedAs("VkDependencyFlags"_lit);
   SERIALISE_ELEMENT(memoryBarrierCount);
   SERIALISE_ELEMENT_ARRAY(pMemoryBarriers, memoryBarrierCount);
   SERIALISE_ELEMENT(bufferMemoryBarrierCount);
@@ -2543,7 +2543,7 @@ bool WrappedVulkan::Serialise_vkCmdPipelineBarrier(
 
         if(IsLoading(m_State))
         {
-          m_BakedCmdBufferInfo[m_LastCmdBufferID].resourceUsage.push_back(std::make_pair(
+          m_BakedCmdBufferInfo[m_LastCmdBufferID].resourceUsage.push_back(make_rdcpair(
               GetResID(pBufferMemoryBarriers[i].buffer),
               EventUsage(m_BakedCmdBufferInfo[m_LastCmdBufferID].curEventID, ResourceUsage::Barrier)));
         }
@@ -2556,15 +2556,13 @@ bool WrappedVulkan::Serialise_vkCmdPipelineBarrier(
       {
         imgBarriers.push_back(pImageMemoryBarriers[i]);
         imgBarriers.back().image = Unwrap(imgBarriers.back().image);
-        ReplacePresentableImageLayout(imgBarriers.back().oldLayout);
-        ReplacePresentableImageLayout(imgBarriers.back().newLayout);
 
         RemapQueueFamilyIndices(imgBarriers.back().srcQueueFamilyIndex,
                                 imgBarriers.back().dstQueueFamilyIndex);
 
         if(IsLoading(m_State))
         {
-          m_BakedCmdBufferInfo[m_LastCmdBufferID].resourceUsage.push_back(std::make_pair(
+          m_BakedCmdBufferInfo[m_LastCmdBufferID].resourceUsage.push_back(make_rdcpair(
               GetResID(pImageMemoryBarriers[i].image),
               EventUsage(m_BakedCmdBufferInfo[m_LastCmdBufferID].curEventID, ResourceUsage::Barrier)));
         }
@@ -2581,14 +2579,21 @@ bool WrappedVulkan::Serialise_vkCmdPipelineBarrier(
 
     if(commandBuffer != VK_NULL_HANDLE)
     {
+      ResourceId cmd = GetResID(commandBuffer);
+      GetResourceManager()->RecordBarriers(m_BakedCmdBufferInfo[cmd].imgbarriers, m_ImageLayouts,
+                                           (uint32_t)imgBarriers.size(), imgBarriers.data());
+
+      // now sanitise layouts before passing to vulkan
+      for(VkImageMemoryBarrier &barrier : imgBarriers)
+      {
+        SanitiseOldImageLayout(barrier.oldLayout);
+        SanitiseNewImageLayout(barrier.newLayout);
+      }
+
       ObjDisp(commandBuffer)
           ->CmdPipelineBarrier(Unwrap(commandBuffer), srcStageMask, destStageMask, dependencyFlags,
                                memoryBarrierCount, pMemoryBarriers, (uint32_t)bufBarriers.size(),
                                bufBarriers.data(), (uint32_t)imgBarriers.size(), imgBarriers.data());
-
-      ResourceId cmd = GetResID(commandBuffer);
-      GetResourceManager()->RecordBarriers(m_BakedCmdBufferInfo[cmd].imgbarriers, m_ImageLayouts,
-                                           (uint32_t)imgBarriers.size(), imgBarriers.data());
     }
   }
 
@@ -2728,7 +2733,7 @@ bool WrappedVulkan::Serialise_vkCmdCopyQueryPoolResults(
   SERIALISE_ELEMENT(destBuffer);
   SERIALISE_ELEMENT(destOffset);
   SERIALISE_ELEMENT(destStride);
-  SERIALISE_ELEMENT_TYPED(VkQueryResultFlagBits, flags).TypedAs("VkQueryResultFlags");
+  SERIALISE_ELEMENT_TYPED(VkQueryResultFlagBits, flags).TypedAs("VkQueryResultFlags"_lit);
 
   Serialise_DebugMessages(ser);
 
@@ -2801,7 +2806,7 @@ bool WrappedVulkan::Serialise_vkCmdBeginQuery(SerialiserType &ser, VkCommandBuff
   SERIALISE_ELEMENT(commandBuffer);
   SERIALISE_ELEMENT(queryPool);
   SERIALISE_ELEMENT(query);
-  SERIALISE_ELEMENT_TYPED(VkQueryControlFlagBits, flags).TypedAs("VkQueryControlFlags");
+  SERIALISE_ELEMENT_TYPED(VkQueryControlFlagBits, flags).TypedAs("VkQueryControlFlags"_lit);
 
   Serialise_DebugMessages(ser);
 
@@ -3028,16 +3033,19 @@ bool WrappedVulkan::Serialise_vkCmdExecuteCommands(SerialiserType &ser, VkComman
       {
         ResourceId cmd = GetResourceManager()->GetOriginalID(GetResID(pCommandBuffers[c]));
 
+        BakedCmdBufferInfo &cmdBufInfo = m_BakedCmdBufferInfo[cmd];
+
         // add a fake marker
         DrawcallDescription marker;
         marker.name = StringFormat::Fmt("=> vkCmdExecuteCommands()[%u]: vkBeginCommandBuffer(%s)",
                                         c, ToStr(cmd).c_str());
         marker.flags = DrawFlags::PassBoundary | DrawFlags::BeginPass;
         AddEvent();
+
+        parentCmdBufInfo.curEvents.back().chunkIndex = cmdBufInfo.beginChunk;
+
         AddDrawcall(marker, true);
         parentCmdBufInfo.curEventID++;
-
-        BakedCmdBufferInfo &cmdBufInfo = m_BakedCmdBufferInfo[cmd];
 
         if(m_BakedCmdBufferInfo[m_LastCmdBufferID].state.renderPass == ResourceId() &&
            (cmdBufInfo.beginFlags & VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT))
@@ -3273,7 +3281,7 @@ bool WrappedVulkan::Serialise_vkCmdDebugMarkerBeginEXT(SerialiserType &ser,
                                                        const VkDebugMarkerMarkerInfoEXT *pMarker)
 {
   SERIALISE_ELEMENT(commandBuffer);
-  SERIALISE_ELEMENT_LOCAL(Marker, *pMarker).Named("pMarker");
+  SERIALISE_ELEMENT_LOCAL(Marker, *pMarker).Named("pMarker"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -3425,7 +3433,7 @@ bool WrappedVulkan::Serialise_vkCmdDebugMarkerInsertEXT(SerialiserType &ser,
                                                         const VkDebugMarkerMarkerInfoEXT *pMarker)
 {
   SERIALISE_ELEMENT(commandBuffer);
-  SERIALISE_ELEMENT_LOCAL(Marker, *pMarker).Named("pMarker");
+  SERIALISE_ELEMENT_LOCAL(Marker, *pMarker).Named("pMarker"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -3502,7 +3510,7 @@ void WrappedVulkan::ApplyPushDescriptorWrites(VkPipelineBindPoint pipelineBindPo
 
   const DescSetLayout &desclayout = m_CreationInfo.m_DescSetLayout[descSetLayouts[set]];
 
-  std::vector<DescriptorSetSlot *> &bindings = m_DescriptorSetState[setId].currentBindings;
+  std::vector<DescriptorSetBindingElement *> &bindings = m_DescriptorSetState[setId].currentBindings;
   ResourceId prevLayout = m_DescriptorSetState[setId].layout;
 
   if(prevLayout == ResourceId())
@@ -3523,7 +3531,7 @@ void WrappedVulkan::ApplyPushDescriptorWrites(VkPipelineBindPoint pipelineBindPo
 
     RDCASSERT(writeDesc.dstBinding < bindings.size());
 
-    DescriptorSetSlot **bind = &bindings[writeDesc.dstBinding];
+    DescriptorSetBindingElement **bind = &bindings[writeDesc.dstBinding];
     const DescSetLayout::Binding *layoutBinding = &desclayout.bindings[writeDesc.dstBinding];
     uint32_t curIdx = writeDesc.dstArrayElement;
 
@@ -3821,11 +3829,8 @@ void WrappedVulkan::vkCmdPushDescriptorSetKHR(VkCommandBuffer commandBuffer,
           // as they might not even point to a valid object
           if(write.descriptorType != VK_DESCRIPTOR_TYPE_SAMPLER)
           {
-            record->MarkResourceFrameReferenced(GetResID(write.pImageInfo[d].imageView),
-                                                eFrameRef_Read);
-            if(GetRecord(write.pImageInfo[d].imageView)->baseResource != ResourceId())
-              record->MarkResourceFrameReferenced(
-                  GetRecord(write.pImageInfo[d].imageView)->baseResource, ref);
+            VkResourceRecord *view = GetRecord(write.pImageInfo[d].imageView);
+            record->MarkImageViewFrameReferenced(view, ImageRange(), ref);
           }
 
           if(write.descriptorType == VK_DESCRIPTOR_TYPE_SAMPLER ||
@@ -3865,7 +3870,7 @@ bool WrappedVulkan::Serialise_vkCmdPushDescriptorSetWithTemplateKHR(
     GetRecord(descriptorUpdateTemplate)->descTemplateInfo->Apply(pData, apply);
   }
 
-  SERIALISE_ELEMENT(apply.writes).Named("Decoded Writes");
+  SERIALISE_ELEMENT(apply.writes).Named("Decoded Writes"_lit);
 
   Serialise_DebugMessages(ser);
 
@@ -3975,9 +3980,10 @@ void WrappedVulkan::vkCmdPushDescriptorSetWithTemplateKHR(
 
   // since it's relatively expensive to walk the memory, we gather frame references at the same time
   // as unwrapping
-  std::vector<std::pair<ResourceId, FrameRefType> > frameRefs;
-  std::vector<std::pair<VkBufferView, FrameRefType> > bufViewFrameRefs;
-  std::vector<std::pair<VkDescriptorBufferInfo, FrameRefType> > bufFrameRefs;
+  std::vector<rdcpair<ResourceId, FrameRefType> > frameRefs;
+  std::vector<rdcpair<VkImageView, FrameRefType> > imgViewFrameRefs;
+  std::vector<rdcpair<VkBufferView, FrameRefType> > bufViewFrameRefs;
+  std::vector<rdcpair<VkDescriptorBufferInfo, FrameRefType> > bufFrameRefs;
 
   {
     DescUpdateTemplate *tempInfo = GetRecord(descriptorUpdateTemplate)->descTemplateInfo;
@@ -4002,7 +4008,7 @@ void WrappedVulkan::vkCmdPushDescriptorSetWithTemplateKHR(
 
           VkBufferView *bufView = (VkBufferView *)dst;
 
-          bufViewFrameRefs.push_back(std::make_pair(*bufView, ref));
+          bufViewFrameRefs.push_back(make_rdcpair(*bufView, ref));
 
           *bufView = Unwrap(*bufView);
         }
@@ -4028,14 +4034,15 @@ void WrappedVulkan::vkCmdPushDescriptorSetWithTemplateKHR(
 
           if(hasSampler)
           {
-            frameRefs.push_back(std::make_pair(GetResID(info->sampler), eFrameRef_Read));
+            frameRefs.push_back(make_rdcpair(GetResID(info->sampler), eFrameRef_Read));
             info->sampler = Unwrap(info->sampler);
           }
           if(hasImage)
           {
-            frameRefs.push_back(std::make_pair(GetResID(info->imageView), eFrameRef_Read));
+            frameRefs.push_back(make_rdcpair(GetResID(info->imageView), eFrameRef_Read));
             if(GetRecord(info->imageView)->baseResource != ResourceId())
-              frameRefs.push_back(std::make_pair(GetRecord(info->imageView)->baseResource, ref));
+              frameRefs.push_back(make_rdcpair(GetRecord(info->imageView)->baseResource, ref));
+            imgViewFrameRefs.push_back(make_rdcpair(info->imageView, ref));
             info->imageView = Unwrap(info->imageView);
           }
         }
@@ -4048,7 +4055,7 @@ void WrappedVulkan::vkCmdPushDescriptorSetWithTemplateKHR(
 
           VkDescriptorBufferInfo *info = (VkDescriptorBufferInfo *)dst;
 
-          bufFrameRefs.push_back(std::make_pair(*info, ref));
+          bufFrameRefs.push_back(make_rdcpair(*info, ref));
 
           info->buffer = Unwrap(info->buffer);
         }
@@ -4075,6 +4082,11 @@ void WrappedVulkan::vkCmdPushDescriptorSetWithTemplateKHR(
     record->MarkResourceFrameReferenced(GetResID(descriptorUpdateTemplate), eFrameRef_Read);
     for(size_t i = 0; i < frameRefs.size(); i++)
       record->MarkResourceFrameReferenced(frameRefs[i].first, frameRefs[i].second);
+    for(size_t i = 0; i < imgViewFrameRefs.size(); i++)
+    {
+      VkResourceRecord *view = GetRecord(imgViewFrameRefs[i].first);
+      record->MarkImageViewFrameReferenced(view, ImageRange(), imgViewFrameRefs[i].second);
+    }
     for(size_t i = 0; i < bufViewFrameRefs.size(); i++)
       record->MarkBufferViewFrameReferenced(GetRecord(bufViewFrameRefs[i].first),
                                             bufViewFrameRefs[i].second);
@@ -4689,7 +4701,7 @@ bool WrappedVulkan::Serialise_vkCmdBeginQueryIndexedEXT(SerialiserType &ser,
   SERIALISE_ELEMENT(commandBuffer);
   SERIALISE_ELEMENT(queryPool);
   SERIALISE_ELEMENT(query);
-  SERIALISE_ELEMENT_TYPED(VkQueryControlFlagBits, flags).TypedAs("VkQueryControlFlags");
+  SERIALISE_ELEMENT_TYPED(VkQueryControlFlagBits, flags).TypedAs("VkQueryControlFlags"_lit);
   SERIALISE_ELEMENT(index);
 
   Serialise_DebugMessages(ser);
@@ -4805,7 +4817,7 @@ bool WrappedVulkan::Serialise_vkCmdBeginConditionalRenderingEXT(
 {
   SERIALISE_ELEMENT(commandBuffer);
   SERIALISE_ELEMENT_LOCAL(BeginInfo, *pConditionalRenderingBegin)
-      .Named("pConditionalRenderingBegin");
+      .Named("pConditionalRenderingBegin"_lit);
 
   Serialise_DebugMessages(ser);
 

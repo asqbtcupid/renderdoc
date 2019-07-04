@@ -160,7 +160,7 @@ void Process::ApplyEnvironmentModification()
   LPWCH envStrings = GetEnvironmentStringsW();
   EnvMap envValues = EnvStringToEnvMap(envStrings);
   FreeEnvironmentStringsW(envStrings);
-  vector<EnvironmentModification> &modifications = GetEnvModifications();
+  std::vector<EnvironmentModification> &modifications = GetEnvModifications();
 
   ApplyEnvModifications(envValues, modifications, true);
 
@@ -279,21 +279,33 @@ void InjectDLL(HANDLE hProcess, std::wstring libName)
       VirtualAllocEx(hProcess, NULL, sizeof(dllPath), MEM_COMMIT, PAGE_EXECUTE_READWRITE);
   if(remoteMem)
   {
-    WriteProcessMemory(hProcess, remoteMem, (void *)dllPath, sizeof(dllPath), NULL);
-
-    HANDLE hThread = CreateRemoteThread(
-        hProcess, NULL, 0, (LPTHREAD_START_ROUTINE)GetProcAddress(kernel32, "LoadLibraryW"),
-        remoteMem, 0, NULL);
-    if(hThread)
+    BOOL success = WriteProcessMemory(hProcess, remoteMem, (void *)dllPath, sizeof(dllPath), NULL);
+    if(success)
     {
-      WaitForSingleObject(hThread, INFINITE);
-      CloseHandle(hThread);
+      HANDLE hThread = CreateRemoteThread(
+          hProcess, NULL, 0, (LPTHREAD_START_ROUTINE)GetProcAddress(kernel32, "LoadLibraryW"),
+          remoteMem, 0, NULL);
+      if(hThread)
+      {
+        WaitForSingleObject(hThread, INFINITE);
+        CloseHandle(hThread);
+      }
+      else
+      {
+        RDCERR("Couldn't create remote thread for LoadLibraryW: %u", GetLastError());
+      }
     }
+    else
+    {
+      RDCERR("Couldn't write remote memory %p with dllPath '%ls': %u", remoteMem, dllPath,
+             GetLastError());
+    }
+
     VirtualFreeEx(hProcess, remoteMem, 0, MEM_RELEASE);
   }
   else
   {
-    RDCERR("Couldn't allocate remote memory for DLL '%ls'", libName.c_str());
+    RDCERR("Couldn't allocate remote memory for DLL '%ls': %u", libName.c_str(), GetLastError());
   }
 }
 
@@ -455,7 +467,7 @@ static PROCESS_INFORMATION RunProcess(const char *app, const char *workingDir, c
   if(workingDir != NULL && workingDir[0] != 0)
     workdir = StringFormat::UTF82Wide(std::string(workingDir));
   else
-    workdir = StringFormat::UTF82Wide(get_dirname(string(app)));
+    workdir = StringFormat::UTF82Wide(get_dirname(std::string(app)));
 
   wchar_t *paramsAlloc = NULL;
 
@@ -817,7 +829,7 @@ ExecuteResult Process::InjectIntoProcess(uint32_t pid, const rdcarray<Environmen
     tSec.nLength = sizeof(tSec);
 
     // serialise to string with two chars per byte
-    string optstr = opts.EncodeAsString();
+    std::string optstr = opts.EncodeAsString();
 
     wchar_t *paramsAlloc = new wchar_t[2048];
 
@@ -843,8 +855,8 @@ ExecuteResult Process::InjectIntoProcess(uint32_t pid, const rdcarray<Environmen
 
       for(const EnvironmentModification &e : env)
       {
-        string name = trim(e.name.c_str());
-        string value = e.value.c_str();
+        std::string name = trim(e.name.c_str());
+        std::string value = e.value.c_str();
 
         if(name == "")
           break;
@@ -963,8 +975,8 @@ ExecuteResult Process::InjectIntoProcess(uint32_t pid, const rdcarray<Environmen
     {
       for(const EnvironmentModification &e : env)
       {
-        string name = trim(e.name.c_str());
-        string value = e.value.c_str();
+        std::string name = trim(e.name.c_str());
+        std::string value = e.value.c_str();
         EnvMod mod = e.mod;
         EnvSep sep = e.sep;
 
@@ -1022,11 +1034,11 @@ uint32_t Process::LaunchProcess(const char *app, const char *workingDir, const c
     char chBuf[4096];
     DWORD dwOutputRead, dwErrorRead;
     BOOL success = FALSE;
-    string s;
+    std::string s;
     for(;;)
     {
       success = ReadFile(hChildStdOutput_Rd, chBuf, sizeof(chBuf), &dwOutputRead, NULL);
-      s = string(chBuf, dwOutputRead);
+      s = std::string(chBuf, dwOutputRead);
       result->strStdout += s;
 
       if(!success && !dwOutputRead)
@@ -1036,7 +1048,7 @@ uint32_t Process::LaunchProcess(const char *app, const char *workingDir, const c
     for(;;)
     {
       success = ReadFile(hChildStdError_Rd, chBuf, sizeof(chBuf), &dwErrorRead, NULL);
-      s = string(chBuf, dwErrorRead);
+      s = std::string(chBuf, dwErrorRead);
       result->strStderror += s;
 
       if(!success && !dwErrorRead)
@@ -1060,7 +1072,7 @@ uint32_t Process::LaunchScript(const char *script, const char *workingDir, const
                                bool internal, ProcessResult *result)
 {
   // Change parameters to invoke command interpreter
-  string args = "/C " + string(script) + " " + string(argList);
+  std::string args = "/C " + std::string(script) + " " + std::string(argList);
 
   return LaunchProcess("cmd.exe", workingDir, args.c_str(), internal, result);
 }
@@ -1479,11 +1491,11 @@ bool Process::StartGlobalHook(const char *pathmatch, const char *capturefile,
   paramsAlloc.resize(2048);
 
   // serialise to string with two chars per byte
-  string optstr = opts.EncodeAsString();
+  std::string optstr = opts.EncodeAsString();
 
   std::wstring wcapturefile =
-      capturefile == NULL ? L"" : StringFormat::UTF82Wide(string(capturefile));
-  std::wstring wpathmatch = StringFormat::UTF82Wide(string(pathmatch));
+      capturefile == NULL ? L"" : StringFormat::UTF82Wide(std::string(capturefile));
+  std::wstring wpathmatch = StringFormat::UTF82Wide(std::string(pathmatch));
 
   std::string debugLogfile = RDCGETLOGFILE();
   std::wstring wdebugLogfile = StringFormat::UTF82Wide(debugLogfile);

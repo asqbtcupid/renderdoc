@@ -34,9 +34,6 @@
 #include "vk_replay.h"
 #include "vk_state.h"
 
-using std::list;
-using std::vector;
-
 class VulkanShaderCache;
 class VulkanTextRenderer;
 
@@ -45,17 +42,18 @@ struct VkInitParams
   void Set(const VkInstanceCreateInfo *pCreateInfo, ResourceId inst);
 
   std::string AppName, EngineName;
-  uint32_t AppVersion = 0, EngineVersion = 0, APIVersion = 0;
+  uint32_t AppVersion = 0, EngineVersion = 0;
+  VkPackedVersion APIVersion;
 
   std::vector<std::string> Layers;
   std::vector<std::string> Extensions;
   ResourceId InstanceID;
 
   // remember to update this function if you add more members
-  uint32_t GetSerialiseSize();
+  uint64_t GetSerialiseSize();
 
   // check if a frame capture section version is supported
-  static const uint64_t CurrentVersion = 0xF;
+  static const uint64_t CurrentVersion = 0x10;
   static bool IsSupportedVersion(uint64_t ver);
 };
 
@@ -98,13 +96,13 @@ struct VulkanDrawcallTreeNode
   VulkanDrawcallTreeNode() {}
   explicit VulkanDrawcallTreeNode(const DrawcallDescription &d) : draw(d) {}
   DrawcallDescription draw;
-  vector<VulkanDrawcallTreeNode> children;
+  std::vector<VulkanDrawcallTreeNode> children;
 
   VkIndirectPatchData indirectPatch;
 
-  vector<pair<ResourceId, EventUsage>> resourceUsage;
+  std::vector<rdcpair<ResourceId, EventUsage>> resourceUsage;
 
-  vector<ResourceId> executedCmds;
+  std::vector<ResourceId> executedCmds;
 
   VulkanDrawcallTreeNode &operator=(const DrawcallDescription &d)
   {
@@ -145,9 +143,9 @@ struct VulkanDrawcallTreeNode
       children[i].UpdateIDs(baseEventID, baseDrawID);
   }
 
-  vector<DrawcallDescription> Bake()
+  std::vector<DrawcallDescription> Bake()
   {
-    vector<DrawcallDescription> ret;
+    std::vector<DrawcallDescription> ret;
     if(children.empty())
       return ret;
 
@@ -228,7 +226,7 @@ private:
     ScopedDebugMessageSink(WrappedVulkan *driver);
     ~ScopedDebugMessageSink();
 
-    vector<DebugMessage> msgs;
+    std::vector<DebugMessage> msgs;
     WrappedVulkan *m_pDriver;
   };
 
@@ -271,7 +269,7 @@ private:
     size_t size;
   };
   Threading::CriticalSection m_ThreadTempMemLock;
-  vector<TempMem *> m_ThreadTempMem;
+  std::vector<TempMem *> m_ThreadTempMem;
 
   VulkanReplay m_Replay;
 
@@ -292,7 +290,7 @@ private:
   // by queue submit order anyway, so it's OK to lose the record
   // order).
   Threading::CriticalSection m_CmdBufferRecordsLock;
-  vector<VkResourceRecord *> m_CmdBufferRecords;
+  std::vector<VkResourceRecord *> m_CmdBufferRecords;
 
   VulkanResourceManager *m_ResourceManager = NULL;
   VulkanDebugManager *m_DebugManager = NULL;
@@ -321,13 +319,13 @@ private:
   uint32_t HandlePreCallback(VkCommandBuffer commandBuffer, DrawFlags type = DrawFlags::Drawcall,
                              uint32_t multiDrawOffset = 0);
 
-  vector<WindowingSystem> m_SupportedWindowSystems;
+  std::vector<WindowingSystem> m_SupportedWindowSystems;
 
   uint32_t m_FrameCounter;
 
-  vector<FrameDescription> m_CapturedFrames;
+  std::vector<FrameDescription> m_CapturedFrames;
   FrameRecord m_FrameRecord;
-  vector<DrawcallDescription *> m_Drawcalls;
+  std::vector<DrawcallDescription *> m_Drawcalls;
 
   struct PhysicalDeviceData
   {
@@ -386,14 +384,14 @@ private:
 
   // the physical devices. At capture time this is trivial, just the enumerated devices.
   // At replay time this is re-ordered from the real list to try and match
-  vector<VkPhysicalDevice> m_PhysicalDevices;
+  std::vector<VkPhysicalDevice> m_PhysicalDevices;
 
   // replay only, information we need for remapping. The original vector keeps information about the
   // physical devices used at capture time, and the replay vector contains the real unmodified list
   // of physical devices at replay time.
-  vector<PhysicalDeviceData> m_OriginalPhysicalDevices;
-  vector<VkPhysicalDevice> m_ReplayPhysicalDevices;
-  vector<bool> m_ReplayPhysicalDevicesUsed;
+  std::vector<PhysicalDeviceData> m_OriginalPhysicalDevices;
+  std::vector<VkPhysicalDevice> m_ReplayPhysicalDevices;
+  std::vector<bool> m_ReplayPhysicalDevicesUsed;
 
   // the queue families (an array of count for each) for the created device
   std::vector<VkQueue *> m_QueueFamilies;
@@ -408,7 +406,7 @@ private:
     VkCommandPool pool = VK_NULL_HANDLE;
     VkCommandBuffer buffer = VK_NULL_HANDLE;
   };
-  vector<ExternalQueue> m_ExternalQueues;
+  std::vector<ExternalQueue> m_ExternalQueues;
 
   VkCommandBuffer GetExtQueueCmd(uint32_t queueFamilyIdx);
   void SubmitAndFlushExtQueue(uint32_t queueFamilyIdx);
@@ -424,7 +422,7 @@ private:
   // (targetQueueFamily << 32) | (targetQueueIndex)
   std::vector<QueueRemap> m_QueueRemapping[16];
 
-  vector<uint32_t *> m_MemIdxMaps;
+  std::vector<uint32_t *> m_MemIdxMaps;
   void RemapMemoryIndices(VkPhysicalDeviceMemoryProperties *memProps, uint32_t **memIdxMap);
 
   void WrapAndProcessCreatedSwapchain(VkDevice device, const VkSwapchainCreateInfoKHR *pCreateInfo,
@@ -451,18 +449,18 @@ private:
 
     VkCommandPool cmdpool;    // the command pool used for allocating our own command buffers
 
-    vector<VkCommandBuffer> freecmds;
+    std::vector<VkCommandBuffer> freecmds;
     // -> GetNextCmd() ->
-    vector<VkCommandBuffer> pendingcmds;
+    std::vector<VkCommandBuffer> pendingcmds;
     // -> SubmitCmds() ->
-    vector<VkCommandBuffer> submittedcmds;
+    std::vector<VkCommandBuffer> submittedcmds;
     // -> FlushQ() ------back to freecmds------^
 
-    vector<VkSemaphore> freesems;
+    std::vector<VkSemaphore> freesems;
     // -> GetNextSemaphore() ->
-    vector<VkSemaphore> pendingsems;
+    std::vector<VkSemaphore> pendingsems;
     // -> SubmitSemaphores() ->
-    vector<VkSemaphore> submittedsems;
+    std::vector<VkSemaphore> submittedsems;
     // -> FlushQ() ----back to freesems-------^
   } m_InternalCmds;
 
@@ -486,8 +484,8 @@ private:
   MemoryAllocation AllocateMemoryForResource(bool buffer, VkMemoryRequirements mrq,
                                              MemoryScope scope, MemoryType type);
 
-  vector<VkEvent> m_CleanupEvents;
-  vector<VkEvent> m_PersistentEvents;
+  std::vector<VkEvent> m_CleanupEvents;
+  std::vector<VkEvent> m_PersistentEvents;
 
   const VkFormatProperties &GetFormatProperties(VkFormat f)
   {
@@ -508,8 +506,8 @@ private:
     {
     }
     ~BakedCmdBufferInfo() { SAFE_DELETE(draw); }
-    vector<APIEvent> curEvents;
-    vector<DebugMessage> debugMessages;
+    std::vector<APIEvent> curEvents;
+    std::vector<DebugMessage> debugMessages;
     std::list<VulkanDrawcallTreeNode *> drawStack;
 
     std::vector<VkIndirectRecordData> indirectCopies;
@@ -524,7 +522,7 @@ private:
 
     int markerCount;
 
-    std::vector<std::pair<ResourceId, EventUsage>> resourceUsage;
+    std::vector<rdcpair<ResourceId, EventUsage>> resourceUsage;
 
     struct CmdBufferState
     {
@@ -556,7 +554,7 @@ private:
       } conditionalRendering;
     } state;
 
-    std::vector<std::pair<ResourceId, ImageRegionState>> imgbarriers;
+    std::vector<rdcpair<ResourceId, ImageRegionState>> imgbarriers;
 
     ResourceId pushDescriptorID[2][64];
 
@@ -589,7 +587,7 @@ private:
       return eventId < o.eventId;
     }
   };
-  vector<DrawcallUse> m_DrawcallUses;
+  std::vector<DrawcallUse> m_DrawcallUses;
 
   enum PartialReplayIndex
   {
@@ -659,7 +657,7 @@ private:
   // we store the list here, since we need to keep all command buffers until the whole replay is
   // finished, but if a command buffer is re-recorded multiple times it would be overwritten in the
   // above map
-  std::vector<std::pair<VkCommandPool, VkCommandBuffer>> m_RerecordCmdList;
+  std::vector<rdcpair<VkCommandPool, VkCommandBuffer>> m_RerecordCmdList;
 
   // There is only a state while currently partially replaying, it's
   // undefined/empty otherwise.
@@ -678,7 +676,7 @@ private:
     DescriptorSetInfo(bool p = false) : push(p) {}
     ~DescriptorSetInfo() { clear(); }
     ResourceId layout;
-    vector<DescriptorSetSlot *> currentBindings;
+    std::vector<DescriptorSetBindingElement *> currentBindings;
     bool push;
 
     void clear()
@@ -696,7 +694,7 @@ private:
   ResourceId m_LastSwap;
 
   // holds the current list of coherent mapped memory. Locked against concurrent use
-  vector<VkResourceRecord *> m_CoherentMaps;
+  std::vector<VkResourceRecord *> m_CoherentMaps;
   Threading::CriticalSection m_CoherentMapsLock;
 
   std::map<ResourceId, FrameRefType> m_ForcedReferences;
@@ -742,23 +740,23 @@ private:
 
   // used both on capture and replay side to track image layouts. Only locked
   // in capture
-  map<ResourceId, ImageLayouts> m_ImageLayouts;
+  std::map<ResourceId, ImageLayouts> m_ImageLayouts;
   Threading::CriticalSection m_ImageLayoutsLock;
 
   // find swapchain for an image
-  map<RENDERDOC_WindowHandle, VkSwapchainKHR> m_SwapLookup;
+  std::map<RENDERDOC_WindowHandle, VkSwapchainKHR> m_SwapLookup;
   Threading::CriticalSection m_SwapLookupLock;
 
   // below are replay-side data only, doesn't have to be thread protected
 
   // current descriptor set contents
-  map<ResourceId, DescriptorSetInfo> m_DescriptorSetState;
+  std::map<ResourceId, DescriptorSetInfo> m_DescriptorSetState;
   // data for a baked command buffer - its drawcalls and events, ready to submit
-  map<ResourceId, BakedCmdBufferInfo> m_BakedCmdBufferInfo;
+  std::map<ResourceId, BakedCmdBufferInfo> m_BakedCmdBufferInfo;
   // immutable creation data
   VulkanCreationInfo m_CreationInfo;
 
-  map<ResourceId, vector<EventUsage>> m_ResourceUses;
+  std::map<ResourceId, std::vector<EventUsage>> m_ResourceUses;
 
   // returns thread-local temporary memory
   byte *GetTempMemory(size_t s);
@@ -805,7 +803,7 @@ private:
                                VkDeviceSize memoryOffset, VkMemoryRequirements mrq);
 
   std::vector<VkImageMemoryBarrier> GetImplicitRenderPassBarriers(uint32_t subpass = 0);
-  string MakeRenderPassOpString(bool store);
+  std::string MakeRenderPassOpString(bool store);
 
   bool IsDrawInRenderPass();
 
@@ -828,16 +826,16 @@ private:
   bool Prepare_SparseInitialState(WrappedVkImage *im);
   template <typename SerialiserType>
   bool Serialise_SparseBufferInitialState(SerialiserType &ser, ResourceId id,
-                                          VkInitialContents contents);
+                                          const VkInitialContents *contents);
   template <typename SerialiserType>
   bool Serialise_SparseImageInitialState(SerialiserType &ser, ResourceId id,
-                                         VkInitialContents contents);
-  bool Apply_SparseInitialState(WrappedVkBuffer *buf, VkInitialContents contents);
-  bool Apply_SparseInitialState(WrappedVkImage *im, VkInitialContents contents);
+                                         const VkInitialContents *contents);
+  bool Apply_SparseInitialState(WrappedVkBuffer *buf, const VkInitialContents &contents);
+  bool Apply_SparseInitialState(WrappedVkImage *im, const VkInitialContents &contents);
 
   void ApplyInitialContents();
 
-  vector<APIEvent> m_RootEvents, m_Events;
+  std::vector<APIEvent> m_RootEvents, m_Events;
   bool m_AddedDrawcall;
 
   uint64_t m_CurChunkOffset;
@@ -853,16 +851,16 @@ private:
   bool m_LayersEnabled[VkCheckLayer_Max] = {};
 
   // in vk_<platform>.cpp
-  void AddRequiredExtensions(bool instance, vector<string> &extensionList,
-                             const std::set<string> &supportedExtensions);
+  void AddRequiredExtensions(bool instance, std::vector<std::string> &extensionList,
+                             const std::set<std::string> &supportedExtensions);
 
   bool PatchIndirectDraw(VkIndirectPatchType type, DrawcallDescription &draw, byte *&argptr,
                          byte *argend);
   void InsertDrawsAndRefreshIDs(BakedCmdBufferInfo &cmdBufInfo);
 
-  list<VulkanDrawcallTreeNode *> m_DrawcallStack;
+  std::list<VulkanDrawcallTreeNode *> m_DrawcallStack;
 
-  list<VulkanDrawcallTreeNode *> &GetDrawcallStack()
+  std::list<VulkanDrawcallTreeNode *> &GetDrawcallStack()
   {
     if(m_LastCmdBufferID != ResourceId())
       return m_BakedCmdBufferInfo[m_LastCmdBufferID].drawStack;
@@ -877,7 +875,7 @@ private:
   void AddDrawcall(const DrawcallDescription &d, bool hasEvents);
   void AddEvent();
 
-  void AddUsage(VulkanDrawcallTreeNode &drawNode, vector<DebugMessage> &debugMessages);
+  void AddUsage(VulkanDrawcallTreeNode &drawNode, std::vector<DebugMessage> &debugMessages);
   void AddFramebufferUsage(VulkanDrawcallTreeNode &drawNode, ResourceId renderPass,
                            ResourceId framebuffer, uint32_t subpass);
   void AddFramebufferUsageAllChildren(VulkanDrawcallTreeNode &drawNode, ResourceId renderPass,
@@ -901,6 +899,10 @@ private:
                                                       int32_t messageCode, const char *pLayerPrefix,
                                                       const char *pMessage, void *pUserData);
   void AddFrameTerminator(uint64_t queueMarkerTag);
+  std::vector<VkImageMemoryBarrier> ImageInitializationBarriers(ResourceId id, WrappedVkRes *live,
+                                                                bool initialized,
+                                                                const ImgRefs *imgRefs) const;
+  void SubmitExtQBarriers(const std::map<uint32_t, std::vector<VkImageMemoryBarrier>> &extQBarriers);
 
 public:
   WrappedVulkan();
@@ -916,12 +918,13 @@ public:
   VulkanReplay *GetReplay() { return &m_Replay; }
   // replay interface
   bool Prepare_InitialState(WrappedVkRes *res);
-  uint32_t GetSize_InitialState(ResourceId id, WrappedVkRes *res);
-  uint32_t GetSize_SparseInitialState(ResourceId id, WrappedVkRes *res);
+  uint64_t GetSize_InitialState(ResourceId id, const VkInitialContents &initial);
+  uint64_t GetSize_SparseInitialState(ResourceId id, const VkInitialContents &initial);
   template <typename SerialiserType>
-  bool Serialise_InitialState(SerialiserType &ser, ResourceId resid, WrappedVkRes *res);
+  bool Serialise_InitialState(SerialiserType &ser, ResourceId id, VkResourceRecord *record,
+                              const VkInitialContents *initial);
   void Create_InitialState(ResourceId id, WrappedVkRes *live, bool hasData);
-  void Apply_InitialState(WrappedVkRes *live, VkInitialContents initial);
+  void Apply_InitialState(WrappedVkRes *live, const VkInitialContents &initial);
 
   void RemapQueueFamilyIndices(uint32_t &srcQueueFamily, uint32_t &dstQueueFamily);
   uint32_t GetQueueFamilyIndex() { return m_QueueFamilyIdx; }
@@ -953,7 +956,7 @@ public:
   uint32_t GetUploadMemoryIndex(uint32_t resourceRequiredBitmask);
   uint32_t GetGPULocalMemoryIndex(uint32_t resourceRequiredBitmask);
 
-  vector<EventUsage> GetUsage(ResourceId id) { return m_ResourceUses[id]; }
+  std::vector<EventUsage> GetUsage(ResourceId id) { return m_ResourceUses[id]; }
   // return the pre-selected device and queue
   VkDevice GetDev()
   {
@@ -2070,4 +2073,36 @@ public:
   // VK_EXT_buffer_device_address
   VkDeviceAddress vkGetBufferDeviceAddressEXT(VkDevice device,
                                               const VkBufferDeviceAddressInfoEXT *pInfo);
+
+  // VK_EXT_hdr_metadata
+
+  IMPLEMENT_FUNCTION_SERIALISED(void, vkSetHdrMetadataEXT, VkDevice device, uint32_t swapchainCount,
+                                const VkSwapchainKHR *pSwapchains, const VkHdrMetadataEXT *pMetadata);
+
+  // VK_AMD_display_native_hdr
+
+  IMPLEMENT_FUNCTION_SERIALISED(void, vkSetLocalDimmingAMD, VkDevice device,
+                                VkSwapchainKHR swapChain, VkBool32 localDimmingEnable);
+
+  // VK_EXT_full_screen_exclusive
+
+  IMPLEMENT_FUNCTION_SERIALISED(VkResult, vkGetDeviceGroupSurfacePresentModes2EXT, VkDevice device,
+                                const VkPhysicalDeviceSurfaceInfo2KHR *pSurfaceInfo,
+                                VkDeviceGroupPresentModeFlagsKHR *pModes);
+
+  IMPLEMENT_FUNCTION_SERIALISED(VkResult, vkGetPhysicalDeviceSurfacePresentModes2EXT,
+                                VkPhysicalDevice physicalDevice,
+                                const VkPhysicalDeviceSurfaceInfo2KHR *pSurfaceInfo,
+                                uint32_t *pPresentModeCount, VkPresentModeKHR *pPresentModes);
+
+  IMPLEMENT_FUNCTION_SERIALISED(VkResult, vkAcquireFullScreenExclusiveModeEXT, VkDevice device,
+                                VkSwapchainKHR swapchain);
+
+  IMPLEMENT_FUNCTION_SERIALISED(VkResult, vkReleaseFullScreenExclusiveModeEXT, VkDevice device,
+                                VkSwapchainKHR swapchain);
+
+  VkResult vkCreateHeadlessSurfaceEXT(VkInstance instance,
+                                      const VkHeadlessSurfaceCreateInfoEXT *pCreateInfo,
+                                      const VkAllocationCallbacks *pAllocator,
+                                      VkSurfaceKHR *pSurface);
 };

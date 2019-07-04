@@ -24,7 +24,7 @@
 
 #include "gl_test.h"
 
-struct GL_Mip_Gen_RT : OpenGLGraphicsTest
+TEST(GL_Mip_Gen_RT, OpenGLGraphicsTest)
 {
   static constexpr const char *Description =
       "Tests rendering from one mip to another to do a downsample chain";
@@ -61,10 +61,10 @@ void main()
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create context, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     GLuint vao = MakeVAO();
@@ -84,7 +84,6 @@ void main()
     glEnableVertexAttribArray(2);
 
     GLuint program = MakeProgram(vertex, pixel);
-    glObjectLabel(GL_PROGRAM, program, -1, "Full program");
 
     GLuint tex = MakeTexture();
     glBindTexture(GL_TEXTURE_2D, tex);
@@ -166,4 +165,4 @@ void main()
   }
 };
 
-REGISTER_TEST(GL_Mip_Gen_RT);
+REGISTER_TEST();

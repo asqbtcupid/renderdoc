@@ -33,7 +33,7 @@
 #define OPENGL 1
 #include "data/glsl/glsl_ubos_cpp.h"
 
-void GLReplay::RenderMesh(uint32_t eventId, const vector<MeshFormat> &secondaryDraws,
+void GLReplay::RenderMesh(uint32_t eventId, const std::vector<MeshFormat> &secondaryDraws,
                           const MeshDisplay &cfg)
 {
   WrappedOpenGL &drv = *m_pDriver;
@@ -123,6 +123,15 @@ void GLReplay::RenderMesh(uint32_t eventId, const vector<MeshFormat> &secondaryD
 
         GLuint vb = m_pDriver->GetResourceManager()->GetCurrentResource(fmt.vertexResourceId).name;
         drv.glBindVertexBuffer(0, vb, (GLintptr)fmt.vertexByteOffset, fmt.vertexByteStride);
+
+        {
+          GLint bytesize = 0;
+          drv.glGetNamedBufferParameterivEXT(vb, eGL_BUFFER_SIZE, &bytesize);
+
+          // skip empty source buffers
+          if(bytesize == 0)
+            continue;
+        }
 
         GLenum secondarytopo = MakeGLPrimitiveTopology(fmt.topology);
 
@@ -253,6 +262,16 @@ void GLReplay::RenderMesh(uint32_t eventId, const vector<MeshFormat> &secondaryD
 
     GLuint vb =
         m_pDriver->GetResourceManager()->GetCurrentResource(meshData[i]->vertexResourceId).name;
+
+    {
+      GLint bytesize = 0;
+      drv.glGetNamedBufferParameterivEXT(vb, eGL_BUFFER_SIZE, &bytesize);
+
+      // skip empty source buffers
+      if(bytesize == 0)
+        continue;
+    }
+
     drv.glBindVertexBuffer(i, vb, offs, meshData[i]->vertexByteStride);
 
     if(meshData[i]->instanced)
@@ -518,16 +537,16 @@ void GLReplay::RenderMesh(uint32_t eventId, const vector<MeshFormat> &secondaryD
     FloatVector activeVertex;
 
     // primitive this vert is a part of (red prim, optional)
-    vector<FloatVector> activePrim;
+    std::vector<FloatVector> activePrim;
 
     // for patch lists, to show other verts in patch (green dots, optional)
     // for non-patch lists, we use the activePrim and adjacentPrimVertices
     // to show what other verts are related
-    vector<FloatVector> inactiveVertices;
+    std::vector<FloatVector> inactiveVertices;
 
     // adjacency (line or tri, strips or lists) (green prims, optional)
     // will be N*M long, N adjacent prims of M verts each. M = primSize below
-    vector<FloatVector> adjacentPrimVertices;
+    std::vector<FloatVector> adjacentPrimVertices;
 
     GLenum primTopo = eGL_TRIANGLES;
     uint32_t primSize = 3;    // number of verts per primitive

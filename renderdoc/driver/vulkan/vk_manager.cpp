@@ -33,9 +33,9 @@
 #endif
 
 template <typename SrcBarrierType>
-void VulkanResourceManager::RecordSingleBarrier(vector<pair<ResourceId, ImageRegionState> > &dststates,
-                                                ResourceId id, const SrcBarrierType &t,
-                                                uint32_t nummips, uint32_t numslices)
+void VulkanResourceManager::RecordSingleBarrier(
+    std::vector<rdcpair<ResourceId, ImageRegionState> > &dststates, ResourceId id,
+    const SrcBarrierType &t, uint32_t nummips, uint32_t numslices)
 {
   bool done = false;
 
@@ -115,7 +115,7 @@ void VulkanResourceManager::RecordSingleBarrier(vector<pair<ResourceId, ImageReg
         else if(it->second.subresourceRange.levelCount > 1 ||
                 it->second.subresourceRange.layerCount > 1)
         {
-          pair<ResourceId, ImageRegionState> existing = *it;
+          rdcpair<ResourceId, ImageRegionState> existing = *it;
 
           // remember where we were in the array, as after this iterators will be
           // invalidated.
@@ -180,12 +180,12 @@ void VulkanResourceManager::RecordSingleBarrier(vector<pair<ResourceId, ImageReg
   VkImageSubresourceRange subRange = t.subresourceRange;
   subRange.levelCount = nummips;
   subRange.layerCount = numslices;
-  dststates.insert(it, std::make_pair(id, ImageRegionState(VK_QUEUE_FAMILY_IGNORED, subRange,
-                                                           t.oldLayout, t.newLayout)));
+  dststates.insert(it, make_rdcpair(id, ImageRegionState(VK_QUEUE_FAMILY_IGNORED, subRange,
+                                                         t.oldLayout, t.newLayout)));
 }
 
-void VulkanResourceManager::RecordBarriers(vector<pair<ResourceId, ImageRegionState> > &states,
-                                           const map<ResourceId, ImageLayouts> &layouts,
+void VulkanResourceManager::RecordBarriers(std::vector<rdcpair<ResourceId, ImageRegionState> > &states,
+                                           const std::map<ResourceId, ImageLayouts> &layouts,
                                            uint32_t numBarriers, const VkImageMemoryBarrier *barriers)
 {
   TRDBG("Recording %u barriers", numBarriers);
@@ -210,7 +210,7 @@ void VulkanResourceManager::RecordBarriers(vector<pair<ResourceId, ImageRegionSt
     if(nummips == VK_REMAINING_MIP_LEVELS)
     {
       if(it != layouts.end())
-        nummips = it->second.levelCount - t.subresourceRange.baseMipLevel;
+        nummips = it->second.imageInfo.levelCount - t.subresourceRange.baseMipLevel;
       else
         nummips = 1;
     }
@@ -218,7 +218,7 @@ void VulkanResourceManager::RecordBarriers(vector<pair<ResourceId, ImageRegionSt
     if(numslices == VK_REMAINING_ARRAY_LAYERS)
     {
       if(it != layouts.end())
-        numslices = it->second.layerCount - t.subresourceRange.baseArrayLayer;
+        numslices = it->second.imageInfo.layerCount - t.subresourceRange.baseArrayLayer;
       else
         numslices = 1;
     }
@@ -229,8 +229,9 @@ void VulkanResourceManager::RecordBarriers(vector<pair<ResourceId, ImageRegionSt
   TRDBG("Post-record, there are %u states", (uint32_t)states.size());
 }
 
-void VulkanResourceManager::MergeBarriers(vector<pair<ResourceId, ImageRegionState> > &dststates,
-                                          vector<pair<ResourceId, ImageRegionState> > &srcstates)
+void VulkanResourceManager::MergeBarriers(
+    std::vector<rdcpair<ResourceId, ImageRegionState> > &dststates,
+    std::vector<rdcpair<ResourceId, ImageRegionState> > &srcstates)
 {
   TRDBG("Merging %u states", (uint32_t)srcstates.size());
 
@@ -253,11 +254,13 @@ void VulkanResourceManager::SerialiseImageStates(SerialiserType &ser,
 
   auto srcit = states.begin();
 
-  std::vector<pair<ResourceId, ImageRegionState> > vec;
+  std::vector<rdcpair<ResourceId, ImageRegionState> > vec;
+
+  std::set<ResourceId> updatedState;
 
   for(uint32_t i = 0; i < NumImages; i++)
   {
-    SERIALISE_ELEMENT_LOCAL(Image, (ResourceId)(srcit->first)).TypedAs("VkImage");
+    SERIALISE_ELEMENT_LOCAL(Image, (ResourceId)(srcit->first)).TypedAs("VkImage"_lit);
     SERIALISE_ELEMENT_LOCAL(ImageState, (ImageLayouts)(srcit->second));
 
     ResourceId liveid;
@@ -266,6 +269,8 @@ void VulkanResourceManager::SerialiseImageStates(SerialiserType &ser,
 
     if(IsReplayingAndReading() && liveid != ResourceId())
     {
+      updatedState.insert(liveid);
+
       for(ImageRegionState &state : ImageState.subresourceStates)
       {
         VkImageMemoryBarrier t;
@@ -283,23 +288,63 @@ void VulkanResourceManager::SerialiseImageStates(SerialiserType &ser,
           t.dstQueueFamilyIndex = t.srcQueueFamilyIndex = m_Core->GetQueueFamilyIndex();
         state.dstQueueFamilyIndex = t.dstQueueFamilyIndex;
         t.image = Unwrap(GetCurrentHandle<VkImage>(liveid));
+
         t.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         t.newLayout = state.newLayout;
 
-        // sanitise the new layout
-        ReplacePresentableImageLayout(state.newLayout);
-        if(t.newLayout == VK_IMAGE_LAYOUT_UNDEFINED)
-          t.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-        if(state.newLayout == VK_IMAGE_LAYOUT_UNDEFINED)
-          state.newLayout = VK_IMAGE_LAYOUT_GENERAL;
         t.subresourceRange = state.subresourceRange;
-        barriers.push_back(t);
-        vec.push_back(std::make_pair(liveid, state));
+
+        auto stit = states.find(liveid);
+
+        if(stit == states.end() || stit->second.memoryBound)
+        {
+          barriers.push_back(t);
+          vec.push_back(make_rdcpair(liveid, state));
+        }
       }
     }
 
     if(ser.IsWriting())
       srcit++;
+  }
+
+  // on replay, any images from the capture which didn't get touched above were created mid-frame so
+  // we reset them to their initialLayout.
+  if(IsReplayingAndReading())
+  {
+    for(auto it = states.begin(); it != states.end(); ++it)
+    {
+      ResourceId liveid = it->first;
+
+      if(GetOriginalID(liveid) != liveid && updatedState.find(liveid) == updatedState.end())
+      {
+        for(ImageRegionState &state : it->second.subresourceStates)
+        {
+          VkImageMemoryBarrier t = {};
+          t.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+          t.srcQueueFamilyIndex = it->second.queueFamilyIndex;
+          t.dstQueueFamilyIndex = it->second.queueFamilyIndex;
+          m_Core->RemapQueueFamilyIndices(t.srcQueueFamilyIndex, t.dstQueueFamilyIndex);
+          if(t.dstQueueFamilyIndex == VK_QUEUE_FAMILY_IGNORED)
+            t.dstQueueFamilyIndex = t.srcQueueFamilyIndex = m_Core->GetQueueFamilyIndex();
+          state.dstQueueFamilyIndex = t.dstQueueFamilyIndex;
+          t.image = Unwrap(GetCurrentHandle<VkImage>(liveid));
+
+          t.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+          state.newLayout = t.newLayout = it->second.initialLayout;
+
+          t.subresourceRange = state.subresourceRange;
+
+          auto stit = states.find(liveid);
+
+          if(stit == states.end() || stit->second.memoryBound)
+          {
+            barriers.push_back(t);
+            vec.push_back(make_rdcpair(liveid, state));
+          }
+        }
+      }
+    }
   }
 
   // we don't have to specify a queue here because all of the images have a specific queue above
@@ -325,9 +370,10 @@ void VulkanResourceManager::SerialiseImageStates(SerialiserType &ser,
   for(auto it = states.begin(); it != states.end(); ++it)
   {
     ImageLayouts &layouts = it->second;
+    const ImageInfo &imageInfo = layouts.imageInfo;
 
     if(layouts.subresourceStates.size() > 1 &&
-       layouts.subresourceStates.size() == size_t(layouts.layerCount * layouts.levelCount))
+       layouts.subresourceStates.size() == size_t(imageInfo.layerCount * imageInfo.levelCount))
     {
       VkImageLayout layout = layouts.subresourceStates[0].newLayout;
 
@@ -348,8 +394,8 @@ void VulkanResourceManager::SerialiseImageStates(SerialiserType &ser,
                                         layouts.subresourceStates.end());
         layouts.subresourceStates[0].subresourceRange.baseArrayLayer = 0;
         layouts.subresourceStates[0].subresourceRange.baseMipLevel = 0;
-        layouts.subresourceStates[0].subresourceRange.layerCount = layouts.layerCount;
-        layouts.subresourceStates[0].subresourceRange.levelCount = layouts.levelCount;
+        layouts.subresourceStates[0].subresourceRange.layerCount = imageInfo.layerCount;
+        layouts.subresourceStates[0].subresourceRange.levelCount = imageInfo.levelCount;
       }
     }
   }
@@ -386,7 +432,7 @@ bool VulkanResourceManager::Serialise_DeviceMemoryRefs(SerialiserType &ser,
     {
       ResourceId mem = it_data->memory;
 
-      auto res = m_MemFrameRefs.insert(std::make_pair(mem, MemRefs()));
+      auto res = m_MemFrameRefs.insert(std::pair<ResourceId, MemRefs>(mem, MemRefs()));
       RDCASSERTMSG("MemRefIntervals for each memory resource must be contigous", res.second);
       Intervals<FrameRefType> &rangeRefs = res.first->second.rangeRefs;
 
@@ -412,6 +458,28 @@ template bool VulkanResourceManager::Serialise_DeviceMemoryRefs(ReadSerialiser &
 template bool VulkanResourceManager::Serialise_DeviceMemoryRefs(WriteSerialiser &ser,
                                                                 std::vector<MemRefInterval> &data);
 
+template <typename SerialiserType>
+bool VulkanResourceManager::Serialise_ImageRefs(SerialiserType &ser, std::vector<ImgRefsPair> &data)
+{
+  SERIALISE_ELEMENT(data);
+
+  SERIALISE_CHECK_READ_ERRORS();
+
+  if(IsReplayingAndReading())
+  {
+    // unpack data into m_ImgFrameRefs
+    for(auto it = data.begin(); it != data.end(); it++)
+      m_ImgFrameRefs.insert({it->image, it->imgRefs});
+  }
+
+  return true;
+}
+
+template bool VulkanResourceManager::Serialise_ImageRefs(ReadSerialiser &ser,
+                                                         std::vector<ImgRefsPair> &imageRefs);
+template bool VulkanResourceManager::Serialise_ImageRefs(WriteSerialiser &ser,
+                                                         std::vector<ImgRefsPair> &imageRefs);
+
 void VulkanResourceManager::InsertDeviceMemoryRefs(WriteSerialiser &ser)
 {
   std::vector<MemRefInterval> data;
@@ -429,6 +497,24 @@ void VulkanResourceManager::InsertDeviceMemoryRefs(WriteSerialiser &ser)
   {
     SCOPED_SERIALISE_CHUNK(VulkanChunk::DeviceMemoryRefs, sizeEstimate);
     Serialise_DeviceMemoryRefs(ser, data);
+  }
+}
+
+void VulkanResourceManager::InsertImageRefs(WriteSerialiser &ser)
+{
+  std::vector<ImgRefsPair> data;
+  data.reserve(m_ImgFrameRefs.size());
+  size_t sizeEstimate = 32;
+
+  for(auto it = m_ImgFrameRefs.begin(); it != m_ImgFrameRefs.end(); it++)
+  {
+    data.push_back({it->first, it->second});
+    sizeEstimate += sizeof(ImgRefsPair) + sizeof(FrameRefType) * it->second.rangeRefs.size();
+  }
+
+  {
+    SCOPED_SERIALISE_CHUNK(VulkanChunk::ImageRefs, sizeEstimate);
+    Serialise_ImageRefs(ser, data);
   }
 }
 
@@ -466,8 +552,8 @@ void VulkanResourceManager::SetInternalResource(ResourceId id)
 }
 
 void VulkanResourceManager::ApplyBarriers(uint32_t queueFamilyIndex,
-                                          vector<pair<ResourceId, ImageRegionState> > &states,
-                                          map<ResourceId, ImageLayouts> &layouts)
+                                          std::vector<rdcpair<ResourceId, ImageRegionState> > &states,
+                                          std::map<ResourceId, ImageLayouts> &layouts)
 {
   TRDBG("Applying %u barriers", (uint32_t)states.size());
 
@@ -493,12 +579,14 @@ void VulkanResourceManager::ApplyBarriers(uint32_t queueFamilyIndex,
     if(t.dstQueueFamilyIndex == VK_QUEUE_FAMILY_IGNORED)
       stit->second.queueFamilyIndex = queueFamilyIndex;
 
+    const ImageInfo &imageInfo = stit->second.imageInfo;
+
     uint32_t nummips = t.subresourceRange.levelCount;
     uint32_t numslices = t.subresourceRange.layerCount;
     if(nummips == VK_REMAINING_MIP_LEVELS)
-      nummips = layouts[id].levelCount;
+      nummips = imageInfo.levelCount;
     if(numslices == VK_REMAINING_ARRAY_LAYERS)
-      numslices = layouts[id].layerCount;
+      numslices = imageInfo.layerCount;
 
     if(nummips == 0)
       nummips = 1;
@@ -683,6 +771,20 @@ ResourceId VulkanResourceManager::GetFirstIDForHandle(uint64_t handle)
   return ResourceId();
 }
 
+void VulkanResourceManager::MarkImageFrameReferenced(const VkResourceRecord *img,
+                                                     const ImageRange &range, FrameRefType refType)
+{
+  MarkImageFrameReferenced(img->GetResourceID(), img->resInfo->imageInfo, range, refType);
+}
+
+void VulkanResourceManager::MarkImageFrameReferenced(ResourceId img, const ImageInfo &imageInfo,
+                                                     const ImageRange &range, FrameRefType refType)
+{
+  FrameRefType maxRef = MarkImageReferenced(m_ImgFrameRefs, img, imageInfo, range, refType);
+  MarkResourceFrameReferenced(
+      img, maxRef, [](FrameRefType x, FrameRefType y) -> FrameRefType { return std::max(x, y); });
+}
+
 void VulkanResourceManager::MarkMemoryFrameReferenced(ResourceId mem, VkDeviceSize offset,
                                                       VkDeviceSize size, FrameRefType refType)
 {
@@ -691,6 +793,18 @@ void VulkanResourceManager::MarkMemoryFrameReferenced(ResourceId mem, VkDeviceSi
   FrameRefType maxRef = MarkMemoryReferenced(m_MemFrameRefs, mem, offset, size, refType);
   MarkResourceFrameReferenced(
       mem, maxRef, [](FrameRefType x, FrameRefType y) -> FrameRefType { return std::max(x, y); });
+}
+
+void VulkanResourceManager::MergeReferencedImages(std::map<ResourceId, ImgRefs> &imgRefs)
+{
+  for(auto j = imgRefs.begin(); j != imgRefs.end(); j++)
+  {
+    auto i = m_ImgFrameRefs.find(j->first);
+    if(i == m_ImgFrameRefs.end())
+      m_ImgFrameRefs.insert(*j);
+    else
+      i->second.Merge(j->second);
+  }
 }
 
 void VulkanResourceManager::MergeReferencedMemory(std::map<ResourceId, MemRefs> &memRefs)
@@ -705,6 +819,11 @@ void VulkanResourceManager::MergeReferencedMemory(std::map<ResourceId, MemRefs> 
     else
       i->second.Merge(j->second);
   }
+}
+
+void VulkanResourceManager::ClearReferencedImages()
+{
+  m_ImgFrameRefs.clear();
 }
 
 void VulkanResourceManager::ClearReferencedMemory()
@@ -723,14 +842,13 @@ MemRefs *VulkanResourceManager::FindMemRefs(ResourceId mem)
     return NULL;
 }
 
-bool VulkanResourceManager::Force_InitialState(WrappedVkRes *res, bool prepare)
+ImgRefs *VulkanResourceManager::FindImgRefs(ResourceId img)
 {
-  return false;
-}
-
-bool VulkanResourceManager::Need_InitialStateChunk(WrappedVkRes *res)
-{
-  return true;
+  auto it = m_ImgFrameRefs.find(img);
+  if(it != m_ImgFrameRefs.end())
+    return &it->second;
+  else
+    return NULL;
 }
 
 bool VulkanResourceManager::Prepare_InitialState(WrappedVkRes *res)
@@ -738,15 +856,16 @@ bool VulkanResourceManager::Prepare_InitialState(WrappedVkRes *res)
   return m_Core->Prepare_InitialState(res);
 }
 
-uint32_t VulkanResourceManager::GetSize_InitialState(ResourceId id, WrappedVkRes *res)
+uint64_t VulkanResourceManager::GetSize_InitialState(ResourceId id, const VkInitialContents &initial)
 {
-  return m_Core->GetSize_InitialState(id, res);
+  return m_Core->GetSize_InitialState(id, initial);
 }
 
-bool VulkanResourceManager::Serialise_InitialState(WriteSerialiser &ser, ResourceId resid,
-                                                   WrappedVkRes *res)
+bool VulkanResourceManager::Serialise_InitialState(WriteSerialiser &ser, ResourceId id,
+                                                   VkResourceRecord *record,
+                                                   const VkInitialContents *initial)
 {
-  return m_Core->Serialise_InitialState(ser, resid, res);
+  return m_Core->Serialise_InitialState(ser, id, record, initial);
 }
 
 void VulkanResourceManager::Create_InitialState(ResourceId id, WrappedVkRes *live, bool hasData)
@@ -754,7 +873,7 @@ void VulkanResourceManager::Create_InitialState(ResourceId id, WrappedVkRes *liv
   return m_Core->Create_InitialState(id, live, hasData);
 }
 
-void VulkanResourceManager::Apply_InitialState(WrappedVkRes *live, VkInitialContents initial)
+void VulkanResourceManager::Apply_InitialState(WrappedVkRes *live, const VkInitialContents &initial)
 {
   return m_Core->Apply_InitialState(live, initial);
 }
@@ -764,7 +883,7 @@ std::vector<ResourceId> VulkanResourceManager::InitialContentResources()
   std::vector<ResourceId> resources =
       ResourceManager<VulkanResourceManagerConfiguration>::InitialContentResources();
   std::sort(resources.begin(), resources.end(), [this](ResourceId a, ResourceId b) {
-    return m_InitialContents[a].type < m_InitialContents[b].type;
+    return m_InitialContents[a].data.type < m_InitialContents[b].data.type;
   });
   return resources;
 }

@@ -60,7 +60,7 @@ Serialiser<SerialiserMode::Reading>::~Serialiser()
 }
 
 template <>
-uint32_t Serialiser<SerialiserMode::Reading>::BeginChunk(uint32_t, uint32_t)
+uint32_t Serialiser<SerialiserMode::Reading>::BeginChunk(uint32_t, uint64_t)
 {
   uint32_t chunkID = 0;
 
@@ -100,7 +100,16 @@ uint32_t Serialiser<SerialiserMode::Reading>::BeginChunk(uint32_t, uint32_t)
     if(c & ChunkTimestamp)
       m_Read->Read(m_ChunkMetadata.timestampMicro);
 
-    m_Read->Read(m_ChunkMetadata.length);
+    if(c & Chunk64BitSize)
+    {
+      m_Read->Read(m_ChunkMetadata.length);
+    }
+    else
+    {
+      uint32_t chunkSize = 0;
+      m_Read->Read(chunkSize);
+      m_ChunkMetadata.length = chunkSize;
+    }
 
     m_LastChunkOffset = m_Read->GetOffset();
   }
@@ -135,7 +144,7 @@ void Serialiser<SerialiserMode::Reading>::SkipCurrentChunk()
     SDObject &current = *m_StructureStack.back();
 
     current.data.basic.numChildren++;
-    current.data.children.push_back(new SDObject("Opaque chunk", "Byte Buffer"));
+    current.data.children.push_back(new SDObject("Opaque chunk"_lit, "Byte Buffer"_lit));
 
     SDObject &obj = *current.data.children.back();
     obj.type.basetype = SDBasic::Buffer;
@@ -260,7 +269,7 @@ void Serialiser<SerialiserMode::Writing>::SetChunkMetadataRecording(uint32_t fla
 }
 
 template <>
-uint32_t Serialiser<SerialiserMode::Writing>::BeginChunk(uint32_t chunkID, uint32_t byteLength)
+uint32_t Serialiser<SerialiserMode::Writing>::BeginChunk(uint32_t chunkID, uint64_t byteLength)
 {
   {
     // chunk index needs to be valid
@@ -271,6 +280,8 @@ uint32_t Serialiser<SerialiserMode::Writing>::BeginChunk(uint32_t chunkID, uint3
       RDCASSERT(chunkID <= ChunkIndexMask);
 
       c |= m_ChunkFlags;
+      if(byteLength > 0xffffffff)
+        c |= Chunk64BitSize;
 
       m_ChunkMetadata.chunkID = chunkID;
 
@@ -334,13 +345,23 @@ uint32_t Serialiser<SerialiserMode::Writing>::BeginChunk(uint32_t chunkID, uint3
       {
         // write length, assuming it is an upper bound
         m_ChunkFixup = 0;
-        m_Write->Write(byteLength);
+        RDCASSERT(byteLength < 0x100000000 || (c & Chunk64BitSize) != 0);
+        if(c & Chunk64BitSize)
+        {
+          m_Write->Write(byteLength);
+        }
+        else
+        {
+          m_Write->Write(uint32_t(byteLength & 0xffffffff));
+        }
         m_LastChunkOffset = m_Write->GetOffset();
         m_ChunkMetadata.length = byteLength;
       }
       else
       {
         // length will be fixed up in EndChunk
+        // assume that this case will not produce chunks with size larger than can fit in 32 bit
+        // value
         uint32_t chunkSize = 0xbeebfeed;
         m_ChunkFixup = m_Write->GetOffset();
         m_Write->Write(chunkSize);
@@ -371,12 +392,13 @@ void Serialiser<SerialiserMode::Writing>::EndChunk()
     RDCASSERT(curOffset > chunkOffset);
 
     uint64_t chunkLength = (curOffset - chunkOffset) - sizeof(uint32_t);
+    if(chunkLength > 0xffffffff)
+    {
+      RDCERR("!!! CHUNK LENGTH %llu EXCEEDED 32 BIT VALUE. CAPTURE WILL BE CORRUPTED. !!!",
+             chunkLength);
+    }
 
-    RDCASSERT(chunkLength < 0xffffffff);
-
-    uint32_t chunklen = (uint32_t)chunkLength;
-
-    m_Write->WriteAt(chunkOffset, chunklen);
+    m_Write->WriteAt(chunkOffset, uint32_t(chunkLength & 0xffffffff));
   }
   else
   {
@@ -393,21 +415,21 @@ void Serialiser<SerialiserMode::Writing>::EndChunk()
         m_Write->Write(padByte);
       }
 
-      RDCDEBUG("Chunk estimated at %u bytes, actual length %llu. Added %llu bytes padding.",
+      RDCDEBUG("Chunk estimated at %llu bytes, actual length %llu. Added %llu bytes padding.",
                m_ChunkMetadata.length, writtenLength, numPadBytes);
     }
     else if(writtenLength > m_ChunkMetadata.length)
     {
       RDCERR(
           "!!! "
-          "ESTIMATED UPPER BOUND CHUNK LENGTH %u EXCEEDED: %llu. "
+          "ESTIMATED UPPER BOUND CHUNK LENGTH %llu EXCEEDED: %llu. "
           "CAPTURE WILL BE CORRUPTED. "
           "!!!",
           m_ChunkMetadata.length, writtenLength);
     }
     else
     {
-      RDCDEBUG("Chunk was exactly the estimate of %u bytes.", m_ChunkMetadata.length);
+      RDCDEBUG("Chunk was exactly the estimate of %llu bytes.", m_ChunkMetadata.length);
     }
   }
 
@@ -475,7 +497,7 @@ void Serialiser<SerialiserMode::Writing>::WriteStructuredFile(const SDFile &file
       for(size_t o = 0; o < chunk.data.children.size(); o++)
       {
         // note, we don't need names because we aren't exporting structured data
-        ser->Serialise("", chunk.data.children[o]);
+        ser->Serialise(""_lit, chunk.data.children[o]);
       }
     }
 
@@ -499,7 +521,7 @@ void Serialiser<SerialiserMode::Writing>::WriteStructuredFile(const SDFile &file
 }
 
 template <>
-std::string DoStringise(const SDBasic &el)
+rdcstr DoStringise(const SDBasic &el)
 {
   BEGIN_ENUM_STRINGISE(SDBasic);
   {
@@ -520,7 +542,7 @@ std::string DoStringise(const SDBasic &el)
 }
 
 template <>
-std::string DoStringise(const SDTypeFlags &el)
+rdcstr DoStringise(const SDTypeFlags &el)
 {
   BEGIN_BITFIELD_STRINGISE(SDTypeFlags);
   {
@@ -535,7 +557,7 @@ std::string DoStringise(const SDTypeFlags &el)
 }
 
 template <>
-std::string DoStringise(const SDChunkFlags &el)
+rdcstr DoStringise(const SDChunkFlags &el)
 {
   BEGIN_BITFIELD_STRINGISE(SDChunkFlags);
   {
@@ -580,7 +602,7 @@ void DoSerialise(SerialiserType &ser, StructuredObjectList &el)
   // transfer purposes, we don't make a proper array here and instead just manually serialise count
   // + elements
   uint64_t count = el.size();
-  ser.Serialise("count", count);
+  ser.Serialise("count"_lit, count);
 
   if(ser.IsReading())
     el.resize((size_t)count);
@@ -591,7 +613,7 @@ void DoSerialise(SerialiserType &ser, StructuredObjectList &el)
     if(ser.IsReading())
       el[c] = new SDObject("", "");
 
-    ser.Serialise("$el", *el[c]);
+    ser.Serialise("$el"_lit, *el[c]);
   }
 }
 
@@ -634,7 +656,7 @@ void DoSerialise(SerialiserType &ser, SDObject *el)
   if(el->type.flags & SDTypeFlags::Nullable)
   {
     bool present = el->type.basetype != SDBasic::Null;
-    ser.Serialise("", present);
+    ser.Serialise(""_lit, present);
   }
 
   const SDFile &file = ser.GetStructuredFile();
@@ -644,9 +666,9 @@ void DoSerialise(SerialiserType &ser, SDObject *el)
     case SDBasic::Chunk: RDCERR("Unexpected chunk inside object!"); break;
     case SDBasic::Struct:
       for(size_t o = 0; o < el->data.children.size(); o++)
-        ser.Serialise("", el->data.children[o]);
+        ser.Serialise(""_lit, el->data.children[o]);
       break;
-    case SDBasic::Array: ser.Serialise("", (rdcarray<SDObject *> &)el->data.children); break;
+    case SDBasic::Array: ser.Serialise(""_lit, (rdcarray<SDObject *> &)el->data.children); break;
     case SDBasic::Null:
       // nothing to do, we serialised present flag above
       RDCASSERT(el->type.flags & SDTypeFlags::Nullable);
@@ -656,7 +678,7 @@ void DoSerialise(SerialiserType &ser, SDObject *el)
       size_t bufID = (size_t)el->data.basic.u;
       byte *buf = file.buffers[bufID]->data();
       uint64_t size = file.buffers[bufID]->size();
-      ser.Serialise("", buf, size);
+      ser.Serialise(""_lit, buf, size);
       break;
     }
     case SDBasic::String:
@@ -664,42 +686,42 @@ void DoSerialise(SerialiserType &ser, SDObject *el)
       if(el->type.flags & SDTypeFlags::NullString)
       {
         const char *nullstring = NULL;
-        ser.Serialise("", nullstring);
+        ser.Serialise(""_lit, nullstring);
       }
       else
       {
-        ser.Serialise("", el->data.str);
+        ser.Serialise(""_lit, el->data.str);
       }
       break;
     }
     case SDBasic::Enum:
     {
       uint32_t e = (uint32_t)el->data.basic.u;
-      ser.Serialise("", e);
+      ser.Serialise(""_lit, e);
       break;
     }
-    case SDBasic::Boolean: ser.Serialise("", el->data.basic.b); break;
-    case SDBasic::Character: ser.Serialise("", el->data.basic.c); break;
-    case SDBasic::Resource: ser.Serialise("", el->data.basic.id); break;
+    case SDBasic::Boolean: ser.Serialise(""_lit, el->data.basic.b); break;
+    case SDBasic::Character: ser.Serialise(""_lit, el->data.basic.c); break;
+    case SDBasic::Resource: ser.Serialise(""_lit, el->data.basic.id); break;
     case SDBasic::UnsignedInteger:
       if(el->type.byteSize == 1)
       {
         uint8_t u = uint8_t(el->data.basic.u);
-        ser.Serialise("", u);
+        ser.Serialise(""_lit, u);
       }
       else if(el->type.byteSize == 2)
       {
         uint16_t u = uint16_t(el->data.basic.u);
-        ser.Serialise("", u);
+        ser.Serialise(""_lit, u);
       }
       else if(el->type.byteSize == 4)
       {
         uint32_t u = uint32_t(el->data.basic.u);
-        ser.Serialise("", u);
+        ser.Serialise(""_lit, u);
       }
       else if(el->type.byteSize == 8)
       {
-        ser.Serialise("", el->data.basic.u);
+        ser.Serialise(""_lit, el->data.basic.u);
       }
       else
       {
@@ -710,21 +732,21 @@ void DoSerialise(SerialiserType &ser, SDObject *el)
       if(el->type.byteSize == 1)
       {
         int8_t i = int8_t(el->data.basic.i);
-        ser.Serialise("", i);
+        ser.Serialise(""_lit, i);
       }
       else if(el->type.byteSize == 2)
       {
         int16_t i = int16_t(el->data.basic.i);
-        ser.Serialise("", i);
+        ser.Serialise(""_lit, i);
       }
       else if(el->type.byteSize == 4)
       {
         int32_t i = int32_t(el->data.basic.i);
-        ser.Serialise("", i);
+        ser.Serialise(""_lit, i);
       }
       else if(el->type.byteSize == 8)
       {
-        ser.Serialise("", el->data.basic.i);
+        ser.Serialise(""_lit, el->data.basic.i);
       }
       else
       {
@@ -735,11 +757,11 @@ void DoSerialise(SerialiserType &ser, SDObject *el)
       if(el->type.byteSize == 4)
       {
         float f = float(el->data.basic.d);
-        ser.Serialise("", f);
+        ser.Serialise(""_lit, f);
       }
       else if(el->type.byteSize == 8)
       {
-        ser.Serialise("", el->data.basic.d);
+        ser.Serialise(""_lit, el->data.basic.d);
       }
       else
       {
@@ -753,99 +775,99 @@ void DoSerialise(SerialiserType &ser, SDObject *el)
 // Basic types
 
 template <>
-std::string DoStringise(const std::string &el)
+rdcstr DoStringise(const std::string &el)
 {
   return el;
 }
 
 template <>
-std::string DoStringise(const rdcstr &el)
+rdcstr DoStringise(const rdcstr &el)
 {
   return el;
 }
 
 template <>
-std::string DoStringise(void *const &el)
+rdcstr DoStringise(void *const &el)
 {
   return StringFormat::Fmt("%#p", el);
 }
 
 template <>
-std::string DoStringise(const int64_t &el)
+rdcstr DoStringise(const int64_t &el)
 {
   return StringFormat::Fmt("%lld", el);
 }
 
 #if ENABLED(RDOC_SIZET_SEP_TYPE)
 template <>
-std::string DoStringise(const size_t &el)
+rdcstr DoStringise(const size_t &el)
 {
   return StringFormat::Fmt("%llu", (uint64_t)el);
 }
 #endif
 
 template <>
-std::string DoStringise(const uint64_t &el)
+rdcstr DoStringise(const uint64_t &el)
 {
   return StringFormat::Fmt("%llu", el);
 }
 
 template <>
-std::string DoStringise(const uint32_t &el)
+rdcstr DoStringise(const uint32_t &el)
 {
   return StringFormat::Fmt("%u", el);
 }
 
 template <>
-std::string DoStringise(const char &el)
+rdcstr DoStringise(const char &el)
 {
   return StringFormat::Fmt("'%c'", el);
 }
 
 template <>
-std::string DoStringise(const wchar_t &el)
+rdcstr DoStringise(const wchar_t &el)
 {
   return StringFormat::Fmt("'%lc'", el);
 }
 
 template <>
-std::string DoStringise(const byte &el)
+rdcstr DoStringise(const byte &el)
 {
   return StringFormat::Fmt("%hhu", el);
 }
 
 template <>
-std::string DoStringise(const uint16_t &el)
+rdcstr DoStringise(const uint16_t &el)
 {
   return StringFormat::Fmt("%hu", el);
 }
 
 template <>
-std::string DoStringise(const int32_t &el)
+rdcstr DoStringise(const int32_t &el)
 {
   return StringFormat::Fmt("%d", el);
 }
 
 template <>
-std::string DoStringise(const int16_t &el)
+rdcstr DoStringise(const int16_t &el)
 {
   return StringFormat::Fmt("%hd", el);
 }
 
 template <>
-std::string DoStringise(const float &el)
+rdcstr DoStringise(const float &el)
 {
   return StringFormat::Fmt("%0.4f", el);
 }
 
 template <>
-std::string DoStringise(const double &el)
+rdcstr DoStringise(const double &el)
 {
   return StringFormat::Fmt("%0.4lf", el);
 }
 
 template <>
-std::string DoStringise(const bool &el)
+rdcstr DoStringise(const bool &el)
 {
   if(el)
     return "True";

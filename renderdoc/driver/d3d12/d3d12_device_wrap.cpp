@@ -36,11 +36,11 @@ bool WrappedID3D12Device::Serialise_CreateCommandQueue(SerialiserType &ser,
                                                        const D3D12_COMMAND_QUEUE_DESC *pDesc,
                                                        REFIID riid, void **ppCommandQueue)
 {
-  SERIALISE_ELEMENT_LOCAL(Descriptor, *pDesc).Named("pDesc");
-  SERIALISE_ELEMENT_LOCAL(guid, riid).Named("riid");
+  SERIALISE_ELEMENT_LOCAL(Descriptor, *pDesc).Named("pDesc"_lit);
+  SERIALISE_ELEMENT_LOCAL(guid, riid).Named("riid"_lit);
   SERIALISE_ELEMENT_LOCAL(pCommandQueue,
                           ((WrappedID3D12CommandQueue *)*ppCommandQueue)->GetResourceID())
-      .TypedAs("ID3D12CommandQueue *");
+      .TypedAs("ID3D12CommandQueue *"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -144,10 +144,10 @@ bool WrappedID3D12Device::Serialise_CreateCommandAllocator(SerialiserType &ser,
                                                            REFIID riid, void **ppCommandAllocator)
 {
   SERIALISE_ELEMENT(type);
-  SERIALISE_ELEMENT_LOCAL(guid, riid).Named("riid");
+  SERIALISE_ELEMENT_LOCAL(guid, riid).Named("riid"_lit);
   SERIALISE_ELEMENT_LOCAL(pCommandAllocator,
                           ((WrappedID3D12CommandAllocator *)*ppCommandAllocator)->GetResourceID())
-      .TypedAs("ID3D12CommandAllocator *");
+      .TypedAs("ID3D12CommandAllocator *"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -229,10 +229,10 @@ bool WrappedID3D12Device::Serialise_CreateCommandList(SerialiserType &ser, UINT 
   SERIALISE_ELEMENT(type);
   SERIALISE_ELEMENT(pCommandAllocator);
   SERIALISE_ELEMENT(pInitialState);
-  SERIALISE_ELEMENT_LOCAL(guid, riid).Named("riid");
+  SERIALISE_ELEMENT_LOCAL(guid, riid).Named("riid"_lit);
   SERIALISE_ELEMENT_LOCAL(pCommandList,
                           ((WrappedID3D12GraphicsCommandList *)*ppCommandList)->GetResourceID())
-      .TypedAs("ID3D12GraphicsCommandList *");
+      .TypedAs("ID3D12GraphicsCommandList *"_lit);
 
   // this chunk is purely for user information and consistency, the command buffer we allocate is
   // a dummy and is not used for anything.
@@ -365,11 +365,11 @@ bool WrappedID3D12Device::Serialise_CreateGraphicsPipelineState(
     SerialiserType &ser, const D3D12_GRAPHICS_PIPELINE_STATE_DESC *pDesc, REFIID riid,
     void **ppPipelineState)
 {
-  SERIALISE_ELEMENT_LOCAL(Descriptor, *pDesc).Named("pDesc");
-  SERIALISE_ELEMENT_LOCAL(guid, riid).Named("riid");
+  SERIALISE_ELEMENT_LOCAL(Descriptor, *pDesc).Named("pDesc"_lit);
+  SERIALISE_ELEMENT_LOCAL(guid, riid).Named("riid"_lit);
   SERIALISE_ELEMENT_LOCAL(pPipelineState,
                           ((WrappedID3D12PipelineState *)*ppPipelineState)->GetResourceID())
-      .TypedAs("ID3D12PipelineState *");
+      .TypedAs("ID3D12PipelineState *"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -377,6 +377,33 @@ bool WrappedID3D12Device::Serialise_CreateGraphicsPipelineState(
   {
     D3D12_GRAPHICS_PIPELINE_STATE_DESC unwrappedDesc = Descriptor;
     unwrappedDesc.pRootSignature = Unwrap(unwrappedDesc.pRootSignature);
+
+    // check for bytecode - if the user is wrongly using DXIL we will fail to load the capture
+    {
+      D3D12_SHADER_BYTECODE *shaders[] = {
+          &unwrappedDesc.VS, &unwrappedDesc.HS, &unwrappedDesc.DS,
+          &unwrappedDesc.GS, &unwrappedDesc.PS,
+      };
+
+      const char *name[] = {"VS", "HS", "DS", "GS", "PS"};
+
+      for(size_t i = 0; i < ARRAY_COUNT(shaders); i++)
+      {
+        if(shaders[i]->BytecodeLength > 0 && shaders[i]->pShaderBytecode)
+        {
+          if(!DXBC::DXBCFile::CheckForShaderCode(shaders[i]->pShaderBytecode,
+                                                 shaders[i]->BytecodeLength))
+          {
+            RDCERR(
+                "No shader code found in %s bytecode in pipeline state. "
+                "DXIL is unsupported and must be checked for using CheckFeatureSupport.",
+                name[i]);
+            m_FailedReplayStatus = ReplayStatus::APIReplayFailed;
+            return false;
+          }
+        }
+      }
+    }
 
     ID3D12PipelineState *ret = NULL;
     HRESULT hr = m_pDevice->CreateGraphicsPipelineState(&unwrappedDesc, guid, (void **)&ret);
@@ -487,6 +514,32 @@ HRESULT WrappedID3D12Device::CreateGraphicsPipelineState(const D3D12_GRAPHICS_PI
 
   if(SUCCEEDED(ret))
   {
+    // check for bytecode - if the user is wrongly using DXIL we will prevent capturing
+    {
+      D3D12_SHADER_BYTECODE *shaders[] = {
+          &unwrappedDesc.VS, &unwrappedDesc.HS, &unwrappedDesc.DS,
+          &unwrappedDesc.GS, &unwrappedDesc.PS,
+      };
+
+      const char *name[] = {"VS", "HS", "DS", "GS", "PS"};
+
+      for(size_t i = 0; i < ARRAY_COUNT(shaders); i++)
+      {
+        if(shaders[i]->BytecodeLength > 0 && shaders[i]->pShaderBytecode)
+        {
+          if(!DXBC::DXBCFile::CheckForShaderCode(shaders[i]->pShaderBytecode,
+                                                 shaders[i]->BytecodeLength))
+          {
+            RDCERR(
+                "No shader code found in %s bytecode in pipeline state. "
+                "DXIL is unsupported and must be checked for using CheckFeatureSupport.",
+                name[i]);
+            m_InvalidPSO = true;
+          }
+        }
+      }
+    }
+
     WrappedID3D12PipelineState *wrapped = new WrappedID3D12PipelineState(real, this);
 
     if(IsCaptureMode(m_State))
@@ -581,11 +634,11 @@ bool WrappedID3D12Device::Serialise_CreateComputePipelineState(
     SerialiserType &ser, const D3D12_COMPUTE_PIPELINE_STATE_DESC *pDesc, REFIID riid,
     void **ppPipelineState)
 {
-  SERIALISE_ELEMENT_LOCAL(Descriptor, *pDesc).Named("pDesc");
-  SERIALISE_ELEMENT_LOCAL(guid, riid).Named("riid");
+  SERIALISE_ELEMENT_LOCAL(Descriptor, *pDesc).Named("pDesc"_lit);
+  SERIALISE_ELEMENT_LOCAL(guid, riid).Named("riid"_lit);
   SERIALISE_ELEMENT_LOCAL(pPipelineState,
                           ((WrappedID3D12PipelineState *)*ppPipelineState)->GetResourceID())
-      .TypedAs("ID3D12PipelineState *");
+      .TypedAs("ID3D12PipelineState *"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -593,6 +646,18 @@ bool WrappedID3D12Device::Serialise_CreateComputePipelineState(
   {
     D3D12_COMPUTE_PIPELINE_STATE_DESC unwrappedDesc = Descriptor;
     unwrappedDesc.pRootSignature = Unwrap(unwrappedDesc.pRootSignature);
+
+    // check for bytecode - if the user is wrongly using DXIL we will hard-fail instead of producing
+    // a corrupted capture.
+    if(!DXBC::DXBCFile::CheckForShaderCode(unwrappedDesc.CS.pShaderBytecode,
+                                           unwrappedDesc.CS.BytecodeLength))
+    {
+      RDCERR(
+          "No shader code found in CS bytecode in pipeline state. "
+          "DXIL is unsupported and must be checked for using CheckFeatureSupport.");
+      m_FailedReplayStatus = ReplayStatus::APIReplayFailed;
+      return false;
+    }
 
     ID3D12PipelineState *ret = NULL;
     HRESULT hr = m_pDevice->CreateComputePipelineState(&unwrappedDesc, guid, (void **)&ret);
@@ -647,6 +712,17 @@ HRESULT WrappedID3D12Device::CreateComputePipelineState(const D3D12_COMPUTE_PIPE
 
   if(SUCCEEDED(ret))
   {
+    // check for bytecode - if the user is wrongly using DXIL we will hard-fail instead of producing
+    // a corrupted capture.
+    if(!DXBC::DXBCFile::CheckForShaderCode(unwrappedDesc.CS.pShaderBytecode,
+                                           unwrappedDesc.CS.BytecodeLength))
+    {
+      RDCERR(
+          "No shader code found in CS bytecode in pipeline state. "
+          "DXIL is unsupported and must be checked for using CheckFeatureSupport.");
+      m_InvalidPSO = true;
+    }
+
     WrappedID3D12PipelineState *wrapped = new WrappedID3D12PipelineState(real, this);
 
     if(IsCaptureMode(m_State))
@@ -687,10 +763,10 @@ bool WrappedID3D12Device::Serialise_CreateDescriptorHeap(
     SerialiserType &ser, const D3D12_DESCRIPTOR_HEAP_DESC *pDescriptorHeapDesc, REFIID riid,
     void **ppvHeap)
 {
-  SERIALISE_ELEMENT_LOCAL(Descriptor, *pDescriptorHeapDesc).Named("pDescriptorHeapDesc");
-  SERIALISE_ELEMENT_LOCAL(guid, riid).Named("riid");
+  SERIALISE_ELEMENT_LOCAL(Descriptor, *pDescriptorHeapDesc).Named("pDescriptorHeapDesc"_lit);
+  SERIALISE_ELEMENT_LOCAL(guid, riid).Named("riid"_lit);
   SERIALISE_ELEMENT_LOCAL(pHeap, ((WrappedID3D12DescriptorHeap *)*ppvHeap)->GetResourceID())
-      .TypedAs("ID3D12DescriptorHeap *");
+      .TypedAs("ID3D12DescriptorHeap *"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -764,13 +840,7 @@ HRESULT WrappedID3D12Device::CreateDescriptorHeap(const D3D12_DESCRIPTOR_HEAP_DE
 
       record->AddChunk(scope.Get());
 
-      {
-        SCOPED_READLOCK(m_CapTransitionLock);
-        if(IsBackgroundCapturing(m_State))
-          GetResourceManager()->MarkDirtyResource(wrapped->GetResourceID());
-        else
-          GetResourceManager()->MarkPendingDirty(wrapped->GetResourceID());
-      }
+      GetResourceManager()->MarkDirtyResource(wrapped->GetResourceID());
     }
     else
     {
@@ -792,10 +862,10 @@ bool WrappedID3D12Device::Serialise_CreateRootSignature(SerialiserType &ser, UIN
   SERIALISE_ELEMENT(nodeMask);
   SERIALISE_ELEMENT_ARRAY(pBlobWithRootSignature, blobLengthInBytes_);
   SERIALISE_ELEMENT_LOCAL(blobLengthInBytes, uint64_t(blobLengthInBytes_));
-  SERIALISE_ELEMENT_LOCAL(guid, riid).Named("riid");
+  SERIALISE_ELEMENT_LOCAL(guid, riid).Named("riid"_lit);
   SERIALISE_ELEMENT_LOCAL(pRootSignature,
                           ((WrappedID3D12RootSignature *)*ppvRootSignature)->GetResourceID())
-      .TypedAs("ID3D12RootSignature *");
+      .TypedAs("ID3D12RootSignature *"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -1188,14 +1258,14 @@ bool WrappedID3D12Device::Serialise_CreateCommittedResource(
     const D3D12_RESOURCE_DESC *pDesc, D3D12_RESOURCE_STATES InitialResourceState,
     const D3D12_CLEAR_VALUE *pOptimizedClearValue, REFIID riidResource, void **ppvResource)
 {
-  SERIALISE_ELEMENT_LOCAL(props, *pHeapProperties).Named("pHeapProperties");
+  SERIALISE_ELEMENT_LOCAL(props, *pHeapProperties).Named("pHeapProperties"_lit);
   SERIALISE_ELEMENT(HeapFlags);
-  SERIALISE_ELEMENT_LOCAL(desc, *pDesc).Named("pDesc");
+  SERIALISE_ELEMENT_LOCAL(desc, *pDesc).Named("pDesc"_lit);
   SERIALISE_ELEMENT(InitialResourceState);
   SERIALISE_ELEMENT_OPT(pOptimizedClearValue);
-  SERIALISE_ELEMENT_LOCAL(guid, riidResource).Named("riidResource");
+  SERIALISE_ELEMENT_LOCAL(guid, riidResource).Named("riidResource"_lit);
   SERIALISE_ELEMENT_LOCAL(pResource, ((WrappedID3D12Resource1 *)*ppvResource)->GetResourceID())
-      .TypedAs("ID3D12Resource *");
+      .TypedAs("ID3D12Resource *"_lit);
 
   SERIALISE_ELEMENT_LOCAL(gpuAddress,
                           ((WrappedID3D12Resource1 *)*ppvResource)->GetGPUVirtualAddressIfBuffer())
@@ -1312,10 +1382,21 @@ HRESULT WrappedID3D12Device::CreateCommittedResource(const D3D12_HEAP_PROPERTIES
   if(riidResource != __uuidof(ID3D12Resource) && riidResource != __uuidof(ID3D12Resource1))
     return E_NOINTERFACE;
 
+  const D3D12_RESOURCE_DESC *pCreateDesc = pDesc;
+  D3D12_RESOURCE_DESC localDesc;
+
+  if(pDesc && pDesc->Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && pDesc->SampleDesc.Count > 1)
+  {
+    localDesc = *pDesc;
+    // need to be able to create SRVs of MSAA textures to copy out their contents
+    localDesc.Flags &= ~D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE;
+    pCreateDesc = &localDesc;
+  }
+
   void *realptr = NULL;
   HRESULT ret;
   SERIALISE_TIME_CALL(ret = m_pDevice->CreateCommittedResource(
-                          pHeapProperties, HeapFlags, pDesc, InitialResourceState,
+                          pHeapProperties, HeapFlags, pCreateDesc, InitialResourceState,
                           pOptimizedClearValue, riidResource, &realptr));
 
   ID3D12Resource *real = NULL;
@@ -1346,13 +1427,7 @@ HRESULT WrappedID3D12Device::CreateCommittedResource(const D3D12_HEAP_PROPERTIES
 
       record->AddChunk(scope.Get());
 
-      {
-        SCOPED_READLOCK(m_CapTransitionLock);
-        if(IsBackgroundCapturing(m_State))
-          GetResourceManager()->MarkDirtyResource(wrapped->GetResourceID());
-        else
-          GetResourceManager()->MarkPendingDirty(wrapped->GetResourceID());
-      }
+      GetResourceManager()->MarkDirtyResource(wrapped->GetResourceID());
     }
     else
     {
@@ -1376,10 +1451,10 @@ template <typename SerialiserType>
 bool WrappedID3D12Device::Serialise_CreateHeap(SerialiserType &ser, const D3D12_HEAP_DESC *pDesc,
                                                REFIID riid, void **ppvHeap)
 {
-  SERIALISE_ELEMENT_LOCAL(Descriptor, *pDesc).Named("pDesc");
-  SERIALISE_ELEMENT_LOCAL(guid, riid).Named("riid");
+  SERIALISE_ELEMENT_LOCAL(Descriptor, *pDesc).Named("pDesc"_lit);
+  SERIALISE_ELEMENT_LOCAL(guid, riid).Named("riid"_lit);
   SERIALISE_ELEMENT_LOCAL(pHeap, ((WrappedID3D12Heap1 *)*ppvHeap)->GetResourceID())
-      .TypedAs("ID3D12Heap *");
+      .TypedAs("ID3D12Heap *"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -1468,12 +1543,12 @@ bool WrappedID3D12Device::Serialise_CreatePlacedResource(
 {
   SERIALISE_ELEMENT(pHeap);
   SERIALISE_ELEMENT(HeapOffset);
-  SERIALISE_ELEMENT_LOCAL(Descriptor, *pDesc).Named("pDesc");
+  SERIALISE_ELEMENT_LOCAL(Descriptor, *pDesc).Named("pDesc"_lit);
   SERIALISE_ELEMENT(InitialState);
   SERIALISE_ELEMENT_OPT(pOptimizedClearValue);
-  SERIALISE_ELEMENT_LOCAL(guid, riid).Named("riid");
+  SERIALISE_ELEMENT_LOCAL(guid, riid).Named("riid"_lit);
   SERIALISE_ELEMENT_LOCAL(pResource, ((WrappedID3D12Resource1 *)*ppvResource)->GetResourceID())
-      .TypedAs("ID3D12Resource *");
+      .TypedAs("ID3D12Resource *"_lit);
 
   SERIALISE_ELEMENT_LOCAL(gpuAddress,
                           ((WrappedID3D12Resource1 *)*ppvResource)->GetGPUVirtualAddressIfBuffer())
@@ -1585,9 +1660,20 @@ HRESULT WrappedID3D12Device::CreatePlacedResource(ID3D12Heap *pHeap, UINT64 Heap
   if(riid != __uuidof(ID3D12Resource))
     return E_NOINTERFACE;
 
+  const D3D12_RESOURCE_DESC *pCreateDesc = pDesc;
+  D3D12_RESOURCE_DESC localDesc;
+
+  if(pDesc && pDesc->Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D && pDesc->SampleDesc.Count > 1)
+  {
+    localDesc = *pDesc;
+    // need to be able to create SRVs of MSAA textures to copy out their contents
+    localDesc.Flags &= ~D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE;
+    pCreateDesc = &localDesc;
+  }
+
   ID3D12Resource *real = NULL;
   HRESULT ret;
-  SERIALISE_TIME_CALL(ret = m_pDevice->CreatePlacedResource(Unwrap(pHeap), HeapOffset, pDesc,
+  SERIALISE_TIME_CALL(ret = m_pDevice->CreatePlacedResource(Unwrap(pHeap), HeapOffset, pCreateDesc,
                                                             InitialState, pOptimizedClearValue,
                                                             riid, (void **)&real));
 
@@ -1616,13 +1702,7 @@ HRESULT WrappedID3D12Device::CreatePlacedResource(ID3D12Heap *pHeap, UINT64 Heap
       record->AddParent(GetRecord(pHeap));
       record->AddChunk(scope.Get());
 
-      {
-        SCOPED_READLOCK(m_CapTransitionLock);
-        if(IsBackgroundCapturing(m_State))
-          GetResourceManager()->MarkDirtyResource(wrapped->GetResourceID());
-        else
-          GetResourceManager()->MarkPendingDirty(wrapped->GetResourceID());
-      }
+      GetResourceManager()->MarkDirtyResource(wrapped->GetResourceID());
     }
     else
     {
@@ -1667,9 +1747,9 @@ bool WrappedID3D12Device::Serialise_CreateFence(SerialiserType &ser, UINT64 Init
 {
   SERIALISE_ELEMENT(InitialValue);
   SERIALISE_ELEMENT(Flags);
-  SERIALISE_ELEMENT_LOCAL(guid, riid).Named("riid");
+  SERIALISE_ELEMENT_LOCAL(guid, riid).Named("riid"_lit);
   SERIALISE_ELEMENT_LOCAL(pFence, ((WrappedID3D12Fence1 *)*ppFence)->GetResourceID())
-      .TypedAs("ID3D12Fence *");
+      .TypedAs("ID3D12Fence *"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -1756,10 +1836,10 @@ bool WrappedID3D12Device::Serialise_CreateQueryHeap(SerialiserType &ser,
                                                     const D3D12_QUERY_HEAP_DESC *pDesc, REFIID riid,
                                                     void **ppvHeap)
 {
-  SERIALISE_ELEMENT_LOCAL(Descriptor, *pDesc).Named("pDesc");
-  SERIALISE_ELEMENT_LOCAL(guid, riid).Named("riid");
+  SERIALISE_ELEMENT_LOCAL(Descriptor, *pDesc).Named("pDesc"_lit);
+  SERIALISE_ELEMENT_LOCAL(guid, riid).Named("riid"_lit);
   SERIALISE_ELEMENT_LOCAL(pQueryHeap, ((WrappedID3D12QueryHeap *)*ppvHeap)->GetResourceID())
-      .TypedAs("ID3D12QueryHeap *");
+      .TypedAs("ID3D12QueryHeap *"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -1834,12 +1914,12 @@ bool WrappedID3D12Device::Serialise_CreateCommandSignature(SerialiserType &ser,
                                                            ID3D12RootSignature *pRootSignature,
                                                            REFIID riid, void **ppvCommandSignature)
 {
-  SERIALISE_ELEMENT_LOCAL(Descriptor, *pDesc).Named("pDesc");
+  SERIALISE_ELEMENT_LOCAL(Descriptor, *pDesc).Named("pDesc"_lit);
   SERIALISE_ELEMENT(pRootSignature);
-  SERIALISE_ELEMENT_LOCAL(guid, riid).Named("riid");
+  SERIALISE_ELEMENT_LOCAL(guid, riid).Named("riid"_lit);
   SERIALISE_ELEMENT_LOCAL(pCommandSignature,
                           ((WrappedID3D12CommandSignature *)*ppvCommandSignature)->GetResourceID())
-      .TypedAs("ID3D12CommandSignature *");
+      .TypedAs("ID3D12CommandSignature *"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -2338,13 +2418,7 @@ HRESULT WrappedID3D12Device::OpenSharedHandle(HANDLE NTHandle, REFIID riid, void
 
       record->AddChunk(scope.Get());
 
-      {
-        SCOPED_READLOCK(m_CapTransitionLock);
-        if(IsBackgroundCapturing(m_State))
-          GetResourceManager()->MarkDirtyResource(wrapped->GetResourceID());
-        else
-          GetResourceManager()->MarkPendingDirty(wrapped->GetResourceID());
-      }
+      GetResourceManager()->MarkDirtyResource(wrapped->GetResourceID());
 
       {
         SCOPED_LOCK(m_ResourceStatesLock);

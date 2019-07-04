@@ -1,7 +1,7 @@
 /******************************************************************************
 * The MIT License (MIT)
 *
-* Copyright (c) 2018 Baldur Karlsson
+* Copyright (c) 2018-2019 Baldur Karlsson
 *
 * Permission is hereby granted, free of charge, to any person obtaining a copy
 * of this software and associated documentation files (the "Software"), to deal
@@ -28,10 +28,8 @@
 #include <vector>
 
 #include "api/replay/renderdoc_replay.h"
-#include "driver/gl/gl_common.h"
-#include "replay/replay_driver.h"
 
-class WrappedOpenGL;
+typedef unsigned int GLuint;
 
 inline constexpr GPUCounter MakeIntelGlCounter(int index)
 {
@@ -75,47 +73,20 @@ private:
 
   struct IntelGlCounter
   {
-    IntelGlCounter()
-    {
-      desc = CounterDescription();
-      queryId = offset = type = dataType = 0;
-    }
-    IntelGlCounter(const IntelGlCounter &other)
-    {
-      desc = other.desc;
-      queryId = other.queryId;
-      offset = other.offset;
-      type = other.type;
-      dataType = other.dataType;
-    }
-
     CounterDescription desc;
-    GLuint queryId;
-    GLuint offset;
-    GLuint type;
-    GLuint dataType;
+    GLuint queryId = 0;
+    GLuint offset = 0;
+    GLuint type = 0;
+    GLuint dataType = 0;
   };
   std::vector<IntelGlCounter> m_Counters;
   std::map<std::string, IntelGlCounter> m_CounterNames;
 
   struct IntelGlQuery
   {
-    IntelGlQuery()
-    {
-      queryId = 0;
-      name = "";
-      size = 0;
-    }
-    IntelGlQuery(const IntelGlQuery &other)
-    {
-      queryId = other.queryId;
-      name = other.name;
-      size = other.size;
-    }
-
-    GLuint queryId;
+    GLuint queryId = 0;
     std::string name;
-    GLuint size;
+    GLuint size = 0;
   };
   std::map<GLuint, IntelGlQuery> m_Queries;
 

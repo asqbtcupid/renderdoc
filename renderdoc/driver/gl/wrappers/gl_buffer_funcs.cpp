@@ -35,7 +35,7 @@ enum GLbufferbitfield
 DECLARE_REFLECTION_ENUM(GLbufferbitfield);
 
 template <>
-std::string DoStringise(const GLbufferbitfield &el)
+rdcstr DoStringise(const GLbufferbitfield &el)
 {
   RDCCOMPILE_ASSERT(sizeof(GLbufferbitfield) == sizeof(GLbitfield) &&
                         sizeof(GLbufferbitfield) == sizeof(uint32_t),
@@ -64,7 +64,7 @@ bool WrappedOpenGL::Serialise_glGenBuffers(SerialiserType &ser, GLsizei n, GLuin
 {
   SERIALISE_ELEMENT(n);
   SERIALISE_ELEMENT_LOCAL(buffer, GetResourceManager()->GetID(BufferRes(GetCtx(), *buffers)))
-      .TypedAs("GLResource");
+      .TypedAs("GLResource"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -129,7 +129,7 @@ bool WrappedOpenGL::Serialise_glCreateBuffers(SerialiserType &ser, GLsizei n, GL
 {
   SERIALISE_ELEMENT(n);
   SERIALISE_ELEMENT_LOCAL(buffer, GetResourceManager()->GetID(BufferRes(GetCtx(), *buffers)))
-      .TypedAs("GLResource");
+      .TypedAs("GLResource"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -272,6 +272,25 @@ void WrappedOpenGL::glBindBuffer(GLenum target, GLuint buffer)
                                                         refType);
     }
 
+    // binding this buffer mutates VAO state, mark it as written.
+    if(target == eGL_ELEMENT_ARRAY_BUFFER)
+    {
+      GLResourceRecord *varecord = cd.m_VertexArrayRecord;
+
+      if(varecord)
+        GetResourceManager()->MarkVAOReferenced(varecord->Resource, eFrameRef_ReadBeforeWrite);
+    }
+
+    // binding this buffer mutates XFB state, mark it as written.
+    if(target == eGL_TRANSFORM_FEEDBACK_BUFFER)
+    {
+      GLResourceRecord *xfbrecord = cd.m_FeedbackRecord;
+
+      if(xfbrecord)
+        GetResourceManager()->MarkResourceFrameReferenced(xfbrecord->Resource,
+                                                          eFrameRef_ReadBeforeWrite);
+    }
+
     GetContextRecord()->AddChunk(chunk);
   }
 
@@ -365,10 +384,7 @@ void WrappedOpenGL::glBindBuffer(GLenum target, GLuint buffer)
     if(target == eGL_TRANSFORM_FEEDBACK_BUFFER || target == eGL_SHADER_STORAGE_BUFFER ||
        target == eGL_ATOMIC_COUNTER_BUFFER)
     {
-      if(IsBackgroundCapturing(m_State))
-        GetResourceManager()->MarkDirtyResource(r->GetResourceID());
-      else
-        m_MissingTracks.insert(r->GetResourceID());
+      GetResourceManager()->MarkDirtyResource(r->GetResourceID());
     }
   }
   else
@@ -554,9 +570,21 @@ bool WrappedOpenGL::Serialise_glNamedBufferDataEXT(SerialiserType &ser, GLuint b
 
   if(IsReplayingAndReading())
   {
-    GL.glNamedBufferDataEXT(buffer.name, (GLsizeiptr)bytesize, data, usage);
+    // never allow resizing down, even if the application did so. If we encounter that, adjust the
+    // size and upload any data with a subdata call
+    if(bytesize < m_Buffers[GetResourceManager()->GetID(buffer)].size)
+    {
+      GL.glNamedBufferDataEXT(
+          buffer.name, (GLsizeiptr)m_Buffers[GetResourceManager()->GetID(buffer)].size, NULL, usage);
 
-    m_Buffers[GetResourceManager()->GetID(buffer)].size = bytesize;
+      GL.glNamedBufferSubDataEXT(buffer.name, 0, (GLsizeiptr)bytesize, data);
+    }
+    else
+    {
+      GL.glNamedBufferDataEXT(buffer.name, (GLsizeiptr)bytesize, data, usage);
+
+      m_Buffers[GetResourceManager()->GetID(buffer)].size = bytesize;
+    }
 
     AddResourceInitChunk(buffer);
   }
@@ -901,7 +929,7 @@ void WrappedOpenGL::glNamedBufferSubDataEXT(GLuint buffer, GLintptr offset, GLsi
     if(IsActiveCapturing(m_State))
     {
       GetContextRecord()->AddChunk(chunk);
-      m_MissingTracks.insert(record->GetResourceID());
+      GetResourceManager()->MarkDirtyResource(record->GetResourceID());
       GetResourceManager()->MarkResourceFrameReferenced(record->GetResourceID(),
                                                         eFrameRef_ReadBeforeWrite);
     }
@@ -954,7 +982,7 @@ void WrappedOpenGL::glBufferSubData(GLenum target, GLintptr offset, GLsizeiptr s
     if(IsActiveCapturing(m_State))
     {
       GetContextRecord()->AddChunk(chunk);
-      m_MissingTracks.insert(record->GetResourceID());
+      GetResourceManager()->MarkDirtyResource(record->GetResourceID());
       GetResourceManager()->MarkResourceFrameReferenced(record->GetResourceID(),
                                                         eFrameRef_ReadBeforeWrite);
     }
@@ -1035,7 +1063,7 @@ void WrappedOpenGL::glNamedCopyBufferSubDataEXT(GLuint readBuffer, GLuint writeB
     if(IsActiveCapturing(m_State))
     {
       GetContextRecord()->AddChunk(chunk);
-      m_MissingTracks.insert(writerecord->GetResourceID());
+      GetResourceManager()->MarkDirtyResource(writerecord->GetResourceID());
       GetResourceManager()->MarkResourceFrameReferenced(writerecord->GetResourceID(),
                                                         eFrameRef_ReadBeforeWrite);
     }
@@ -1096,7 +1124,7 @@ void WrappedOpenGL::glCopyBufferSubData(GLenum readTarget, GLenum writeTarget, G
     if(IsActiveCapturing(m_State))
     {
       GetContextRecord()->AddChunk(chunk);
-      m_MissingTracks.insert(writerecord->GetResourceID());
+      GetResourceManager()->MarkDirtyResource(writerecord->GetResourceID());
       GetResourceManager()->MarkResourceFrameReferenced(writerecord->GetResourceID(),
                                                         eFrameRef_ReadBeforeWrite);
     }
@@ -1153,18 +1181,40 @@ void WrappedOpenGL::glBindBufferBase(GLenum target, GLuint index, GLuint buffer)
       r = cd.m_BufferRecord[idx] =
           GetResourceManager()->GetResourceRecord(BufferRes(GetCtx(), buffer));
 
-    if(buffer && IsActiveCapturing(m_State))
+    if(IsActiveCapturing(m_State))
     {
-      FrameRefType refType = eFrameRef_Read;
+      if(buffer)
+      {
+        FrameRefType refType = eFrameRef_Read;
 
-      // these targets write to the buffer
-      if(target == eGL_ATOMIC_COUNTER_BUFFER || target == eGL_COPY_WRITE_BUFFER ||
-         target == eGL_PIXEL_PACK_BUFFER || target == eGL_SHADER_STORAGE_BUFFER ||
-         target == eGL_TRANSFORM_FEEDBACK_BUFFER)
-        refType = eFrameRef_ReadBeforeWrite;
+        // these targets write to the buffer
+        if(target == eGL_ATOMIC_COUNTER_BUFFER || target == eGL_COPY_WRITE_BUFFER ||
+           target == eGL_PIXEL_PACK_BUFFER || target == eGL_SHADER_STORAGE_BUFFER ||
+           target == eGL_TRANSFORM_FEEDBACK_BUFFER)
+          refType = eFrameRef_ReadBeforeWrite;
 
-      GetResourceManager()->MarkResourceFrameReferenced(cd.m_BufferRecord[idx]->GetResourceID(),
-                                                        refType);
+        GetResourceManager()->MarkResourceFrameReferenced(cd.m_BufferRecord[idx]->GetResourceID(),
+                                                          refType);
+      }
+
+      // binding this buffer mutates VAO state, mark it as written.
+      if(target == eGL_ELEMENT_ARRAY_BUFFER)
+      {
+        GLResourceRecord *varecord = cd.m_VertexArrayRecord;
+
+        if(varecord)
+          GetResourceManager()->MarkVAOReferenced(varecord->Resource, eFrameRef_ReadBeforeWrite);
+      }
+
+      // binding this buffer mutates XFB state, mark it as written.
+      if(target == eGL_TRANSFORM_FEEDBACK_BUFFER)
+      {
+        GLResourceRecord *xfbrecord = cd.m_FeedbackRecord;
+
+        if(xfbrecord)
+          GetResourceManager()->MarkResourceFrameReferenced(xfbrecord->Resource,
+                                                            eFrameRef_ReadBeforeWrite);
+      }
     }
 
     // it's legal to re-type buffers, generate another BindBuffer chunk to rename
@@ -1204,10 +1254,7 @@ void WrappedOpenGL::glBindBufferBase(GLenum target, GLuint index, GLuint buffer)
     if(r && (target == eGL_TRANSFORM_FEEDBACK_BUFFER || target == eGL_SHADER_STORAGE_BUFFER ||
              target == eGL_ATOMIC_COUNTER_BUFFER))
     {
-      if(IsActiveCapturing(m_State))
-        m_MissingTracks.insert(r->GetResourceID());
-      else
-        GetResourceManager()->MarkDirtyResource(BufferRes(GetCtx(), buffer));
+      GetResourceManager()->MarkDirtyResource(BufferRes(GetCtx(), buffer));
     }
 
     if(IsActiveCapturing(m_State))
@@ -1263,18 +1310,40 @@ void WrappedOpenGL::glBindBufferRange(GLenum target, GLuint index, GLuint buffer
       r = cd.m_BufferRecord[idx] =
           GetResourceManager()->GetResourceRecord(BufferRes(GetCtx(), buffer));
 
-    if(buffer && IsActiveCapturing(m_State))
+    if(IsActiveCapturing(m_State))
     {
-      FrameRefType refType = eFrameRef_Read;
+      if(buffer)
+      {
+        FrameRefType refType = eFrameRef_Read;
 
-      // these targets write to the buffer
-      if(target == eGL_ATOMIC_COUNTER_BUFFER || target == eGL_COPY_WRITE_BUFFER ||
-         target == eGL_PIXEL_PACK_BUFFER || target == eGL_SHADER_STORAGE_BUFFER ||
-         target == eGL_TRANSFORM_FEEDBACK_BUFFER)
-        refType = eFrameRef_ReadBeforeWrite;
+        // these targets write to the buffer
+        if(target == eGL_ATOMIC_COUNTER_BUFFER || target == eGL_COPY_WRITE_BUFFER ||
+           target == eGL_PIXEL_PACK_BUFFER || target == eGL_SHADER_STORAGE_BUFFER ||
+           target == eGL_TRANSFORM_FEEDBACK_BUFFER)
+          refType = eFrameRef_ReadBeforeWrite;
 
-      GetResourceManager()->MarkResourceFrameReferenced(cd.m_BufferRecord[idx]->GetResourceID(),
-                                                        refType);
+        GetResourceManager()->MarkResourceFrameReferenced(cd.m_BufferRecord[idx]->GetResourceID(),
+                                                          refType);
+      }
+
+      // binding this buffer mutates VAO state, mark it as written.
+      if(target == eGL_ELEMENT_ARRAY_BUFFER)
+      {
+        GLResourceRecord *varecord = cd.m_VertexArrayRecord;
+
+        if(varecord)
+          GetResourceManager()->MarkVAOReferenced(varecord->Resource, eFrameRef_ReadBeforeWrite);
+      }
+
+      // binding this buffer mutates XFB state, mark it as written.
+      if(target == eGL_TRANSFORM_FEEDBACK_BUFFER)
+      {
+        GLResourceRecord *xfbrecord = cd.m_FeedbackRecord;
+
+        if(xfbrecord)
+          GetResourceManager()->MarkResourceFrameReferenced(xfbrecord->Resource,
+                                                            eFrameRef_ReadBeforeWrite);
+      }
     }
 
     // it's legal to re-type buffers, generate another BindBuffer chunk to rename
@@ -1314,10 +1383,7 @@ void WrappedOpenGL::glBindBufferRange(GLenum target, GLuint index, GLuint buffer
     if(r && (target == eGL_TRANSFORM_FEEDBACK_BUFFER || target == eGL_SHADER_STORAGE_BUFFER ||
              target == eGL_ATOMIC_COUNTER_BUFFER))
     {
-      if(IsActiveCapturing(m_State))
-        m_MissingTracks.insert(r->GetResourceID());
-      else
-        GetResourceManager()->MarkDirtyResource(BufferRes(GetCtx(), buffer));
+      GetResourceManager()->MarkDirtyResource(BufferRes(GetCtx(), buffer));
     }
 
     if(IsActiveCapturing(m_State))
@@ -1405,8 +1471,27 @@ void WrappedOpenGL::glBindBuffersBase(GLenum target, GLuint first, GLsizei count
         {
           ResourceId id = GetResourceManager()->GetID(BufferRes(GetCtx(), buffers[i]));
           GetResourceManager()->MarkResourceFrameReferenced(id, eFrameRef_ReadBeforeWrite);
-          m_MissingTracks.insert(id);
+          GetResourceManager()->MarkDirtyResource(id);
         }
+      }
+
+      // binding this buffer mutates VAO state, mark it as written.
+      if(target == eGL_ELEMENT_ARRAY_BUFFER)
+      {
+        GLResourceRecord *varecord = cd.m_VertexArrayRecord;
+
+        if(varecord)
+          GetResourceManager()->MarkVAOReferenced(varecord->Resource, eFrameRef_ReadBeforeWrite);
+      }
+
+      // binding this buffer mutates XFB state, mark it as written.
+      if(target == eGL_TRANSFORM_FEEDBACK_BUFFER)
+      {
+        GLResourceRecord *xfbrecord = cd.m_FeedbackRecord;
+
+        if(xfbrecord)
+          GetResourceManager()->MarkResourceFrameReferenced(xfbrecord->Resource,
+                                                            eFrameRef_ReadBeforeWrite);
       }
     }
 
@@ -1585,8 +1670,27 @@ void WrappedOpenGL::glBindBuffersRange(GLenum target, GLuint first, GLsizei coun
         {
           ResourceId id = GetResourceManager()->GetID(BufferRes(GetCtx(), buffers[i]));
           GetResourceManager()->MarkResourceFrameReferenced(id, eFrameRef_ReadBeforeWrite);
-          m_MissingTracks.insert(id);
+          GetResourceManager()->MarkDirtyResource(id);
         }
+      }
+
+      // binding this buffer mutates VAO state, mark it as written.
+      if(target == eGL_ELEMENT_ARRAY_BUFFER)
+      {
+        GLResourceRecord *varecord = cd.m_VertexArrayRecord;
+
+        if(varecord)
+          GetResourceManager()->MarkVAOReferenced(varecord->Resource, eFrameRef_ReadBeforeWrite);
+      }
+
+      // binding this buffer mutates XFB state, mark it as written.
+      if(target == eGL_TRANSFORM_FEEDBACK_BUFFER)
+      {
+        GLResourceRecord *xfbrecord = cd.m_FeedbackRecord;
+
+        if(xfbrecord)
+          GetResourceManager()->MarkResourceFrameReferenced(xfbrecord->Resource,
+                                                            eFrameRef_ReadBeforeWrite);
       }
     }
     else
@@ -1661,20 +1765,14 @@ void WrappedOpenGL::glInvalidateBufferData(GLuint buffer)
 {
   GL.glInvalidateBufferData(buffer);
 
-  if(IsBackgroundCapturing(m_State))
-    GetResourceManager()->MarkDirtyResource(BufferRes(GetCtx(), buffer));
-  else
-    m_MissingTracks.insert(GetResourceManager()->GetID(BufferRes(GetCtx(), buffer)));
+  GetResourceManager()->MarkDirtyResource(BufferRes(GetCtx(), buffer));
 }
 
 void WrappedOpenGL::glInvalidateBufferSubData(GLuint buffer, GLintptr offset, GLsizeiptr length)
 {
   GL.glInvalidateBufferSubData(buffer, offset, length);
 
-  if(IsBackgroundCapturing(m_State))
-    GetResourceManager()->MarkDirtyResource(BufferRes(GetCtx(), buffer));
-  else
-    m_MissingTracks.insert(GetResourceManager()->GetID(BufferRes(GetCtx(), buffer)));
+  GetResourceManager()->MarkDirtyResource(BufferRes(GetCtx(), buffer));
 }
 
 #pragma endregion
@@ -1934,6 +2032,9 @@ void *WrappedOpenGL::glMapNamedBufferRangeEXT(GLuint buffer, GLintptr offset, GL
       // already set invalidateMap above so if we're verifying buffer contents we know to check for
       // it.
       access &= ~(GL_MAP_INVALIDATE_BUFFER_BIT | GL_MAP_INVALIDATE_RANGE_BIT);
+
+      // also can't be unsynchronized for some reason
+      access &= ~GL_MAP_UNSYNCHRONIZED_BIT;
 
       directMap = true;
       persistent = true;
@@ -2235,7 +2336,7 @@ GLboolean WrappedOpenGL::glUnmapNamedBufferEXT(GLuint buffer)
 
     if(IsActiveCapturing(m_State))
     {
-      m_MissingTracks.insert(record->GetResourceID());
+      GetResourceManager()->MarkDirtyResource(record->GetResourceID());
       GetResourceManager()->MarkResourceFrameReferenced(record->GetResourceID(),
                                                         eFrameRef_ReadBeforeWrite);
     }
@@ -2270,7 +2371,7 @@ GLboolean WrappedOpenGL::glUnmapNamedBufferEXT(GLuint buffer)
         {
           if(!record->VerifyShadowStorage())
           {
-            string msg = StringFormat::Fmt(
+            std::string msg = StringFormat::Fmt(
                 "Overwrite of %llu byte Map()'d buffer detected\n"
                 "Breakpoint now to see callstack,\nor click 'Yes' to debugbreak.",
                 record->Length);
@@ -2437,7 +2538,7 @@ void WrappedOpenGL::glFlushMappedNamedBufferRangeEXT(GLuint buffer, GLintptr off
   {
     if(record)
     {
-      m_MissingTracks.insert(record->GetResourceID());
+      GetResourceManager()->MarkDirtyResource(record->GetResourceID());
       GetResourceManager()->MarkResourceFrameReferenced(record->GetResourceID(),
                                                         eFrameRef_ReadBeforeWrite);
 
@@ -2552,14 +2653,14 @@ void WrappedOpenGL::glFlushMappedBufferRange(GLenum target, GLintptr offset, GLs
   return GL.glFlushMappedBufferRange(target, offset, length);
 }
 
-void WrappedOpenGL::PersistentMapMemoryBarrier(const set<GLResourceRecord *> &maps)
+void WrappedOpenGL::PersistentMapMemoryBarrier(const std::set<GLResourceRecord *> &maps)
 {
   PUSH_CURRENT_CHUNK;
 
   // this function iterates over all the maps, checking for any changes between
   // the shadow pointers, and propogates that to 'real' GL
 
-  for(set<GLResourceRecord *>::const_iterator it = maps.begin(); it != maps.end(); ++it)
+  for(std::set<GLResourceRecord *>::const_iterator it = maps.begin(); it != maps.end(); ++it)
   {
     GLResourceRecord *record = *it;
 
@@ -2603,7 +2704,7 @@ bool WrappedOpenGL::Serialise_glGenTransformFeedbacks(SerialiserType &ser, GLsiz
 {
   SERIALISE_ELEMENT(n);
   SERIALISE_ELEMENT_LOCAL(feedback, GetResourceManager()->GetID(FeedbackRes(GetCtx(), *ids)))
-      .TypedAs("GLResource");
+      .TypedAs("GLResource"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -2663,7 +2764,7 @@ bool WrappedOpenGL::Serialise_glCreateTransformFeedbacks(SerialiserType &ser, GL
 {
   SERIALISE_ELEMENT(n);
   SERIALISE_ELEMENT_LOCAL(feedback, GetResourceManager()->GetID(FeedbackRes(GetCtx(), *ids)))
-      .TypedAs("GLResource");
+      .TypedAs("GLResource"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -2723,7 +2824,6 @@ void WrappedOpenGL::glDeleteTransformFeedbacks(GLsizei n, const GLuint *ids)
     GLResource res = FeedbackRes(GetCtx(), ids[i]);
     if(GetResourceManager()->HasCurrentResource(res))
     {
-      GetResourceManager()->MarkCleanResource(res);
       if(GetResourceManager()->HasResourceRecord(res))
         GetResourceManager()->GetResourceRecord(res)->Delete(GetResourceManager());
       GetResourceManager()->UnregisterResource(res);
@@ -4023,7 +4123,7 @@ bool WrappedOpenGL::Serialise_glGenVertexArrays(SerialiserType &ser, GLsizei n, 
 {
   SERIALISE_ELEMENT(n);
   SERIALISE_ELEMENT_LOCAL(array, GetResourceManager()->GetID(VertexArrayRes(GetCtx(), *arrays)))
-      .TypedAs("GLResource");
+      .TypedAs("GLResource"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -4083,7 +4183,7 @@ bool WrappedOpenGL::Serialise_glCreateVertexArrays(SerialiserType &ser, GLsizei 
 {
   SERIALISE_ELEMENT(n);
   SERIALISE_ELEMENT_LOCAL(array, GetResourceManager()->GetID(VertexArrayRes(GetCtx(), *arrays)))
-      .TypedAs("GLResource");
+      .TypedAs("GLResource"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -4629,7 +4729,6 @@ void WrappedOpenGL::glDeleteBuffers(GLsizei n, const GLuint *buffers)
         record->FreeShadowStorage();
       }
 
-      GetResourceManager()->MarkCleanResource(res);
       if(GetResourceManager()->HasResourceRecord(res))
         GetResourceManager()->GetResourceRecord(res)->Delete(GetResourceManager());
       GetResourceManager()->UnregisterResource(res);
@@ -4646,7 +4745,6 @@ void WrappedOpenGL::glDeleteVertexArrays(GLsizei n, const GLuint *arrays)
     GLResource res = VertexArrayRes(GetCtx(), arrays[i]);
     if(GetResourceManager()->HasCurrentResource(res))
     {
-      GetResourceManager()->MarkCleanResource(res);
       if(GetResourceManager()->HasResourceRecord(res))
         GetResourceManager()->GetResourceRecord(res)->Delete(GetResourceManager());
       GetResourceManager()->UnregisterResource(res);
@@ -4721,16 +4819,16 @@ bool WrappedOpenGL::Serialise_glVertexAttrib(SerialiserType &ser, GLuint index, 
   // Serialise the array with the right type. We don't want to allocate new storage
   switch(attr)
   {
-    case Attrib_GLdouble: ser.Serialise("values", v.d, SerialiserFlags::NoFlags); break;
-    case Attrib_GLfloat: ser.Serialise("values", v.f, SerialiserFlags::NoFlags); break;
-    case Attrib_GLint: ser.Serialise("values", v.i32, SerialiserFlags::NoFlags); break;
+    case Attrib_GLdouble: ser.Serialise("values"_lit, v.d, SerialiserFlags::NoFlags); break;
+    case Attrib_GLfloat: ser.Serialise("values"_lit, v.f, SerialiserFlags::NoFlags); break;
+    case Attrib_GLint: ser.Serialise("values"_lit, v.i32, SerialiserFlags::NoFlags); break;
     case Attrib_packed:
-    case Attrib_GLuint: ser.Serialise("values", v.u32, SerialiserFlags::NoFlags); break;
-    case Attrib_GLshort: ser.Serialise("values", v.i16, SerialiserFlags::NoFlags); break;
-    case Attrib_GLushort: ser.Serialise("values", v.u16, SerialiserFlags::NoFlags); break;
-    case Attrib_GLbyte: ser.Serialise("values", v.i8, SerialiserFlags::NoFlags); break;
+    case Attrib_GLuint: ser.Serialise("values"_lit, v.u32, SerialiserFlags::NoFlags); break;
+    case Attrib_GLshort: ser.Serialise("values"_lit, v.i16, SerialiserFlags::NoFlags); break;
+    case Attrib_GLushort: ser.Serialise("values"_lit, v.u16, SerialiserFlags::NoFlags); break;
+    case Attrib_GLbyte: ser.Serialise("values"_lit, v.i8, SerialiserFlags::NoFlags); break;
     default:
-    case Attrib_GLubyte: ser.Serialise("values", v.u8, SerialiserFlags::NoFlags); break;
+    case Attrib_GLubyte: ser.Serialise("values"_lit, v.u8, SerialiserFlags::NoFlags); break;
   }
 
   SERIALISE_CHECK_READ_ERRORS();

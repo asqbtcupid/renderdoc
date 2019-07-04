@@ -158,6 +158,11 @@ bool D3D12InitParams::IsSupportedVersion(uint64_t ver)
   if(ver == CurrentVersion)
     return true;
 
+  // 0x6 -> 0x7 - Fixed serialisation of D3D12_WRITEBUFFERIMMEDIATE_PARAMETER to properly replay the
+  //              GPU address
+  if(ver == 0x6)
+    return true;
+
   // 0x5 -> 0x6 - Multiply by number of planes in format when serialising initial states -
   //              i.e. stencil is saved with depth in initial states.
   if(ver == 0x5)
@@ -652,7 +657,7 @@ const UINT64 *PIX3DecodeStringParam(const UINT64 *pData, std::string &DecodedStr
   return pData;
 }
 
-string PIX3SprintfParams(const std::string &Format, const UINT64 *pData)
+std::string PIX3SprintfParams(const std::string &Format, const UINT64 *pData)
 {
   std::string finalString;
   std::string formatPart;

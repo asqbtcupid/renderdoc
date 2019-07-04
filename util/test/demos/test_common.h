@@ -61,6 +61,7 @@ enum class ShaderStage
   comp
 };
 
+bool InternalSpvCompiler();
 bool SpvCompilationSupported();
 std::vector<uint32_t> CompileShaderToSpv(const std::string &source_text, SPIRVTarget target,
                                          ShaderLang lang, ShaderStage stage, const char *entry_point);
@@ -152,29 +153,31 @@ struct GraphicsTest
 {
   virtual ~GraphicsTest() {}
   virtual GraphicsWindow *MakeWindow(int width, int height, const char *title) { return NULL; }
-  virtual int main(int argc, char **argv) { return 9; }
-  virtual bool IsSupported() { return false; }
-  virtual bool Init(int argc, char **argv);
+  virtual int main() { return 9; }
+  virtual void Prepare(int argc, char **argv);
+  virtual bool Init();
   virtual void Shutdown();
+
+  std::string Avail;
 
   std::string GetDataPath(const std::string &filename);
 
   bool FrameLimit();
 
-  std::string dataRoot;
-
   int curFrame = 0;
-  int maxFrameCount = -1;
 
-  int screenWidth = 400;
-  int screenHeight = 300;
   const char *screenTitle = "RenderDoc test program";
-  bool fullscreen = false;
-  bool debugDevice = false;
+
   bool headless = false;
 
-  RENDERDOC_API_1_0_0 *rdoc100 = NULL;
-  RENDERDOC_API_1_4_0 *rdoc = NULL;
+  RENDERDOC_API_1_0_0 *rdoc = NULL;
+
+  // shared parameters
+  static int maxFrameCount;
+  static std::string dataRoot;
+  static int screenWidth;
+  static int screenHeight;
+  static bool debugDevice;
 };
 
 enum class TestAPI
@@ -186,6 +189,20 @@ enum class TestAPI
   Count,
 };
 
+inline const char *APIName(TestAPI API)
+{
+  switch(API)
+  {
+    case TestAPI::D3D11: return "D3D11";
+    case TestAPI::Vulkan: return "Vulkan";
+    case TestAPI::OpenGL: return "OpenGL";
+    case TestAPI::D3D12: return "D3D12";
+    case TestAPI::Count: break;
+  }
+
+  return "???";
+}
+
 struct TestMetadata
 {
   TestAPI API;
@@ -193,27 +210,8 @@ struct TestMetadata
   const char *Description;
   GraphicsTest *test;
 
-  std::string QualifiedName() const
-  {
-    std::string ret = APIName();
-    ret += "::";
-    ret += Name;
-    return ret;
-  }
-
-  const char *APIName() const
-  {
-    switch(API)
-    {
-      case TestAPI::D3D11: return "D3D11";
-      case TestAPI::Vulkan: return "VK";
-      case TestAPI::OpenGL: return "GL";
-      case TestAPI::D3D12: return "D3D12";
-    }
-
-    return "???";
-  }
-
+  bool IsAvailable() const { return test->Avail.empty(); }
+  const char *AvailMessage() const { return test->Avail.c_str(); }
   bool operator<(const TestMetadata &o)
   {
     if(API != o.API)
@@ -229,25 +227,32 @@ struct TestMetadata
 
 void RegisterTest(TestMetadata test);
 
-#define REGISTER_TEST(TestName)                 \
-  namespace                                     \
-  {                                             \
-  struct TestRegistration                       \
-  {                                             \
-    TestName m_impl;                            \
-    TestRegistration()                          \
-    {                                           \
-      TestMetadata test;                        \
-      test.API = TestName::API;                 \
-      test.Name = #TestName;                    \
-      test.Description = TestName::Description; \
-      test.test = &m_impl;                      \
-      if(m_impl.IsSupported())                  \
-        RegisterTest(test);                     \
-    }                                           \
-  };                                            \
-  };                                            \
-  static TestRegistration Anon##__LINE__;
+#define TEST(Test, Parent)                \
+  struct Test;                            \
+  typedef Test CurrentTest;               \
+  namespace                               \
+  {                                       \
+  constexpr const char *TestName = #Test; \
+  };                                      \
+  struct Test : Parent
+
+#define REGISTER_TEST()                            \
+  namespace                                        \
+  {                                                \
+  struct TestRegistration                          \
+  {                                                \
+    CurrentTest m_impl;                            \
+    TestRegistration()                             \
+    {                                              \
+      TestMetadata test;                           \
+      test.API = CurrentTest::API;                 \
+      test.Name = TestName;                        \
+      test.Description = CurrentTest::Description; \
+      test.test = &m_impl;                         \
+      RegisterTest(test);                          \
+    }                                              \
+  } Anon##__LINE__;                                \
+  };
 
 std::string GetCWD();
 std::string GetEnvVar(const char *var);

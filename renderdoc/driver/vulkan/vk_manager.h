@@ -29,8 +29,6 @@
 #include "core/resource_manager.h"
 #include "vk_resources.h"
 
-using std::pair;
-
 class WrappedVulkan;
 
 struct MemIDOffset
@@ -254,18 +252,19 @@ public:
 
   // handling memory & image layouts
   template <typename SrcBarrierType>
-  void RecordSingleBarrier(vector<pair<ResourceId, ImageRegionState> > &states, ResourceId id,
+  void RecordSingleBarrier(std::vector<rdcpair<ResourceId, ImageRegionState> > &states, ResourceId id,
                            const SrcBarrierType &t, uint32_t nummips, uint32_t numslices);
 
-  void RecordBarriers(vector<pair<ResourceId, ImageRegionState> > &states,
-                      const map<ResourceId, ImageLayouts> &layouts, uint32_t numBarriers,
+  void RecordBarriers(std::vector<rdcpair<ResourceId, ImageRegionState> > &states,
+                      const std::map<ResourceId, ImageLayouts> &layouts, uint32_t numBarriers,
                       const VkImageMemoryBarrier *barriers);
 
-  void MergeBarriers(vector<pair<ResourceId, ImageRegionState> > &dststates,
-                     vector<pair<ResourceId, ImageRegionState> > &srcstates);
+  void MergeBarriers(std::vector<rdcpair<ResourceId, ImageRegionState> > &dststates,
+                     std::vector<rdcpair<ResourceId, ImageRegionState> > &srcstates);
 
-  void ApplyBarriers(uint32_t queueFamilyIndex, vector<pair<ResourceId, ImageRegionState> > &states,
-                     map<ResourceId, ImageLayouts> &layouts);
+  void ApplyBarriers(uint32_t queueFamilyIndex,
+                     std::vector<rdcpair<ResourceId, ImageRegionState> > &states,
+                     std::map<ResourceId, ImageLayouts> &layouts);
 
   template <typename SerialiserType>
   void SerialiseImageStates(SerialiserType &ser, std::map<ResourceId, ImageLayouts> &states,
@@ -274,7 +273,11 @@ public:
   template <typename SerialiserType>
   bool Serialise_DeviceMemoryRefs(SerialiserType &ser, std::vector<MemRefInterval> &data);
 
+  template <typename SerialiserType>
+  bool Serialise_ImageRefs(SerialiserType &ser, std::vector<ImgRefsPair> &data);
+
   void InsertDeviceMemoryRefs(WriteSerialiser &ser);
+  void InsertImageRefs(WriteSerialiser &ser);
 
   ResourceId GetID(WrappedVkRes *res)
   {
@@ -326,7 +329,6 @@ public:
     if(IsReplayMode(m_State))
       ResourceManager::RemoveWrapper(ToTypedHandle(Unwrap(obj)));
 
-    ResourceManager::MarkCleanResource(id);
     ResourceManager::ReleaseCurrentResource(id);
     VkResourceRecord *record = GetRecord(obj);
     if(record)
@@ -424,29 +426,35 @@ public:
 
   void SetInternalResource(ResourceId id);
 
+  void MarkImageFrameReferenced(const VkResourceRecord *img, const ImageRange &range,
+                                FrameRefType refType);
+  void MarkImageFrameReferenced(ResourceId img, const ImageInfo &imageInfo, const ImageRange &range,
+                                FrameRefType refType);
   void MarkMemoryFrameReferenced(ResourceId mem, VkDeviceSize start, VkDeviceSize end,
                                  FrameRefType refType);
 
   void MergeReferencedMemory(std::map<ResourceId, MemRefs> &memRefs);
+  void MergeReferencedImages(std::map<ResourceId, ImgRefs> &imgRefs);
+  void ClearReferencedImages();
   void ClearReferencedMemory();
   MemRefs *FindMemRefs(ResourceId mem);
+  ImgRefs *FindImgRefs(ResourceId img);
 
   inline bool OptimizeInitialState() { return m_OptimizeInitialState; }
 private:
   bool ResourceTypeRelease(WrappedVkRes *res);
 
-  bool Force_InitialState(WrappedVkRes *res, bool prepare);
-  bool AllowDeletedResource_InitialState() { return true; }
-  bool Need_InitialStateChunk(WrappedVkRes *res);
   bool Prepare_InitialState(WrappedVkRes *res);
-  uint32_t GetSize_InitialState(ResourceId id, WrappedVkRes *res);
-  bool Serialise_InitialState(WriteSerialiser &ser, ResourceId resid, WrappedVkRes *res);
+  uint64_t GetSize_InitialState(ResourceId id, const VkInitialContents &initial);
+  bool Serialise_InitialState(WriteSerialiser &ser, ResourceId id, VkResourceRecord *record,
+                              const VkInitialContents *initial);
   void Create_InitialState(ResourceId id, WrappedVkRes *live, bool hasData);
-  void Apply_InitialState(WrappedVkRes *live, VkInitialContents initial);
+  void Apply_InitialState(WrappedVkRes *live, const VkInitialContents &initial);
   std::vector<ResourceId> InitialContentResources();
 
   CaptureState m_State;
   WrappedVulkan *m_Core;
   std::map<ResourceId, MemRefs> m_MemFrameRefs;
+  std::map<ResourceId, ImgRefs> m_ImgFrameRefs;
   bool m_OptimizeInitialState = false;
 };

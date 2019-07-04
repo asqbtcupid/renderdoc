@@ -33,9 +33,6 @@
 #include "os/os_specific.h"
 #include "serialise/serialiser.h"
 
-using std::set;
-using std::map;
-
 // In what way (read, write, etc) was a resource referenced in a frame -
 // used to determine if initial contents are needed and to what degree.
 // These values are used both as states (representing the cumulative previous
@@ -199,8 +196,6 @@ class ResourceRecordHandler
 {
 public:
   virtual void MarkDirtyResource(ResourceId id) = 0;
-  virtual void MarkCleanResource(ResourceId id) = 0;
-  virtual void MarkPendingDirty(ResourceId id) = 0;
   virtual void RemoveResourceRecord(ResourceId id) = 0;
   virtual void MarkResourceFrameReferenced(ResourceId id, FrameRefType refType) = 0;
   virtual void DestroyResourceRecord(ResourceRecord *record) = 0;
@@ -263,7 +258,7 @@ struct ResourceRecord
   }
 
   void MarkDataUnwritten() { DataWritten = false; }
-  void Insert(map<int32_t, Chunk *> &recordlist)
+  void Insert(std::map<int32_t, Chunk *> &recordlist)
   {
     bool dataWritten = DataWritten;
 
@@ -308,7 +303,7 @@ struct ResourceRecord
     if(ID == 0)
       ID = GetID();
     LockChunks();
-    m_Chunks.push_back(std::make_pair(ID, chunk));
+    m_Chunks.push_back({ID, chunk});
     UnlockChunks();
   }
 
@@ -422,10 +417,10 @@ protected:
     return Atomic::Inc32(&globalIDCounter);
   }
 
-  std::vector<std::pair<int32_t, Chunk *>> m_Chunks;
+  std::vector<rdcpair<int32_t, Chunk *>> m_Chunks;
   Threading::CriticalSection *m_ChunkLock;
 
-  map<ResourceId, FrameRefType> m_FrameRefs;
+  std::map<ResourceId, FrameRefType> m_FrameRefs;
 };
 
 template <typename Compose>
@@ -491,14 +486,6 @@ public:
   // and to be correct its contents should be serialised out at the start
   // of the frame.
   inline void MarkDirtyResource(ResourceId res);
-
-  // for use when we might be mid-capture, this will get flushed to dirty state before the
-  // next frame but is safe to use mid-capture
-  void MarkPendingDirty(ResourceId res);
-  void FlushPendingDirty();
-
-  // this can be used when the resource is cleared or similar and it's in a known state
-  void MarkCleanResource(ResourceId res);
 
   // returns if the resource has been marked as dirty
   bool IsResourceDirty(ResourceId res);
@@ -569,15 +556,16 @@ protected:
 
   virtual bool ResourceTypeRelease(WrappedResourceType res) = 0;
 
-  virtual bool Force_InitialState(WrappedResourceType res, bool prepare) = 0;
-  virtual bool AllowDeletedResource_InitialState() { return false; }
-  virtual bool Need_InitialStateChunk(WrappedResourceType res) = 0;
+  virtual bool Need_InitialStateChunk(ResourceId id, const InitialContentData &initial)
+  {
+    return true;
+  }
   virtual bool Prepare_InitialState(WrappedResourceType res) = 0;
-  virtual uint32_t GetSize_InitialState(ResourceId id, WrappedResourceType res) = 0;
-  virtual bool Serialise_InitialState(WriteSerialiser &ser, ResourceId id,
-                                      WrappedResourceType res) = 0;
+  virtual uint64_t GetSize_InitialState(ResourceId id, const InitialContentData &initial) = 0;
+  virtual bool Serialise_InitialState(WriteSerialiser &ser, ResourceId id, RecordType *record,
+                                      const InitialContentData *initialData) = 0;
   virtual void Create_InitialState(ResourceId id, WrappedResourceType live, bool hasData) = 0;
-  virtual void Apply_InitialState(WrappedResourceType live, InitialContentData initial) = 0;
+  virtual void Apply_InitialState(WrappedResourceType live, const InitialContentData &initial) = 0;
   virtual std::vector<ResourceId> InitialContentResources();
 
   // very coarse lock, protects EVERYTHING. This could certainly be improved and it may be a
@@ -595,36 +583,49 @@ protected:
 
   // used during capture - map from real resource to its wrapper (other way can be done just with an
   // Unwrap)
-  map<RealResourceType, WrappedResourceType> m_WrapperMap;
+  std::map<RealResourceType, WrappedResourceType> m_WrapperMap;
 
   // used during capture - holds resources referenced in current frame (and how they're referenced)
-  map<ResourceId, FrameRefType> m_FrameReferencedResources;
+  std::map<ResourceId, FrameRefType> m_FrameReferencedResources;
 
   // used during capture - holds resources marked as dirty, needing initial contents
-  set<ResourceId> m_DirtyResources;
-  set<ResourceId> m_PendingDirtyResources;
+  std::set<ResourceId> m_DirtyResources;
+
+  struct InitialContentDataOrChunk
+  {
+    Chunk *chunk = NULL;
+    InitialContentData data;
+
+    void Free(ResourceManager *mgr)
+    {
+      if(chunk)
+      {
+        delete chunk;
+        chunk = NULL;
+      }
+
+      data.Free(mgr);
+    }
+  };
 
   // used during capture or replay - holds initial contents
-  map<ResourceId, InitialContentData> m_InitialContents;
-  // on capture, if a chunk was prepared in Prepare_InitialContents and added, don't re-serialise.
-  // Some initial contents may not need the delayed readback.
-  map<ResourceId, Chunk *> m_InitialChunks;
+  std::map<ResourceId, InitialContentDataOrChunk> m_InitialContents;
 
   // used during capture or replay - map of resources currently alive with their real IDs, used in
   // capture and replay.
-  map<ResourceId, WrappedResourceType> m_CurrentResourceMap;
+  std::map<ResourceId, WrappedResourceType> m_CurrentResourceMap;
 
   // used during replay - maps back and forth from original id to live id and vice-versa
-  map<ResourceId, ResourceId> m_OriginalIDs, m_LiveIDs;
+  std::map<ResourceId, ResourceId> m_OriginalIDs, m_LiveIDs;
 
   // used during replay - holds resources allocated and the original id that they represent
-  map<ResourceId, WrappedResourceType> m_LiveResourceMap;
+  std::map<ResourceId, WrappedResourceType> m_LiveResourceMap;
 
   // used during capture - holds resource records by id.
-  map<ResourceId, RecordType *> m_ResourceRecords;
+  std::map<ResourceId, RecordType *> m_ResourceRecords;
 
   // used during replay - holds current resource replacements
-  map<ResourceId, ResourceId> m_Replacements;
+  std::map<ResourceId, ResourceId> m_Replacements;
 };
 
 template <typename Configuration>
@@ -703,26 +704,6 @@ void ResourceManager<Configuration>::MarkDirtyResource(ResourceId res)
 }
 
 template <typename Configuration>
-void ResourceManager<Configuration>::MarkPendingDirty(ResourceId res)
-{
-  SCOPED_LOCK(m_Lock);
-
-  if(res == ResourceId())
-    return;
-
-  m_PendingDirtyResources.insert(res);
-}
-
-template <typename Configuration>
-void ResourceManager<Configuration>::FlushPendingDirty()
-{
-  SCOPED_LOCK(m_Lock);
-
-  m_DirtyResources.insert(m_PendingDirtyResources.begin(), m_PendingDirtyResources.end());
-  m_PendingDirtyResources.clear();
-}
-
-template <typename Configuration>
 bool ResourceManager<Configuration>::IsResourceDirty(ResourceId res)
 {
   SCOPED_LOCK(m_Lock);
@@ -731,20 +712,6 @@ bool ResourceManager<Configuration>::IsResourceDirty(ResourceId res)
     return false;
 
   return m_DirtyResources.find(res) != m_DirtyResources.end();
-}
-
-template <typename Configuration>
-void ResourceManager<Configuration>::MarkCleanResource(ResourceId res)
-{
-  SCOPED_LOCK(m_Lock);
-
-  if(res == ResourceId())
-    return;
-
-  if(IsResourceDirty(res))
-  {
-    m_DirtyResources.erase(res);
-  }
 }
 
 template <typename Configuration>
@@ -757,13 +724,9 @@ void ResourceManager<Configuration>::SetInitialContents(ResourceId id, InitialCo
   auto it = m_InitialContents.find(id);
 
   if(it != m_InitialContents.end())
-  {
-    // free previous contents
     it->second.Free(this);
-    m_InitialContents.erase(it);
-  }
 
-  m_InitialContents[id] = contents;
+  m_InitialContents[id].data = contents;
 }
 
 template <typename Configuration>
@@ -772,19 +735,14 @@ void ResourceManager<Configuration>::SetInitialChunk(ResourceId id, Chunk *chunk
   SCOPED_LOCK(m_Lock);
 
   RDCASSERT(id != ResourceId());
-
-  auto it = m_InitialChunks.find(id);
-
   RDCASSERT(chunk->GetChunkType<SystemChunk>() == SystemChunk::InitialContents);
 
-  if(it != m_InitialChunks.end())
-  {
-    RDCERR("Initial chunk set for ID %llu twice", id);
-    delete chunk;
-    return;
-  }
+  InitialContentDataOrChunk &data = m_InitialContents[id];
 
-  m_InitialChunks[id] = chunk;
+  if(data.chunk)
+    delete data.chunk;
+
+  data.chunk = chunk;
 }
 
 template <typename Configuration>
@@ -797,7 +755,7 @@ typename Configuration::InitialContentData ResourceManager<Configuration>::GetIn
     return InitialContentData();
 
   if(m_InitialContents.find(id) != m_InitialContents.end())
-    return m_InitialContents[id];
+    return m_InitialContents[id].data;
 
   return InitialContentData();
 }
@@ -833,6 +791,8 @@ void ResourceManager<Configuration>::Serialise_InitialContentsNeeded(WriteSerial
   // reasonable estimate, and these records are small
   WrittenRecords.reserve(m_FrameReferencedResources.size());
 
+  // all resources that were recorded as being modified should be included in the list of those
+  // needing initial contents
   for(auto it = m_FrameReferencedResources.begin(); it != m_FrameReferencedResources.end(); ++it)
   {
     RecordType *record = GetResourceRecord(it->first);
@@ -844,9 +804,10 @@ void ResourceManager<Configuration>::Serialise_InitialContentsNeeded(WriteSerial
     }
   }
 
-  for(auto it = m_DirtyResources.begin(); it != m_DirtyResources.end(); ++it)
+  // any resources that had initial contents generated should also be included
+  for(auto it = m_InitialContents.begin(); it != m_InitialContents.end(); ++it)
   {
-    ResourceId id = *it;
+    ResourceId id = it->first;
     auto ref = m_FrameReferencedResources.find(id);
     if(ref == m_FrameReferencedResources.end() || !IsDirtyFrameRef(ref->second))
     {
@@ -856,7 +817,7 @@ void ResourceManager<Configuration>::Serialise_InitialContentsNeeded(WriteSerial
     }
   }
 
-  uint32_t chunkSize = uint32_t(WrittenRecords.size() * sizeof(WrittenRecord) + 16);
+  uint64_t chunkSize = uint64_t(WrittenRecords.size() * sizeof(WrittenRecord) + 16);
 
   SCOPED_SERIALISE_CHUNK(SystemChunk::InitialContentsList, chunkSize);
   SERIALISE_ELEMENT(WrittenRecords);
@@ -872,11 +833,6 @@ void ResourceManager<Configuration>::FreeInitialContents()
     if(!m_InitialContents.empty())
       m_InitialContents.erase(m_InitialContents.begin());
   }
-
-  for(auto it = m_InitialChunks.begin(); it != m_InitialChunks.end(); ++it)
-    delete it->second;
-
-  m_InitialChunks.clear();
 }
 
 template <typename Configuration>
@@ -884,7 +840,7 @@ void ResourceManager<Configuration>::CreateInitialContents(ReadSerialiser &ser)
 {
   using namespace ResourceManagerInternal;
 
-  set<ResourceId> neededInitials;
+  std::set<ResourceId> neededInitials;
 
   std::vector<WrittenRecord> WrittenRecords;
   SERIALISE_ELEMENT(WrittenRecords);
@@ -924,9 +880,9 @@ void ResourceManager<Configuration>::ApplyInitialContents()
   for(auto it = resources.begin(); it != resources.end(); ++it)
   {
     ResourceId id = *it;
-    InitialContentData data = m_InitialContents[id];
+    const InitialContentDataOrChunk &data = m_InitialContents[id];
     WrappedResourceType live = GetLiveResource(id);
-    Apply_InitialState(live, data);
+    Apply_InitialState(live, data.data);
   }
   RDCDEBUG("Applied %d", (uint32_t)resources.size());
 }
@@ -961,7 +917,7 @@ void ResourceManager<Configuration>::MarkUnwrittenResources()
 template <typename Configuration>
 void ResourceManager<Configuration>::InsertReferencedChunks(WriteSerialiser &ser)
 {
-  map<int32_t, Chunk *> sortedChunks;
+  std::map<int32_t, Chunk *> sortedChunks;
 
   SCOPED_LOCK(m_Lock);
 
@@ -1026,12 +982,16 @@ void ResourceManager<Configuration>::PrepareInitialContents()
     RenderDoc::Inst().SetProgress(CaptureProgress::PrepareInitialStates, idx / num);
     idx += 1.0f;
 
+    // if somehow this resource has been deleted but is still dirty, we can't prepare it. Resources
+    // deleted prior to beginning the frame capture cannot linger and be needed - we only need to
+    // care about resources deleted after this point (mid-capture)
     if(!HasCurrentResource(id))
       continue;
 
     RecordType *record = GetResourceRecord(id);
     WrappedResourceType res = GetCurrentResource(id);
 
+    // don't prepare internal resources, or those without a record
     if(record == NULL || record->InternalResource)
       continue;
 
@@ -1045,22 +1005,6 @@ void ResourceManager<Configuration>::PrepareInitialContents()
   }
 
   RDCDEBUG("Prepared %u dirty resources", prepared);
-
-  prepared = 0;
-
-  for(auto it = m_CurrentResourceMap.begin(); it != m_CurrentResourceMap.end(); ++it)
-  {
-    if(it->second == (WrappedResourceType)RecordType::NullResource)
-      continue;
-
-    if(Force_InitialState(it->second, true))
-    {
-      prepared++;
-      Prepare_InitialState(it->second);
-    }
-  }
-
-  RDCDEBUG("Force-prepared %u dirty resources", prepared);
 }
 
 template <typename Configuration>
@@ -1071,14 +1015,14 @@ void ResourceManager<Configuration>::InsertInitialContentsChunks(WriteSerialiser
   uint32_t dirty = 0;
   uint32_t skipped = 0;
 
-  RDCDEBUG("Checking %u possibly dirty resources", (uint32_t)m_DirtyResources.size());
+  RDCDEBUG("Checking %u resources with initial contents", (uint32_t)m_InitialContents.size());
 
-  float num = float(m_DirtyResources.size());
+  float num = float(m_InitialContents.size());
   float idx = 0.0f;
 
-  for(auto it = m_DirtyResources.begin(); it != m_DirtyResources.end(); ++it)
+  for(auto it = m_InitialContents.begin(); it != m_InitialContents.end(); ++it)
   {
-    ResourceId id = *it;
+    ResourceId id = it->first;
 
     RenderDoc::Inst().SetProgress(CaptureProgress::SerialiseInitialStates, idx / num);
     idx += 1.0f;
@@ -1092,20 +1036,6 @@ void ResourceManager<Configuration>::InsertInitialContentsChunks(WriteSerialiser
       skipped++;
       continue;
     }
-
-    WrappedResourceType res = (WrappedResourceType)RecordType::NullResource;
-    bool isAlive = HasCurrentResource(id);
-
-    if(!AllowDeletedResource_InitialState() && !isAlive)
-    {
-#if ENABLED(VERBOSE_DIRTY_RESOURCES)
-      RDCDEBUG("Resource %llu no longer exists - skipping", id);
-#endif
-      continue;
-    }
-
-    if(isAlive)
-      res = GetCurrentResource(id);
 
     RecordType *record = GetResourceRecord(id);
 
@@ -1131,67 +1061,28 @@ void ResourceManager<Configuration>::InsertInitialContentsChunks(WriteSerialiser
 
     dirty++;
 
-    if(!Need_InitialStateChunk(res))
+    if(!Need_InitialStateChunk(id, it->second.data))
     {
-      // just need to grab data, don't create chunk
-      Serialise_InitialState(ser, id, res);
+      // this was handled in ApplyInitialContentsNonChunks(), do nothing as there's no point copying
+      // the data again (it's already been serialised).
       continue;
     }
 
-    auto preparedChunk = m_InitialChunks.find(id);
-    if(preparedChunk != m_InitialChunks.end())
+    if(it->second.chunk)
     {
-      preparedChunk->second->Write(ser);
-      m_InitialChunks.erase(preparedChunk);
+      it->second.chunk->Write(ser);
     }
     else
     {
-      uint32_t size = GetSize_InitialState(id, res);
+      uint64_t size = GetSize_InitialState(id, it->second.data);
 
       SCOPED_SERIALISE_CHUNK(SystemChunk::InitialContents, size);
 
-      Serialise_InitialState(ser, id, res);
+      Serialise_InitialState(ser, id, record, &it->second.data);
     }
   }
 
-  RDCDEBUG("Serialised %u dirty resources, skipped %u unreferenced", dirty, skipped);
-
-  dirty = 0;
-
-  for(auto it = m_CurrentResourceMap.begin(); it != m_CurrentResourceMap.end(); ++it)
-  {
-    if(it->second == (WrappedResourceType)RecordType::NullResource)
-      continue;
-
-    if(Force_InitialState(it->second, false))
-    {
-      dirty++;
-
-      auto preparedChunk = m_InitialChunks.find(it->first);
-      if(preparedChunk != m_InitialChunks.end())
-      {
-        preparedChunk->second->Write(ser);
-        m_InitialChunks.erase(preparedChunk);
-      }
-      else
-      {
-        uint32_t size = GetSize_InitialState(it->first, it->second);
-
-        SCOPED_SERIALISE_CHUNK(SystemChunk::InitialContents, size);
-
-        Serialise_InitialState(ser, it->first, it->second);
-      }
-    }
-  }
-
-  RDCDEBUG("Force-serialised %u dirty resources", dirty);
-
-  // delete/cleanup any chunks that weren't used (maybe the resource was not
-  // referenced).
-  for(auto it = m_InitialChunks.begin(); it != m_InitialChunks.end(); ++it)
-    delete it->second;
-
-  m_InitialChunks.clear();
+  RDCDEBUG("Serialised %u resources, skipped %u unreferenced", dirty, skipped);
 }
 
 template <typename Configuration>
@@ -1199,9 +1090,9 @@ void ResourceManager<Configuration>::ApplyInitialContentsNonChunks(WriteSerialis
 {
   SCOPED_LOCK(m_Lock);
 
-  for(auto it = m_DirtyResources.begin(); it != m_DirtyResources.end(); ++it)
+  for(auto it = m_InitialContents.begin(); it != m_InitialContents.end(); ++it)
   {
-    ResourceId id = *it;
+    ResourceId id = it->first;
 
     if(m_FrameReferencedResources.find(id) == m_FrameReferencedResources.end() &&
        !RenderDoc::Inst().GetCaptureOptions().refAllResources)
@@ -1209,22 +1100,13 @@ void ResourceManager<Configuration>::ApplyInitialContentsNonChunks(WriteSerialis
       continue;
     }
 
-    WrappedResourceType res = (WrappedResourceType)RecordType::NullResource;
-    bool isAlive = HasCurrentResource(id);
-
-    if(!AllowDeletedResource_InitialState() && !isAlive)
-      continue;
-
-    if(isAlive)
-      res = GetCurrentResource(id);
-
     RecordType *record = GetResourceRecord(id);
 
     if(!record || record->InternalResource)
       continue;
 
-    if(!Need_InitialStateChunk(res))
-      Serialise_InitialState(ser, id, res);
+    if(!Need_InitialStateChunk(id, it->second.data))
+      Serialise_InitialState(ser, id, record, &it->second.data);
   }
 }
 
@@ -1501,6 +1383,7 @@ void ResourceManager<Configuration>::ReleaseCurrentResource(ResourceId id)
 
   RDCASSERT(m_CurrentResourceMap.find(id) != m_CurrentResourceMap.end(), id);
   m_CurrentResourceMap.erase(id);
+  m_DirtyResources.erase(id);
 }
 
 template <typename Configuration>

@@ -30,7 +30,7 @@
 #include "d3d12_device.h"
 #include "d3d12_shader_cache.h"
 
-void D3D12Replay::CreateSOBuffers()
+bool D3D12Replay::CreateSOBuffers()
 {
   HRESULT hr = S_OK;
 
@@ -38,6 +38,15 @@ void D3D12Replay::CreateSOBuffers()
   SAFE_RELEASE(m_SOStagingBuffer);
   SAFE_RELEASE(m_SOPatchedIndexBuffer);
   SAFE_RELEASE(m_SOQueryHeap);
+
+  if(m_SOBufferSize >= 0xFFFF0000ULL)
+  {
+    RDCERR(
+        "Stream-out buffer size %llu is close to or over 4GB, out of memory very likely so "
+        "skipping",
+        m_SOBufferSize);
+    return false;
+  }
 
   D3D12_RESOURCE_DESC soBufDesc;
   soBufDesc.Alignment = 0;
@@ -65,13 +74,13 @@ void D3D12Replay::CreateSOBuffers()
                                           D3D12_RESOURCE_STATE_STREAM_OUT, NULL,
                                           __uuidof(ID3D12Resource), (void **)&m_SOBuffer);
 
-  m_SOBuffer->SetName(L"m_SOBuffer");
-
   if(FAILED(hr))
   {
     RDCERR("Failed to create SO output buffer, HRESULT: %s", ToStr(hr).c_str());
-    return;
+    return false;
   }
+
+  m_SOBuffer->SetName(L"m_SOBuffer");
 
   soBufDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
   heapProps.Type = D3D12_HEAP_TYPE_READBACK;
@@ -80,13 +89,13 @@ void D3D12Replay::CreateSOBuffers()
                                           D3D12_RESOURCE_STATE_COPY_DEST, NULL,
                                           __uuidof(ID3D12Resource), (void **)&m_SOStagingBuffer);
 
-  m_SOStagingBuffer->SetName(L"m_SOStagingBuffer");
-
   if(FAILED(hr))
   {
     RDCERR("Failed to create readback buffer, HRESULT: %s", ToStr(hr).c_str());
-    return;
+    return false;
   }
+
+  m_SOStagingBuffer->SetName(L"m_SOStagingBuffer");
 
   // this is a buffer of unique indices, so it allows for
   // the worst case - float4 per vertex, all unique indices.
@@ -97,13 +106,13 @@ void D3D12Replay::CreateSOBuffers()
       &heapProps, D3D12_HEAP_FLAG_NONE, &soBufDesc, D3D12_RESOURCE_STATE_GENERIC_READ, NULL,
       __uuidof(ID3D12Resource), (void **)&m_SOPatchedIndexBuffer);
 
-  m_SOPatchedIndexBuffer->SetName(L"m_SOPatchedIndexBuffer");
-
   if(FAILED(hr))
   {
     RDCERR("Failed to create SO index buffer, HRESULT: %s", ToStr(hr).c_str());
-    return;
+    return false;
   }
+
+  m_SOPatchedIndexBuffer->SetName(L"m_SOPatchedIndexBuffer");
 
   D3D12_QUERY_HEAP_DESC queryDesc;
   queryDesc.Count = 16;
@@ -114,7 +123,7 @@ void D3D12Replay::CreateSOBuffers()
   if(FAILED(hr))
   {
     RDCERR("Failed to create SO query heap, HRESULT: %s", ToStr(hr).c_str());
-    return;
+    return false;
   }
 
   D3D12_UNORDERED_ACCESS_VIEW_DESC counterDesc = {};
@@ -128,6 +137,8 @@ void D3D12Replay::CreateSOBuffers()
 
   m_pDevice->CreateUnorderedAccessView(m_SOBuffer, NULL, &counterDesc,
                                        GetDebugManager()->GetUAVClearHandle(STREAM_OUT_UAV));
+
+  return true;
 }
 
 void D3D12Replay::ClearPostVSCache()
@@ -236,7 +247,7 @@ void D3D12Replay::InitPostVSBuffers(uint32_t eventId)
     }
   }
 
-  vector<D3D12_SO_DECLARATION_ENTRY> sodecls;
+  std::vector<D3D12_SO_DECLARATION_ENTRY> sodecls;
 
   UINT stride = 0;
   int posidx = -1;
@@ -349,7 +360,12 @@ void D3D12Replay::InitPostVSBuffers(uint32_t eventId)
       {
         m_pDevice->GPUSync();
 
-        CreateSOBuffers();
+        if(!CreateSOBuffers())
+        {
+          m_PostVSData[eventId].vsin.topo = topo;
+          m_PostVSData[eventId].vsout.topo = topo;
+          return;
+        }
       }
 
       list = GetDebugManager()->ResetDebugList();
@@ -381,7 +397,7 @@ void D3D12Replay::InitPostVSBuffers(uint32_t eventId)
         GetBufferData(rs.ibuffer.buf, rs.ibuffer.offs + drawcall->indexOffset * rs.ibuffer.bytewidth,
                       RDCMIN(drawcall->numIndices * rs.ibuffer.bytewidth, rs.ibuffer.size), idxdata);
 
-      vector<uint32_t> indices;
+      std::vector<uint32_t> indices;
 
       uint16_t *idx16 = (uint16_t *)&idxdata[0];
       uint32_t *idx32 = (uint32_t *)&idxdata[0];
@@ -433,7 +449,7 @@ void D3D12Replay::InitPostVSBuffers(uint32_t eventId)
 
       // we use a map here since the indices may be sparse. Especially considering if an index
       // is 'invalid' like 0xcccccccc then we don't want an array of 3.4 billion entries.
-      map<uint32_t, size_t> indexRemap;
+      std::map<uint32_t, size_t> indexRemap;
       for(size_t i = 0; i < indices.size(); i++)
       {
         // by definition, this index will only appear once in indices[]
@@ -454,7 +470,12 @@ void D3D12Replay::InitPostVSBuffers(uint32_t eventId)
       {
         m_pDevice->GPUSync();
 
-        CreateSOBuffers();
+        if(!CreateSOBuffers())
+        {
+          m_PostVSData[eventId].vsin.topo = topo;
+          m_PostVSData[eventId].vsout.topo = topo;
+          return;
+        }
       }
 
       GetDebugManager()->FillBuffer(m_SOPatchedIndexBuffer, 0, &indices[0],
@@ -900,7 +921,13 @@ void D3D12Replay::InitPostVSBuffers(uint32_t eventId)
         uint64_t oldSize = m_SOBufferSize;
         m_SOBufferSize = CalcMeshOutputSize(m_SOBufferSize, outputSize);
         RDCWARN("Resizing stream-out buffer from %llu to %llu for output", oldSize, m_SOBufferSize);
-        CreateSOBuffers();
+
+        if(!CreateSOBuffers())
+        {
+          m_PostVSData[eventId].vsin.topo = topo;
+          m_PostVSData[eventId].vsout.topo = topo;
+          return;
+        }
       }
 
       GetDebugManager()->ResetDebugAlloc();
@@ -1040,7 +1067,13 @@ void D3D12Replay::InitPostVSBuffers(uint32_t eventId)
           uint64_t oldSize = m_SOBufferSize;
           m_SOBufferSize = CalcMeshOutputSize(m_SOBufferSize, outputSize);
           RDCWARN("Resizing stream-out buffer from %llu to %llu for output", oldSize, m_SOBufferSize);
-          CreateSOBuffers();
+
+          if(!CreateSOBuffers())
+          {
+            m_PostVSData[eventId].vsin.topo = topo;
+            m_PostVSData[eventId].vsout.topo = topo;
+            return;
+          }
 
           continue;
         }
@@ -1302,7 +1335,7 @@ void D3D12Replay::InitPostVSBuffers(uint32_t eventId)
 struct D3D12InitPostVSCallback : public D3D12DrawcallCallback
 {
   D3D12InitPostVSCallback(WrappedID3D12Device *dev, D3D12Replay *replay,
-                          const vector<uint32_t> &events)
+                          const std::vector<uint32_t> &events)
       : m_pDevice(dev), m_Replay(replay), m_Events(events)
   {
     m_pDevice->GetQueue()->GetCommandData()->m_DrawcallCallback = this;
@@ -1329,10 +1362,10 @@ struct D3D12InitPostVSCallback : public D3D12DrawcallCallback
 
   WrappedID3D12Device *m_pDevice;
   D3D12Replay *m_Replay;
-  const vector<uint32_t> &m_Events;
+  const std::vector<uint32_t> &m_Events;
 };
 
-void D3D12Replay::InitPostVSBuffers(const vector<uint32_t> &events)
+void D3D12Replay::InitPostVSBuffers(const std::vector<uint32_t> &events)
 {
   // first we must replay up to the first event without replaying it. This ensures any
   // non-command buffer calls like memory unmaps etc all happen correctly before this

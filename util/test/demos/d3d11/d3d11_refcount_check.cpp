@@ -24,16 +24,16 @@
 
 #include "d3d11_test.h"
 
-struct Refcount_Check : D3D11GraphicsTest
+TEST(D3D11_Refcount_Check, D3D11GraphicsTest)
 {
   static constexpr const char *Description =
       "Ensures that the device etc doesn't delete itself when there are still outstanding "
       "references, and also that it *does* delete itself when any cycle is detected.";
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create device, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     ID3D11Debug *dbg = NULL;
@@ -123,4 +123,4 @@ struct Refcount_Check : D3D11GraphicsTest
   }
 };
 
-REGISTER_TEST(Refcount_Check);
+REGISTER_TEST();

@@ -176,7 +176,7 @@ int GetCurrentPID(const std::string &deviceID, const std::string &packageName)
   return 0;
 }
 
-ExecuteResult StartAndroidPackageForCapture(const char *host, const char *package,
+ExecuteResult StartAndroidPackageForCapture(const char *host, const char *packageAndActivity,
                                             const char *intentArgs, const CaptureOptions &opts)
 {
   int index = 0;
@@ -187,10 +187,14 @@ ExecuteResult StartAndroidPackageForCapture(const char *host, const char *packag
   ret.status = ReplayStatus::UnknownError;
   ret.ident = RenderDoc_FirstTargetControlPort + RenderDoc_AndroidPortOffset * (index + 1);
 
-  string packageName = get_basename(string(package));    // Remove leading '/' if any
+  std::string packageName = GetPackageName(packageAndActivity);    // Remove leading '/' if any
 
   // adb shell cmd package resolve-activity -c android.intent.category.LAUNCHER com.jake.cube1
-  string activityName = GetDefaultActivityForPackage(deviceID, packageName);
+  std::string activityName = GetActivityName(packageAndActivity);
+
+  // if the activity name isn't specified, get the default one
+  if(activityName.empty() || activityName == "#DefaultActivity")
+    activityName = GetDefaultActivityForPackage(deviceID, packageName);
 
   uint16_t jdwpPort = GetJdwpPort();
 
@@ -325,7 +329,7 @@ ExecuteResult StartAndroidPackageForCapture(const char *host, const char *packag
   return ret;
 }
 
-bool CheckAndroidServerVersion(const string &deviceID, ABI abi)
+bool CheckAndroidServerVersion(const std::string &deviceID, ABI abi)
 {
   // assume all servers are updated at the same rate. Only check first ABI's version
   std::string packageName = GetRenderDocPackageForABI(abi);
@@ -361,8 +365,8 @@ bool CheckAndroidServerVersion(const string &deviceID, ABI abi)
   }
 
   // Compare the server's versionCode and versionName with the host's for compatibility
-  std::string hostVersionCode =
-      string(STRINGIZE(RENDERDOC_VERSION_MAJOR)) + string(STRINGIZE(RENDERDOC_VERSION_MINOR));
+  std::string hostVersionCode = std::string(STRINGIZE(RENDERDOC_VERSION_MAJOR)) +
+                                std::string(STRINGIZE(RENDERDOC_VERSION_MINOR));
   std::string hostVersionName = GitVersionHash;
 
   // False positives will hurt us, so check for explicit matches
@@ -502,7 +506,7 @@ ReplayStatus InstallRenderDocServer(const std::string &deviceID)
   return status;
 }
 
-bool RemoveRenderDocAndroidServer(const string &deviceID)
+bool RemoveRenderDocAndroidServer(const std::string &deviceID)
 {
   std::vector<ABI> abis = GetSupportedABIs(deviceID);
 
@@ -560,7 +564,7 @@ extern "C" RENDERDOC_API void RENDERDOC_CC RENDERDOC_GetAndroidFriendlyName(cons
   friendly = Android::GetFriendlyName(deviceID);
 }
 
-extern "C" RENDERDOC_API void RENDERDOC_CC RENDERDOC_EnumerateAndroidDevices(rdcstr *deviceList)
+extern "C" RENDERDOC_API void RENDERDOC_CC RENDERDOC_EnumerateAndroidDevices(rdcstr &deviceList)
 {
   std::string adbStdout = Android::adbExecCommand("", "devices", ".", true).strStdout;
 
@@ -588,7 +592,7 @@ extern "C" RENDERDOC_API void RENDERDOC_CC RENDERDOC_EnumerateAndroidDevices(rdc
     }
   }
 
-  *deviceList = ret;
+  deviceList = ret;
 }
 
 extern "C" RENDERDOC_API void RENDERDOC_CC RENDERDOC_AndroidInitialise()

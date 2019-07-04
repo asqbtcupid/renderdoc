@@ -419,7 +419,7 @@ void VulkanPipelineStateViewer::OnEventChanged(uint32_t eventId)
   setState();
 }
 
-void VulkanPipelineStateViewer::on_showDisabled_toggled(bool checked)
+void VulkanPipelineStateViewer::on_showUnused_toggled(bool checked)
 {
   setState();
 }
@@ -561,15 +561,15 @@ void VulkanPipelineStateViewer::setViewDetails(RDTreeWidgetItem *node, const bin
 
 bool VulkanPipelineStateViewer::showNode(bool usedSlot, bool filledSlot)
 {
-  const bool showDisabled = ui->showDisabled->isChecked();
+  const bool showUnused = ui->showUnused->isChecked();
   const bool showEmpty = ui->showEmpty->isChecked();
 
   // show if it's referenced by the shader - regardless of empty or not
   if(usedSlot)
     return true;
 
-  // it's bound, but not referenced, and we have "show disabled"
-  if(showDisabled && !usedSlot && filledSlot)
+  // it's bound, but not referenced, and we have "show unused"
+  if(showUnused && !usedSlot && filledSlot)
     return true;
 
   // it's empty, and we have "show empty"
@@ -663,6 +663,8 @@ void VulkanPipelineStateViewer::clearState()
   clearShaderState(ui->fsShader, ui->fsResources, ui->fsUBOs);
   clearShaderState(ui->csShader, ui->csResources, ui->csUBOs);
 
+  ui->xfbBuffers->clear();
+
   QToolButton *shaderButtons[] = {
       ui->vsShaderViewButton, ui->tcsShaderViewButton, ui->tesShaderViewButton,
       ui->gsShaderViewButton, ui->fsShaderViewButton,  ui->csShaderViewButton,
@@ -738,8 +740,9 @@ QVariantList VulkanPipelineStateViewer::makeSampler(const QString &bindset, cons
 
   QString filter;
 
-  QString addr[] = {ToQStr(descriptor.addressU), ToQStr(descriptor.addressV),
-                    ToQStr(descriptor.addressW)};
+  QString addr[] = {ToQStr(descriptor.addressU, GraphicsAPI::Vulkan),
+                    ToQStr(descriptor.addressV, GraphicsAPI::Vulkan),
+                    ToQStr(descriptor.addressW, GraphicsAPI::Vulkan)};
 
   // arrange like either UVW: WRAP or UV: WRAP, W: CLAMP
   for(int a = 0; a < 3; a++)
@@ -1687,7 +1690,7 @@ void VulkanPipelineStateViewer::setState()
   const VKPipe::State &state = *m_Ctx.CurVulkanPipelineState();
   const DrawcallDescription *draw = m_Ctx.CurDrawcall();
 
-  bool showDisabled = ui->showDisabled->isChecked();
+  bool showUnused = ui->showUnused->isChecked();
   bool showEmpty = ui->showEmpty->isChecked();
 
   const QPixmap &tick = Pixmaps::tick(this);
@@ -1774,7 +1777,7 @@ void VulkanPipelineStateViewer::setState()
 
   if(state.inputAssembly.indexBuffer.resourceId != ResourceId())
   {
-    if(ibufferUsed || showDisabled)
+    if(ibufferUsed || showUnused)
     {
       uint64_t length = 1;
 

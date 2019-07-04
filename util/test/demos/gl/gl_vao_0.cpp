@@ -24,7 +24,7 @@
 
 #include "gl_test.h"
 
-struct VAO_0 : OpenGLGraphicsTest
+TEST(GL_VAO_0, OpenGLGraphicsTest)
 {
   static constexpr const char *Description = "Uses VAO 0 (i.e. never binds a VAO)";
 
@@ -72,12 +72,12 @@ void main()
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  int main()
   {
     coreProfile = false;
 
     // initialise, create window, create context, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     uint32_t idxs[3] = {0, 1, 2};
@@ -101,7 +101,6 @@ void main()
     glBufferStorage(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * 3, idxs, 0);
 
     GLuint program = MakeProgram(common + vertex, common + pixel);
-    glObjectLabel(GL_PROGRAM, program, -1, "Full program");
 
     while(Running())
     {
@@ -151,4 +150,4 @@ void main()
   }
 };
 
-REGISTER_TEST(VAO_0);
+REGISTER_TEST();

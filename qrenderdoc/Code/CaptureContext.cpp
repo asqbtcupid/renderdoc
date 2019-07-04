@@ -46,6 +46,7 @@
 #include "Windows/Dialogs/LiveCapture.h"
 #include "Windows/Dialogs/SettingsDialog.h"
 #include "Windows/EventBrowser.h"
+#include "Windows/LogView.h"
 #include "Windows/MainWindow.h"
 #include "Windows/PerformanceCounterViewer.h"
 #include "Windows/PipelineState/PipelineStateViewer.h"
@@ -712,11 +713,16 @@ void CaptureContext::LoadCapture(const rdcstr &captureFile, const rdcstr &origFi
   ANALYTIC_ADDAVG(Performance.LoadTime, double(loadTimer.nsecsElapsed() * 1.0e-9));
 #endif
 
-  ANALYTIC_SET(CaptureFeatures.ShaderLinkage, m_APIProps.ShaderLinkage);
-  ANALYTIC_SET(CaptureFeatures.YUVTextures, m_APIProps.YUVTextures);
-  ANALYTIC_SET(CaptureFeatures.SparseResources, m_APIProps.SparseResources);
-  ANALYTIC_SET(CaptureFeatures.MultiGPU, m_APIProps.MultiGPU);
-  ANALYTIC_SET(CaptureFeatures.D3D12Bundle, m_APIProps.D3D12Bundle);
+  if(m_APIProps.ShaderLinkage)
+    ANALYTIC_SET(CaptureFeatures.ShaderLinkage, true);
+  if(m_APIProps.YUVTextures)
+    ANALYTIC_SET(CaptureFeatures.YUVTextures, true);
+  if(m_APIProps.SparseResources)
+    ANALYTIC_SET(CaptureFeatures.SparseResources, true);
+  if(m_APIProps.MultiGPU)
+    ANALYTIC_SET(CaptureFeatures.MultiGPU, true);
+  if(m_APIProps.D3D12Bundle)
+    ANALYTIC_SET(CaptureFeatures.D3D12Bundle, true);
 
   if(m_APIProps.vendor != GPUVendor::Unknown)
   {
@@ -820,6 +826,7 @@ void CaptureContext::LoadCaptureThreaded(const QString &captureFile, const QStri
 
     m_APIProps = r->GetAPIProperties();
 
+    m_CustomEncodings = r->GetCustomShaderEncodings();
     m_TargetEncodings = r->GetTargetShaderEncodings();
 
     m_PostloadProgress = 0.2f;
@@ -932,6 +939,11 @@ void CaptureContext::LoadCaptureThreaded(const QString &captureFile, const QStri
     {
       bytebuf buf = access->GetSectionContents(idx);
       LoadNotes(QString::fromUtf8((const char *)buf.data(), buf.count()));
+    }
+    QString driver = access->DriverName();
+    if(!driver.isEmpty())
+    {
+      ANALYTIC_ADDUNIQ(APIs, driver);
     }
   }
 
@@ -1885,6 +1897,18 @@ IDebugMessageView *CaptureContext::GetDebugMessageView()
   return m_DebugMessageView;
 }
 
+IDiagnosticLogView *CaptureContext::GetDiagnosticLogView()
+{
+  if(m_DiagnosticLogView)
+    return m_DiagnosticLogView;
+
+  m_DiagnosticLogView = new LogView(*this, m_MainWindow);
+  m_DiagnosticLogView->setObjectName(lit("diagnosticLogView"));
+  setupDockWindow(m_DiagnosticLogView);
+
+  return m_DiagnosticLogView;
+}
+
 ICommentView *CaptureContext::GetCommentView()
 {
   if(m_CommentView)
@@ -1990,6 +2014,11 @@ void CaptureContext::ShowCaptureDialog()
 void CaptureContext::ShowDebugMessageView()
 {
   m_MainWindow->showDebugMessageView();
+}
+
+void CaptureContext::ShowDiagnosticLogView()
+{
+  m_MainWindow->showDiagnosticLogView();
 }
 
 void CaptureContext::ShowCommentView()
@@ -2111,6 +2140,10 @@ QWidget *CaptureContext::CreateBuiltinWindow(const rdcstr &objectName)
   {
     return GetDebugMessageView()->Widget();
   }
+  else if(objectName == "diagnosticLogView")
+  {
+    return GetDiagnosticLogView()->Widget();
+  }
   else if(objectName == "commentView")
   {
     return GetCommentView()->Widget();
@@ -2155,6 +2188,8 @@ void CaptureContext::BuiltinWindowClosed(QWidget *window)
     m_MeshPreview = NULL;
   else if(m_DebugMessageView && m_DebugMessageView->Widget() == window)
     m_DebugMessageView = NULL;
+  else if(m_DiagnosticLogView && m_DiagnosticLogView->Widget() == window)
+    m_DiagnosticLogView = NULL;
   else if(m_CommentView && m_CommentView->Widget() == window)
     m_CommentView = NULL;
   else if(m_StatisticsViewer && m_StatisticsViewer->Widget() == window)

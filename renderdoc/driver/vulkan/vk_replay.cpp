@@ -25,6 +25,7 @@
 #include "vk_replay.h"
 #include <float.h>
 #include "driver/ihv/amd/amd_rgp.h"
+#include "driver/shaders/spirv/spirv_compile.h"
 #include "maths/camera.h"
 #include "maths/formatpacking.h"
 #include "maths/matrix.h"
@@ -106,9 +107,9 @@ const SDFile &VulkanReplay::GetStructuredFile()
   return m_pDriver->GetStructuredFile();
 }
 
-vector<uint32_t> VulkanReplay::GetPassEvents(uint32_t eventId)
+std::vector<uint32_t> VulkanReplay::GetPassEvents(uint32_t eventId)
 {
-  vector<uint32_t> passEvents;
+  std::vector<uint32_t> passEvents;
 
   const DrawcallDescription *draw = m_pDriver->GetDrawcall(eventId);
 
@@ -179,7 +180,7 @@ FrameRecord VulkanReplay::GetFrameRecord()
   return m_pDriver->GetFrameRecord();
 }
 
-vector<DebugMessage> VulkanReplay::GetDebugMessages()
+std::vector<DebugMessage> VulkanReplay::GetDebugMessages()
 {
   return m_pDriver->GetDebugMessages();
 }
@@ -345,12 +346,12 @@ ShaderReflection *VulkanReplay::GetShader(ResourceId shader, ShaderEntryPoint en
   return &shad->second.m_Reflections[entry.name].refl;
 }
 
-vector<string> VulkanReplay::GetDisassemblyTargets()
+std::vector<std::string> VulkanReplay::GetDisassemblyTargets()
 {
-  vector<string> ret;
+  std::vector<std::string> ret;
 
   VkDevice dev = m_pDriver->GetDev();
-  const VkLayerDispatchTable *vt = ObjDisp(dev);
+  const VkDevDispatchTable *vt = ObjDisp(dev);
 
   if(vt->GetShaderInfoAMD)
     ret.push_back(LiveDriverDisassemblyTarget);
@@ -364,8 +365,8 @@ vector<string> VulkanReplay::GetDisassemblyTargets()
   return ret;
 }
 
-string VulkanReplay::DisassembleShader(ResourceId pipeline, const ShaderReflection *refl,
-                                       const string &target)
+std::string VulkanReplay::DisassembleShader(ResourceId pipeline, const ShaderReflection *refl,
+                                            const std::string &target)
 {
   auto it = m_pDriver->m_CreationInfo.m_ShaderModule.find(
       GetResourceManager()->GetLiveID(refl->resourceId));
@@ -384,7 +385,7 @@ string VulkanReplay::DisassembleShader(ResourceId pipeline, const ShaderReflecti
   }
 
   VkDevice dev = m_pDriver->GetDev();
-  const VkLayerDispatchTable *vt = ObjDisp(dev);
+  const VkDevDispatchTable *vt = ObjDisp(dev);
 
   if(target == LiveDriverDisassemblyTarget && vt->GetShaderInfoAMD)
   {
@@ -476,7 +477,7 @@ void VulkanReplay::PickPixel(ResourceId texture, uint32_t x, uint32_t y, uint32_
 
     VkDevice dev = m_pDriver->GetDev();
     VkCommandBuffer cmd = m_pDriver->GetNextCmd();
-    const VkLayerDispatchTable *vt = ObjDisp(dev);
+    const VkDevDispatchTable *vt = ObjDisp(dev);
 
     VkResult vkr = VK_SUCCESS;
 
@@ -580,12 +581,12 @@ void VulkanReplay::RenderCheckerboard()
 
   // if the swapchain failed to create, do nothing. We will try to recreate it
   // again in CheckResizeOutputWindow (once per render 'frame')
-  if(outw.swap == VK_NULL_HANDLE)
+  if(outw.m_WindowSystem != WindowingSystem::Headless && outw.swap == VK_NULL_HANDLE)
     return;
 
   VkDevice dev = m_pDriver->GetDev();
   VkCommandBuffer cmd = m_pDriver->GetNextCmd();
-  const VkLayerDispatchTable *vt = ObjDisp(dev);
+  const VkDevDispatchTable *vt = ObjDisp(dev);
 
   VkCommandBufferBeginInfo beginInfo = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, NULL,
                                         VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
@@ -706,12 +707,12 @@ void VulkanReplay::RenderHighlightBox(float w, float h, float scale)
 
   // if the swapchain failed to create, do nothing. We will try to recreate it
   // again in CheckResizeOutputWindow (once per render 'frame')
-  if(outw.swap == VK_NULL_HANDLE)
+  if(outw.m_WindowSystem != WindowingSystem::Headless && outw.swap == VK_NULL_HANDLE)
     return;
 
   VkDevice dev = m_pDriver->GetDev();
   VkCommandBuffer cmd = m_pDriver->GetNextCmd();
-  const VkLayerDispatchTable *vt = ObjDisp(dev);
+  const VkDevDispatchTable *vt = ObjDisp(dev);
 
   VkCommandBufferBeginInfo beginInfo = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, NULL,
                                         VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
@@ -1403,7 +1404,7 @@ void VulkanReplay::SavePipelineState(uint32_t eventId)
         dst.bindings.resize(m_pDriver->m_DescriptorSetState[src].currentBindings.size());
         for(size_t b = 0; b < m_pDriver->m_DescriptorSetState[src].currentBindings.size(); b++)
         {
-          DescriptorSetSlot *info = m_pDriver->m_DescriptorSetState[src].currentBindings[b];
+          DescriptorSetBindingElement *info = m_pDriver->m_DescriptorSetState[src].currentBindings[b];
           const DescSetLayout::Binding &layoutBind = c.m_DescSetLayout[layoutId].bindings[b];
 
           curBind.bind = (uint32_t)b;
@@ -1670,6 +1671,9 @@ void VulkanReplay::SavePipelineState(uint32_t eventId)
     {
       VKPipe::ImageData &img = m_VulkanPipelineState.images[i];
 
+      if(rm->GetOriginalID(it->first) == it->first)
+        continue;
+
       img.resourceId = rm->GetOriginalID(it->first);
 
       img.layouts.resize(it->second.subresourceStates.size());
@@ -1690,6 +1694,8 @@ void VulkanReplay::SavePipelineState(uint32_t eventId)
 
       i++;
     }
+
+    m_VulkanPipelineState.images.resize(i);
   }
 
   if(state.conditionalRendering.buffer != ResourceId())
@@ -1715,7 +1721,7 @@ void VulkanReplay::SavePipelineState(uint32_t eventId)
   }
 }
 
-void VulkanReplay::FillCBufferVariables(ResourceId shader, string entryPoint, uint32_t cbufSlot,
+void VulkanReplay::FillCBufferVariables(ResourceId shader, std::string entryPoint, uint32_t cbufSlot,
                                         rdcarray<ShaderVariable> &outvars, const bytebuf &data)
 {
   // Correct SPIR-V will ultimately need to set explicit layout information for each type.
@@ -1782,7 +1788,7 @@ bool VulkanReplay::GetMinMax(ResourceId texid, uint32_t sliceFace, uint32_t mip,
 {
   ImageLayouts &layouts = m_pDriver->m_ImageLayouts[texid];
 
-  if(IsDepthAndStencilFormat(layouts.format))
+  if(IsDepthAndStencilFormat(layouts.imageInfo.format))
   {
     // for depth/stencil we need to run the code twice - once to fetch depth and once to fetch
     // stencil - since we can't process float depth and int stencil at the same time
@@ -1821,7 +1827,7 @@ bool VulkanReplay::GetMinMax(ResourceId texid, uint32_t sliceFace, uint32_t mip,
 {
   VkDevice dev = m_pDriver->GetDev();
   VkCommandBuffer cmd = m_pDriver->GetNextCmd();
-  const VkLayerDispatchTable *vt = ObjDisp(dev);
+  const VkDevDispatchTable *vt = ObjDisp(dev);
 
   ImageLayouts &layouts = m_pDriver->m_ImageLayouts[texid];
   VulkanCreationInfo::Image &iminfo = m_pDriver->m_CreationInfo.m_Image[texid];
@@ -1946,7 +1952,7 @@ bool VulkanReplay::GetMinMax(ResourceId texid, uint32_t sliceFace, uint32_t mip,
        0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, NULL, &bufdescs[2], NULL},
   };
 
-  vector<VkWriteDescriptorSet> writeSets;
+  std::vector<VkWriteDescriptorSet> writeSets;
   for(size_t i = 0; i < ARRAY_COUNT(writeSet); i++)
   {
     if(writeSet[i].descriptorCount > 0)
@@ -2131,14 +2137,14 @@ bool VulkanReplay::GetMinMax(ResourceId texid, uint32_t sliceFace, uint32_t mip,
 
 bool VulkanReplay::GetHistogram(ResourceId texid, uint32_t sliceFace, uint32_t mip, uint32_t sample,
                                 CompType typeHint, float minval, float maxval, bool channels[4],
-                                vector<uint32_t> &histogram)
+                                std::vector<uint32_t> &histogram)
 {
   if(minval >= maxval)
     return false;
 
   VkDevice dev = m_pDriver->GetDev();
   VkCommandBuffer cmd = m_pDriver->GetNextCmd();
-  const VkLayerDispatchTable *vt = ObjDisp(dev);
+  const VkDevDispatchTable *vt = ObjDisp(dev);
 
   ImageLayouts &layouts = m_pDriver->m_ImageLayouts[texid];
   VulkanCreationInfo::Image &iminfo = m_pDriver->m_CreationInfo.m_Image[texid];
@@ -2261,7 +2267,7 @@ bool VulkanReplay::GetHistogram(ResourceId texid, uint32_t sliceFace, uint32_t m
        altimdesc, NULL, NULL},
   };
 
-  vector<VkWriteDescriptorSet> writeSets;
+  std::vector<VkWriteDescriptorSet> writeSets;
   for(size_t i = 0; i < ARRAY_COUNT(writeSet); i++)
   {
     if(writeSet[i].descriptorCount > 0)
@@ -2439,7 +2445,7 @@ bool VulkanReplay::GetHistogram(ResourceId texid, uint32_t sliceFace, uint32_t m
   return true;
 }
 
-vector<EventUsage> VulkanReplay::GetUsage(ResourceId id)
+std::vector<EventUsage> VulkanReplay::GetUsage(ResourceId id)
 {
   return m_pDriver->GetUsage(id);
 }
@@ -2497,7 +2503,7 @@ void VulkanReplay::GetTextureData(ResourceId tex, uint32_t arrayIdx, uint32_t mi
 
   VkDevice dev = m_pDriver->GetDev();
   VkCommandBuffer cmd = m_pDriver->GetNextCmd();
-  const VkLayerDispatchTable *vt = ObjDisp(dev);
+  const VkDevDispatchTable *vt = ObjDisp(dev);
 
   VkCommandBufferBeginInfo beginInfo = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, NULL,
                                         VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
@@ -3434,54 +3440,11 @@ void VulkanReplay::GetTextureData(ResourceId tex, uint32_t arrayIdx, uint32_t mi
   }
 }
 
-void VulkanReplay::BuildCustomShader(string source, string entry,
-                                     const ShaderCompileFlags &compileFlags, ShaderStage type,
-                                     ResourceId *id, string *errors)
+void VulkanReplay::BuildCustomShader(ShaderEncoding sourceEncoding, bytebuf source,
+                                     const std::string &entry, const ShaderCompileFlags &compileFlags,
+                                     ShaderStage type, ResourceId *id, std::string *errors)
 {
-  SPIRVShaderStage stage = SPIRVShaderStage::Invalid;
-
-  switch(type)
-  {
-    case ShaderStage::Vertex: stage = SPIRVShaderStage::Vertex; break;
-    case ShaderStage::Hull: stage = SPIRVShaderStage::TessControl; break;
-    case ShaderStage::Domain: stage = SPIRVShaderStage::TessEvaluation; break;
-    case ShaderStage::Geometry: stage = SPIRVShaderStage::Geometry; break;
-    case ShaderStage::Pixel: stage = SPIRVShaderStage::Fragment; break;
-    case ShaderStage::Compute: stage = SPIRVShaderStage::Compute; break;
-    default:
-      RDCERR("Unexpected type in BuildShader!");
-      *id = ResourceId();
-      return;
-  }
-
-  vector<string> sources;
-  sources.push_back(source);
-  vector<uint32_t> spirv;
-
-  SPIRVCompilationSettings settings(SPIRVSourceLanguage::VulkanGLSL, stage);
-
-  string output = CompileSPIRV(settings, sources, spirv);
-
-  if(spirv.empty())
-  {
-    *id = ResourceId();
-    *errors = output;
-    return;
-  }
-
-  VkShaderModuleCreateInfo modinfo = {
-      VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-      NULL,
-      0,
-      spirv.size() * sizeof(uint32_t),
-      &spirv[0],
-  };
-
-  VkShaderModule module;
-  VkResult vkr = m_pDriver->vkCreateShaderModule(m_pDriver->GetDev(), &modinfo, NULL, &module);
-  RDCASSERTEQUAL(vkr, VK_SUCCESS);
-
-  *id = GetResID(module);
+  BuildTargetShader(sourceEncoding, source, entry, compileFlags, type, id, errors);
 }
 
 void VulkanReplay::FreeCustomShader(ResourceId id)
@@ -3548,11 +3511,11 @@ ResourceId VulkanReplay::ApplyCustomShader(ResourceId shader, ResourceId texid, 
   return GetResID(GetDebugManager()->GetCustomTexture());
 }
 
-void VulkanReplay::BuildTargetShader(ShaderEncoding sourceEncoding, bytebuf source, string entry,
-                                     const ShaderCompileFlags &compileFlags, ShaderStage type,
-                                     ResourceId *id, string *errors)
+void VulkanReplay::BuildTargetShader(ShaderEncoding sourceEncoding, bytebuf source,
+                                     const std::string &entry, const ShaderCompileFlags &compileFlags,
+                                     ShaderStage type, ResourceId *id, std::string *errors)
 {
-  vector<uint32_t> spirv;
+  std::vector<uint32_t> spirv;
 
   if(sourceEncoding == ShaderEncoding::GLSL)
   {
@@ -3572,12 +3535,12 @@ void VulkanReplay::BuildTargetShader(ShaderEncoding sourceEncoding, bytebuf sour
         return;
     }
 
-    vector<string> sources;
+    std::vector<std::string> sources;
     sources.push_back(std::string((char *)source.begin(), (char *)source.end()));
 
     SPIRVCompilationSettings settings(SPIRVSourceLanguage::VulkanGLSL, stage);
 
-    string output = CompileSPIRV(settings, sources, spirv);
+    std::string output = CompileSPIRV(settings, sources, spirv);
 
     if(spirv.empty())
     {
@@ -3742,13 +3705,13 @@ void VulkanReplay::RemoveReplacement(ResourceId id)
   ClearFeedbackCache();
 }
 
-vector<PixelModification> VulkanReplay::PixelHistory(vector<EventUsage> events, ResourceId target,
-                                                     uint32_t x, uint32_t y, uint32_t slice,
-                                                     uint32_t mip, uint32_t sampleIdx,
-                                                     CompType typeHint)
+std::vector<PixelModification> VulkanReplay::PixelHistory(std::vector<EventUsage> events,
+                                                          ResourceId target, uint32_t x, uint32_t y,
+                                                          uint32_t slice, uint32_t mip,
+                                                          uint32_t sampleIdx, CompType typeHint)
 {
   VULKANNOTIMP("PixelHistory");
-  return vector<PixelModification>();
+  return std::vector<PixelModification>();
 }
 
 ShaderDebugTrace VulkanReplay::DebugVertex(uint32_t eventId, uint32_t vertid, uint32_t instid,

@@ -232,8 +232,9 @@ GLPipelineStateViewer::GLPipelineStateViewer(ICaptureContext &ctx, PipelineState
     RDHeaderView *header = new RDHeaderView(Qt::Horizontal, this);
     samp->setHeader(header);
 
-    samp->setColumns({tr("Slot"), tr("Addressing"), tr("Filter"), tr("LOD Clamp"), tr("LOD Bias")});
-    header->setColumnStretchHints({1, 2, 2, 2, 2});
+    samp->setColumns(
+        {tr("Slot"), tr("Object"), tr("Wrap Mode"), tr("Filter"), tr("LOD Clamp"), tr("LOD Bias")});
+    header->setColumnStretchHints({1, 2, 2, 2, 2, 2});
 
     samp->setClearSelectionOnFocusLoss(true);
     samp->setInstantTooltips(true);
@@ -449,7 +450,7 @@ void GLPipelineStateViewer::OnEventChanged(uint32_t eventId)
   setState();
 }
 
-void GLPipelineStateViewer::on_showDisabled_toggled(bool checked)
+void GLPipelineStateViewer::on_showUnused_toggled(bool checked)
 {
   setState();
 }
@@ -494,15 +495,15 @@ void GLPipelineStateViewer::setViewDetails(RDTreeWidgetItem *node, TextureDescri
 
 bool GLPipelineStateViewer::showNode(bool usedSlot, bool filledSlot)
 {
-  const bool showDisabled = ui->showDisabled->isChecked();
+  const bool showUnused = ui->showUnused->isChecked();
   const bool showEmpty = ui->showEmpty->isChecked();
 
   // show if it's referenced by the shader - regardless of empty or not
   if(usedSlot)
     return true;
 
-  // it's bound, but not referenced, and we have "show disabled"
-  if(showDisabled && !usedSlot && filledSlot)
+  // it's bound, but not referenced, and we have "show unused"
+  if(showUnused && !usedSlot && filledSlot)
     return true;
 
   // it's empty, and we have "show empty"
@@ -582,6 +583,8 @@ void GLPipelineStateViewer::clearState()
                    ui->fsReadWrite);
   clearShaderState(ui->csShader, ui->csTextures, ui->csSamplers, ui->csUBOs, ui->csSubroutines,
                    ui->csReadWrite);
+
+  ui->xfbBuffers->clear();
 
   QToolButton *shaderButtons[] = {
       ui->vsShaderViewButton, ui->tcsShaderViewButton, ui->tesShaderViewButton,
@@ -793,7 +796,9 @@ void GLPipelineStateViewer::setShaderState(const GLPipe::Shader &stage, RDLabel 
         QString addPrefix;
         QString addVal;
 
-        QString addr[] = {ToQStr(s.addressS), ToQStr(s.addressT), ToQStr(s.addressR)};
+        QString addr[] = {ToQStr(s.addressS, GraphicsAPI::OpenGL),
+                          ToQStr(s.addressT, GraphicsAPI::OpenGL),
+                          ToQStr(s.addressR, GraphicsAPI::OpenGL)};
 
         // arrange like either STR: WRAP or ST: WRAP, R: CLAMP
         for(int a = 0; a < 3; a++)
@@ -834,12 +839,13 @@ void GLPipelineStateViewer::setShaderState(const GLPipe::Shader &stage, RDLabel 
         else if(s.filter.filter != FilterFunction::Normal)
           filter += QFormatStr(" (%1)").arg(ToQStr(s.filter.filter));
 
-        RDTreeWidgetItem *node = new RDTreeWidgetItem(
-            {slotname, addressing, filter,
-             QFormatStr("%1 - %2")
-                 .arg(s.minLOD == -FLT_MAX ? lit("0") : QString::number(s.minLOD))
-                 .arg(s.maxLOD == FLT_MAX ? lit("FLT_MAX") : QString::number(s.maxLOD)),
-             s.mipLODBias});
+        RDTreeWidgetItem *node = new RDTreeWidgetItem({
+            slotname, s.resourceId != ResourceId() ? s.resourceId : r.resourceId, addressing,
+            filter, QFormatStr("%1 - %2")
+                        .arg(s.minLOD == -FLT_MAX ? lit("0") : QString::number(s.minLOD))
+                        .arg(s.maxLOD == FLT_MAX ? lit("FLT_MAX") : QString::number(s.maxLOD)),
+            s.mipLODBias,
+        });
 
         if(!filledSlot)
           setEmptyRow(node);
@@ -1216,7 +1222,7 @@ void GLPipelineStateViewer::setState()
   const GLPipe::State &state = *m_Ctx.CurGLPipelineState();
   const DrawcallDescription *draw = m_Ctx.CurDrawcall();
 
-  bool showDisabled = ui->showDisabled->isChecked();
+  bool showUnused = ui->showUnused->isChecked();
   bool showEmpty = ui->showEmpty->isChecked();
 
   const QPixmap &tick = Pixmaps::tick(this);
@@ -1327,7 +1333,7 @@ void GLPipelineStateViewer::setState()
 
   if(state.vertexInput.indexBuffer != ResourceId())
   {
-    if(ibufferUsed || showDisabled)
+    if(ibufferUsed || showUnused)
     {
       uint64_t length = 1;
 
@@ -2670,7 +2676,9 @@ void GLPipelineStateViewer::exportHTML(QXmlStreamWriter &xml, const GLPipe::Shad
         QString addPrefix;
         QString addVal;
 
-        QString addr[] = {ToQStr(s.addressS), ToQStr(s.addressT), ToQStr(s.addressR)};
+        QString addr[] = {ToQStr(s.addressS, GraphicsAPI::OpenGL),
+                          ToQStr(s.addressT, GraphicsAPI::OpenGL),
+                          ToQStr(s.addressR, GraphicsAPI::OpenGL)};
 
         // arrange like either STR: WRAP or ST: WRAP, R: CLAMP
         for(int a = 0; a < 3; a++)

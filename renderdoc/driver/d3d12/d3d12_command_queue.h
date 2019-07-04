@@ -91,7 +91,7 @@ class WrappedID3D12CommandQueue : public ID3D12CommandQueue,
 
   WrappedID3D12DebugCommandQueue m_WrappedDebug;
 
-  vector<D3D12ResourceRecord *> m_CmdListRecords;
+  std::vector<D3D12ResourceRecord *> m_CmdListRecords;
 
   // D3D12 guarantees that queues are thread-safe
   Threading::CriticalSection m_Lock;
@@ -126,7 +126,7 @@ public:
   ID3D12CommandQueue *GetReal() { return m_pReal; }
   D3D12ResourceRecord *GetResourceRecord() { return m_QueueRecord; }
   WrappedID3D12Device *GetWrappedDevice() { return m_pDevice; }
-  const vector<D3D12ResourceRecord *> &GetCmdLists() { return m_CmdListRecords; }
+  const std::vector<D3D12ResourceRecord *> &GetCmdLists() { return m_CmdListRecords; }
   D3D12DrawcallTreeNode &GetParentDrawcall() { return m_Cmd.m_ParentDrawcall; }
   const APIEvent &GetEvent(uint32_t eventId);
   uint32_t GetMaxEID() { return m_Cmd.m_Events.back().eventId; }
@@ -137,7 +137,7 @@ public:
                          bool partial);
   void SetFrameReader(StreamReader *reader) { m_FrameReader = reader; }
   D3D12CommandData *GetCommandData() { return &m_Cmd; }
-  const vector<EventUsage> &GetUsage(ResourceId id) { return m_Cmd.m_ResourceUses[id]; }
+  const std::vector<EventUsage> &GetUsage(ResourceId id) { return m_Cmd.m_ResourceUses[id]; }
   // interface for DXGI
   virtual IUnknown *GetRealIUnknown() { return GetReal(); }
   virtual IID GetBackbufferUUID() { return __uuidof(ID3D12Resource); }
@@ -194,7 +194,15 @@ public:
   HRESULT STDMETHODCALLTYPE SetPrivateData(REFGUID guid, UINT DataSize, const void *pData)
   {
     if(guid == WKPDID_D3DDebugObjectName)
+    {
       m_pDevice->SetName(this, (const char *)pData);
+    }
+    else if(guid == WKPDID_D3DDebugObjectNameW)
+    {
+      std::wstring wName((const wchar_t *)pData, DataSize / 2);
+      std::string sName = StringFormat::Wide2UTF8(wName);
+      m_pDevice->SetName(this, sName.c_str());
+    }
 
     return m_pReal->SetPrivateData(guid, DataSize, pData);
   }
@@ -206,7 +214,7 @@ public:
 
   HRESULT STDMETHODCALLTYPE SetName(LPCWSTR Name)
   {
-    string utf8 = StringFormat::Wide2UTF8(Name);
+    std::string utf8 = StringFormat::Wide2UTF8(Name);
     m_pDevice->SetName(this, utf8.c_str());
 
     return m_pReal->SetName(Name);

@@ -24,7 +24,7 @@
 
 #include "vk_test.h"
 
-struct Secondary_CmdBuf : VulkanGraphicsTest
+TEST(VK_Secondary_CmdBuf, VulkanGraphicsTest)
 {
   static constexpr const char *Description = "Draw using secondary command buffers";
 
@@ -72,15 +72,15 @@ void main()
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create context, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     VkPipelineLayout layout = createPipelineLayout(vkh::PipelineLayoutCreateInfo());
 
-    VkRect2D size = scissor;
+    VkRect2D size = mainWindow->scissor;
 
     AllocatedImage img(
         allocator,
@@ -162,7 +162,7 @@ void main()
                                             vkh::CommandBufferInheritanceInfo(renderPass, 1)));
 
       vkCmdBindPipeline(cmd2, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe1);
-      vkCmdSetViewport(cmd2, 0, 1, &viewport);
+      vkCmdSetViewport(cmd2, 0, 1, &mainWindow->viewport);
       vkCmdSetScissor(cmd2, 0, 1, &size);
       vkh::cmdBindVertexBuffers(cmd2, 0, {vb.buffer}, {sizeof(DefaultA2V) * 3});
 
@@ -188,7 +188,7 @@ void main()
                            VK_SUBPASS_CONTENTS_INLINE);
 
       vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe0);
-      vkCmdSetViewport(cmd, 0, 1, &viewport);
+      vkCmdSetViewport(cmd, 0, 1, &mainWindow->viewport);
       vkCmdSetScissor(cmd, 0, 1, &size);
       vkh::cmdBindVertexBuffers(cmd, 0, {vb.buffer}, {0});
 
@@ -218,8 +218,8 @@ void main()
       region.srcOffsets[1].x = size.extent.width;
       region.srcOffsets[1].y = size.extent.height;
       region.srcOffsets[1].z = 1;
-      region.dstOffsets[1].x = scissor.extent.width;
-      region.dstOffsets[1].y = scissor.extent.height;
+      region.dstOffsets[1].x = mainWindow->scissor.extent.width;
+      region.dstOffsets[1].y = mainWindow->scissor.extent.height;
       region.dstOffsets[1].z = 1;
 
       vkCmdBlitImage(cmd, img.image, VK_IMAGE_LAYOUT_GENERAL, swapimg, VK_IMAGE_LAYOUT_GENERAL, 1,
@@ -238,4 +238,4 @@ void main()
   }
 };
 
-REGISTER_TEST(Secondary_CmdBuf);
+REGISTER_TEST();

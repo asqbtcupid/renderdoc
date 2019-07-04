@@ -33,7 +33,7 @@ bool WrappedVulkan::Serialise_vkGetDeviceQueue(SerialiserType &ser, VkDevice dev
   SERIALISE_ELEMENT(device);
   SERIALISE_ELEMENT(queueFamilyIndex);
   SERIALISE_ELEMENT(queueIndex);
-  SERIALISE_ELEMENT_LOCAL(Queue, GetResID(*pQueue)).TypedAs("VkQueue");
+  SERIALISE_ELEMENT_LOCAL(Queue, GetResID(*pQueue)).TypedAs("VkQueue"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -244,13 +244,14 @@ bool WrappedVulkan::Serialise_vkQueueSubmit(SerialiserType &ser, VkQueue queue, 
 
         for(uint32_t c = 0; c < submitInfo.commandBufferCount; c++)
         {
-          ResourceId cmd =
-              GetResourceManager()->GetOriginalID(GetResID(submitInfo.pCommandBuffers[c]));
+          ResourceId liveCmd = GetResID(submitInfo.pCommandBuffers[c]);
+          ResourceId cmd = GetResourceManager()->GetOriginalID(liveCmd);
 
           BakedCmdBufferInfo &cmdBufInfo = m_BakedCmdBufferInfo[cmd];
 
           GetResourceManager()->ApplyBarriers(m_CreationInfo.m_Queue[GetResID(queue)],
-                                              m_BakedCmdBufferInfo[cmd].imgbarriers, m_ImageLayouts);
+                                              m_BakedCmdBufferInfo[liveCmd].imgbarriers,
+                                              m_ImageLayouts);
 
           std::string name = StringFormat::Fmt("=> %s[%u]: vkBeginCommandBuffer(%s)",
                                                basename.c_str(), c, ToStr(cmd).c_str());
@@ -517,7 +518,7 @@ bool WrappedVulkan::PatchIndirectDraw(VkIndirectPatchType type, DrawcallDescript
 
 void WrappedVulkan::InsertDrawsAndRefreshIDs(BakedCmdBufferInfo &cmdBufInfo)
 {
-  vector<VulkanDrawcallTreeNode> &cmdBufNodes = cmdBufInfo.draw->children;
+  std::vector<VulkanDrawcallTreeNode> &cmdBufNodes = cmdBufInfo.draw->children;
 
   // assign new drawcall IDs
   for(size_t i = 0; i < cmdBufNodes.size(); i++)
@@ -675,7 +676,8 @@ void WrappedVulkan::InsertDrawsAndRefreshIDs(BakedCmdBufferInfo &cmdBufInfo)
     for(APIEvent &ev : n.draw.events)
     {
       ev.eventId += m_RootEventID;
-      m_Events.push_back(ev);
+      m_Events.resize(ev.eventId + 1);
+      m_Events[ev.eventId] = ev;
     }
 
     if(!n.draw.events.empty())
@@ -781,7 +783,12 @@ VkResult WrappedVulkan::vkQueueSubmit(VkQueue queue, uint32_t submitCount,
   bool capframe = false;
   bool present = false;
 
-  set<ResourceId> refdIDs;
+  {
+    SCOPED_LOCK(m_CapTransitionLock);
+    capframe = IsActiveCapturing(m_State);
+  }
+
+  std::set<ResourceId> refdIDs;
 
   VkResourceRecord *queueRecord = GetRecord(queue);
 
@@ -801,80 +808,32 @@ VkResult WrappedVulkan::vkQueueSubmit(VkQueue queue, uint32_t submitCount,
                                             m_ImageLayouts);
       }
 
-      // need to lock the whole section of code, not just the check on
-      // m_State, as we also need to make sure we don't check the state,
-      // start marking dirty resources then while we're doing so the
-      // state becomes capframe.
-      // the next sections where we mark resources referenced and add
-      // the submit chunk to the frame record don't have to be protected.
-      // Only the decision of whether we're inframe or not, and marking
-      // dirty.
+      for(auto it = record->bakedCommands->cmdInfo->dirtied.begin();
+          it != record->bakedCommands->cmdInfo->dirtied.end(); ++it)
       {
-        SCOPED_LOCK(m_CapTransitionLock);
-        if(IsActiveCapturing(m_State))
+        if(GetResourceManager()->HasCurrentResource(*it))
+          GetResourceManager()->MarkDirtyResource(*it);
+      }
+
+      // with EXT_descriptor_indexing a binding might have been updated after
+      // vkCmdBindDescriptorSets, so we need to track dirtied here at the last second.
+      for(auto it = record->bakedCommands->cmdInfo->boundDescSets.begin();
+          it != record->bakedCommands->cmdInfo->boundDescSets.end(); ++it)
+      {
+        VkResourceRecord *setrecord = GetRecord(*it);
+
+        SCOPED_LOCK(setrecord->descInfo->refLock);
+
+        const std::map<ResourceId, rdcpair<uint32_t, FrameRefType>> &frameRefs =
+            setrecord->descInfo->bindFrameRefs;
+
+        for(auto refit = frameRefs.begin(); refit != frameRefs.end(); ++refit)
         {
-          for(auto it = record->bakedCommands->cmdInfo->dirtied.begin();
-              it != record->bakedCommands->cmdInfo->dirtied.end(); ++it)
+          if(refit->second.second == eFrameRef_PartialWrite ||
+             refit->second.second == eFrameRef_ReadBeforeWrite)
           {
-            if(GetResourceManager()->HasCurrentResource(*it))
-              GetResourceManager()->MarkPendingDirty(*it);
-          }
-
-          // with EXT_descriptor_indexing a binding might have been updated after
-          // vkCmdBindDescriptorSets, so we need to track dirtied here at the last second.
-          for(auto it = record->bakedCommands->cmdInfo->boundDescSets.begin();
-              it != record->bakedCommands->cmdInfo->boundDescSets.end(); ++it)
-          {
-            VkResourceRecord *setrecord = GetRecord(*it);
-
-            SCOPED_LOCK(setrecord->descInfo->refLock);
-
-            const std::map<ResourceId, pair<uint32_t, FrameRefType>> &frameRefs =
-                setrecord->descInfo->bindFrameRefs;
-
-            for(auto refit = frameRefs.begin(); refit != frameRefs.end(); ++refit)
-            {
-              if(refit->second.second == eFrameRef_PartialWrite ||
-                 refit->second.second == eFrameRef_ReadBeforeWrite)
-              {
-                if(GetResourceManager()->HasCurrentResource(refit->first))
-                  GetResourceManager()->MarkPendingDirty(refit->first);
-              }
-            }
-          }
-
-          capframe = true;
-        }
-        else
-        {
-          for(auto it = record->bakedCommands->cmdInfo->dirtied.begin();
-              it != record->bakedCommands->cmdInfo->dirtied.end(); ++it)
-          {
-            if(GetResourceManager()->HasCurrentResource(*it))
-              GetResourceManager()->MarkDirtyResource(*it);
-          }
-
-          // with EXT_descriptor_indexing a binding might have been updated after
-          // vkCmdBindDescriptorSets, so we need to track dirtied here at the last second.
-          for(auto it = record->bakedCommands->cmdInfo->boundDescSets.begin();
-              it != record->bakedCommands->cmdInfo->boundDescSets.end(); ++it)
-          {
-            VkResourceRecord *setrecord = GetRecord(*it);
-
-            SCOPED_LOCK(setrecord->descInfo->refLock);
-
-            const std::map<ResourceId, pair<uint32_t, FrameRefType>> &frameRefs =
-                setrecord->descInfo->bindFrameRefs;
-
-            for(auto refit = frameRefs.begin(); refit != frameRefs.end(); ++refit)
-            {
-              if(refit->second.second == eFrameRef_PartialWrite ||
-                 refit->second.second == eFrameRef_ReadBeforeWrite)
-              {
-                if(GetResourceManager()->HasCurrentResource(refit->first))
-                  GetResourceManager()->MarkDirtyResource(refit->first);
-              }
-            }
+            if(GetResourceManager()->HasCurrentResource(refit->first))
+              GetResourceManager()->MarkDirtyResource(refit->first);
           }
         }
       }
@@ -905,6 +864,7 @@ VkResult WrappedVulkan::vkQueueSubmit(VkQueue queue, uint32_t submitCount,
               GetResourceManager()->MarkSparseMapReferenced(sparserecord->resInfo);
             }
           }
+          GetResourceManager()->MergeReferencedImages(setrecord->descInfo->bindImgRefs);
           GetResourceManager()->MergeReferencedMemory(setrecord->descInfo->bindMemRefs);
         }
 
@@ -916,6 +876,7 @@ VkResult WrappedVulkan::vkQueueSubmit(VkQueue queue, uint32_t submitCount,
         record->bakedCommands->AddResourceReferences(GetResourceManager());
         record->bakedCommands->AddReferencedIDs(refdIDs);
 
+        GetResourceManager()->MergeReferencedImages(record->bakedCommands->cmdInfo->imgFrameRefs);
         GetResourceManager()->MergeReferencedMemory(record->bakedCommands->cmdInfo->memFrameRefs);
 
         // ref the parent command buffer's alloc record, this will pull in the cmd buffer pool
@@ -927,6 +888,8 @@ VkResult WrappedVulkan::vkQueueSubmit(VkQueue queue, uint32_t submitCount,
           record->bakedCommands->cmdInfo->subcmds[sub]->bakedCommands->AddResourceReferences(
               GetResourceManager());
           record->bakedCommands->cmdInfo->subcmds[sub]->bakedCommands->AddReferencedIDs(refdIDs);
+          GetResourceManager()->MergeReferencedImages(
+              record->bakedCommands->cmdInfo->subcmds[sub]->bakedCommands->cmdInfo->imgFrameRefs);
           GetResourceManager()->MergeReferencedMemory(
               record->bakedCommands->cmdInfo->subcmds[sub]->bakedCommands->cmdInfo->memFrameRefs);
           GetResourceManager()->MarkResourceFrameReferenced(
@@ -1030,7 +993,7 @@ VkResult WrappedVulkan::vkQueueSubmit(VkQueue queue, uint32_t submitCount,
             state.mapFlushed = false;
           }
 
-          GetResourceManager()->MarkPendingDirty(record->GetResourceID());
+          GetResourceManager()->MarkDirtyResource(record->GetResourceID());
         }
         else
         {
@@ -1538,7 +1501,7 @@ bool WrappedVulkan::Serialise_vkGetDeviceQueue2(SerialiserType &ser, VkDevice de
 {
   SERIALISE_ELEMENT(device);
   SERIALISE_ELEMENT_LOCAL(QueueInfo, *pQueueInfo);
-  SERIALISE_ELEMENT_LOCAL(Queue, GetResID(*pQueue)).TypedAs("VkQueue");
+  SERIALISE_ELEMENT_LOCAL(Queue, GetResID(*pQueue)).TypedAs("VkQueue"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 

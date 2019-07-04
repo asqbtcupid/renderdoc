@@ -24,9 +24,6 @@
 
 #pragma once
 
-#include "official/vk_layer.h"
-#include "official/vk_layer_dispatch_table.h"
-
 // extensions made core in 1.1
 #define VK11 VK_MAKE_VERSION(1, 1, 0)
 
@@ -35,9 +32,10 @@
 
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
 
-#define HookInitInstance_PlatformSpecific()                       \
-  HookInitExtension(VK_KHR_win32_surface, CreateWin32SurfaceKHR); \
-  HookInitExtension(VK_KHR_win32_surface, GetPhysicalDeviceWin32PresentationSupportKHR);
+#define HookInitInstance_PlatformSpecific()                                              \
+  HookInitExtension(VK_KHR_win32_surface, CreateWin32SurfaceKHR);                        \
+  HookInitExtension(VK_KHR_win32_surface, GetPhysicalDeviceWin32PresentationSupportKHR); \
+  HookInitExtension(VK_EXT_full_screen_exclusive, GetPhysicalDeviceSurfacePresentModes2EXT);
 
 #define HookInitDevice_PlatformSpecific()                                             \
   HookInitExtension(VK_NV_win32_keyed_mutex, GetMemoryWin32HandleNV);                 \
@@ -46,7 +44,10 @@
   HookInitExtension(VK_KHR_external_semaphore_win32, ImportSemaphoreWin32HandleKHR);  \
   HookInitExtension(VK_KHR_external_semaphore_win32, GetSemaphoreWin32HandleKHR);     \
   HookInitExtension(VK_KHR_external_fence_win32, ImportFenceWin32HandleKHR);          \
-  HookInitExtension(VK_KHR_external_fence_win32, GetFenceWin32HandleKHR);
+  HookInitExtension(VK_KHR_external_fence_win32, GetFenceWin32HandleKHR);             \
+  HookInitExtension(VK_EXT_full_screen_exclusive, AcquireFullScreenExclusiveModeEXT); \
+  HookInitExtension(VK_EXT_full_screen_exclusive, ReleaseFullScreenExclusiveModeEXT); \
+  HookInitExtension(VK_EXT_full_screen_exclusive, GetDeviceGroupSurfacePresentModes2EXT);
 
 #define HookDefine_PlatformSpecific()                                                            \
   HookDefine4(VkResult, vkCreateWin32SurfaceKHR, VkInstance, instance,                           \
@@ -68,7 +69,17 @@
   HookDefine2(VkResult, vkImportFenceWin32HandleKHR, VkDevice, device,                           \
               const VkImportFenceWin32HandleInfoKHR *, pImportFenceWin32HandleInfo);             \
   HookDefine3(VkResult, vkGetFenceWin32HandleKHR, VkDevice, device,                              \
-              const VkFenceGetWin32HandleInfoKHR *, pGetWin32HandleInfo, HANDLE *, pHandle);
+              const VkFenceGetWin32HandleInfoKHR *, pGetWin32HandleInfo, HANDLE *, pHandle);     \
+  HookDefine4(VkResult, vkGetPhysicalDeviceSurfacePresentModes2EXT, VkPhysicalDevice,            \
+              physicalDevice, const VkPhysicalDeviceSurfaceInfo2KHR *, pSurfaceInfo, uint32_t *, \
+              pPresentModeCount, VkPresentModeKHR *, pPresentModes);                             \
+  HookDefine3(VkResult, vkGetDeviceGroupSurfacePresentModes2EXT, VkDevice, device,               \
+              const VkPhysicalDeviceSurfaceInfo2KHR *, pSurfaceInfo,                             \
+              VkDeviceGroupPresentModeFlagsKHR *, pModes);                                       \
+  HookDefine2(VkResult, vkAcquireFullScreenExclusiveModeEXT, VkDevice, device, VkSwapchainKHR,   \
+              swapchain);                                                                        \
+  HookDefine2(VkResult, vkReleaseFullScreenExclusiveModeEXT, VkDevice, device, VkSwapchainKHR,   \
+              swapchain);
 
 #elif defined(VK_USE_PLATFORM_MACOS_MVK)
 
@@ -328,6 +339,7 @@
   DeclExt(protected_memory);                    \
   DeclExt(KHR_get_surface_capabilities2);       \
   DeclExt(KHR_get_display_properties2);         \
+  DeclExt(EXT_headless_surface);                \
   /* device extensions */                       \
   DeclExt(EXT_debug_marker);                    \
   DeclExt(GGP_frame_token);                     \
@@ -372,7 +384,10 @@
   DeclExt(EXT_discard_rectangles);              \
   DeclExt(EXT_calibrated_timestamps);           \
   DeclExt(EXT_host_query_reset);                \
-  DeclExt(EXT_buffer_device_address);
+  DeclExt(EXT_buffer_device_address);           \
+  DeclExt(EXT_full_screen_exclusive);           \
+  DeclExt(EXT_hdr_metadata);                    \
+  DeclExt(AMD_display_native_hdr);
 
 // for simplicity and since the check itself is platform agnostic,
 // these aren't protected in platform defines
@@ -400,7 +415,9 @@
   CheckExt(KHR_get_surface_capabilities2, VKXX);       \
   CheckExt(KHR_get_display_properties2, VKXX);         \
   CheckExt(EXT_sample_locations, VKXX);                \
-  CheckExt(EXT_calibrated_timestamps, VKXX);
+  CheckExt(EXT_calibrated_timestamps, VKXX);           \
+  CheckExt(EXT_full_screen_exclusive, VKXX);           \
+  CheckExt(EXT_headless_surface, VKXX);
 
 #define CheckDeviceExts()                         \
   CheckExt(EXT_debug_marker, VKXX);               \
@@ -446,7 +463,9 @@
   CheckExt(EXT_discard_rectangles, VKXX);         \
   CheckExt(EXT_calibrated_timestamps, VKXX);      \
   CheckExt(EXT_host_query_reset, VKXX);           \
-  CheckExt(EXT_buffer_device_address, VKXX);
+  CheckExt(EXT_buffer_device_address, VKXX);      \
+  CheckExt(EXT_hdr_metadata, VKXX);               \
+  CheckExt(AMD_display_native_hdr, VKXX);
 
 #define HookInitVulkanInstanceExts()                                                                 \
   HookInitExtension(KHR_surface, DestroySurfaceKHR);                                                 \
@@ -502,6 +521,7 @@
   HookInitExtension(KHR_get_display_properties2, GetDisplayPlaneCapabilities2KHR);                   \
   HookInitExtension(EXT_sample_locations, GetPhysicalDeviceMultisamplePropertiesEXT);                \
   HookInitExtension(EXT_calibrated_timestamps, GetPhysicalDeviceCalibrateableTimeDomainsEXT);        \
+  HookInitExtension(EXT_headless_surface, CreateHeadlessSurfaceEXT);                                 \
   HookInitInstance_PlatformSpecific()
 
 #define HookInitVulkanDeviceExts()                                                                 \
@@ -582,6 +602,8 @@
   HookInitExtension(EXT_calibrated_timestamps, GetCalibratedTimestampsEXT);                        \
   HookInitExtension(EXT_host_query_reset, ResetQueryPoolEXT);                                      \
   HookInitExtension(EXT_buffer_device_address, GetBufferDeviceAddressEXT);                         \
+  HookInitExtension(EXT_hdr_metadata, SetHdrMetadataEXT);                                          \
+  HookInitExtension(AMD_display_native_hdr, SetLocalDimmingAMD);                                   \
   HookInitDevice_PlatformSpecific()
 
 #define DefineHooks()                                                                                \
@@ -1154,15 +1176,11 @@
               firstQuery, uint32_t, queryCount);                                                     \
   HookDefine2(VkDeviceAddress, vkGetBufferDeviceAddressEXT, VkDevice, device,                        \
               VkBufferDeviceAddressInfoEXT *, pInfo);                                                \
+  HookDefine4(void, vkSetHdrMetadataEXT, VkDevice, device, uint32_t, swapchainCount,                 \
+              const VkSwapchainKHR *, pSwapchains, const VkHdrMetadataEXT *, pMetadata);             \
+  HookDefine3(void, vkSetLocalDimmingAMD, VkDevice, device, VkSwapchainKHR, swapChain, VkBool32,     \
+              localDimmingEnable);                                                                   \
+  HookDefine4(VkResult, vkCreateHeadlessSurfaceEXT, VkInstance, instance,                            \
+              const VkHeadlessSurfaceCreateInfoEXT *, pCreateInfo, const VkAllocationCallbacks *,    \
+              pAllocator, VkSurfaceKHR *, pSurface);                                                 \
   HookDefine_PlatformSpecific()
-
-struct VkLayerInstanceDispatchTableExtended : VkLayerInstanceDispatchTable
-{
-};
-
-struct VkLayerDispatchTableExtended : VkLayerDispatchTable
-{
-  // for consistency & ease, we declare the CreateDevice pointer here
-  // even though it won't actually ever get used and is on the instance dispatch chain
-  PFN_vkCreateDevice CreateDevice;
-};

@@ -310,7 +310,12 @@ DOCUMENT(R"(Specifies a windowing system to use for creating an output window.
 
 .. data:: Unknown
 
-  No windowing data is passed and no native window is described.
+  Unknown window type, no windowing data is passed and no native window is described.
+
+.. data:: Headless
+
+  The windowing data doesn't describe a real window but a virtual area, allowing all normal output
+  rendering to happen off-screen.
   See :func:`CreateHeadlessWindowingData`.
 
 .. data:: Win32
@@ -337,6 +342,7 @@ DOCUMENT(R"(Specifies a windowing system to use for creating an output window.
 enum class WindowingSystem : uint32_t
 {
   Unknown,
+  Headless,
   Win32,
   Xlib,
   XCB,
@@ -383,6 +389,11 @@ struct WindowingData
   {
     struct
     {
+      int32_t width, height;
+    } headless;
+
+    struct
+    {
       HWND window;
     } win32;
 
@@ -417,14 +428,20 @@ DECLARE_REFLECTION_ENUM(WindowingData);
 
 DOCUMENT(R"(Create a :class:`WindowingData` for no backing window, it will be headless.
 
+:param int width: The initial width for this virtual window.
+:param int height: The initial height for this virtual window.
+
 :return: A :class:`WindowingData` corresponding to an 'empty' backing window.
 :rtype: WindowingData
 )");
-inline const WindowingData CreateHeadlessWindowingData()
+inline const WindowingData CreateHeadlessWindowingData(int32_t width, int32_t height)
 {
   WindowingData ret = {};
 
-  ret.system = WindowingSystem::Unknown;
+  ret.system = WindowingSystem::Headless;
+
+  ret.headless.width = width > 0 ? width : 1;
+  ret.headless.height = height > 0 ? height : 1;
 
   return ret;
 }
@@ -649,6 +666,21 @@ which is useful for operations like picking vertices that depends on the output 
 )");
   virtual void SetDimensions(int32_t width, int32_t height) = 0;
 
+  DOCUMENT(R"(Read the output texture back as byte data. Primarily useful for headless outputs where
+the output data is not displayed anywhere natively.
+
+:return: The output texture data as tightly packed RGB 3-byte data.
+:rtype: ``bytes``
+)");
+  virtual bytebuf ReadbackOutputTexture() = 0;
+
+  DOCUMENT(R"(Retrieve the current dimensions of the output.
+
+:return: The current width and height of the output.
+:rtype: ``pair`` of two ``int``
+)");
+  virtual rdcpair<int32_t, int32_t> GetDimensions() = 0;
+
   DOCUMENT(
       "Clear and release all thumbnails associated with this output. See :meth:`AddThumbnail`.");
   virtual void ClearThumbnails() = 0;
@@ -665,10 +697,13 @@ Should only be called for texture outputs.
 
 :param WindowingData window: A :class:`WindowingData` describing the native window.
 :param ResourceId textureId: The texture ID to display in the thumbnail preview.
+:param int slice: The slice of the texture to display.
+:param int mip: The mip of the texture to display.
 :return: A boolean indicating if the thumbnail was successfully created.
 :rtype: ``bool``
 )");
-  virtual bool AddThumbnail(WindowingData window, ResourceId textureId, CompType typeHint) = 0;
+  virtual bool AddThumbnail(WindowingData window, ResourceId textureId, CompType typeHint,
+                            uint32_t mip, uint32_t slice) = 0;
 
   DOCUMENT(R"(Render to the window handle specified when the output was created.
 
@@ -750,6 +785,12 @@ Should only be called for texture outputs.
 
 Should only be called for texture outputs.
 
+.. note::
+  X and Y co-ordinates are always considered to be top-left, even on GL, for consistency between
+  APIs and preventing the need for API-specific code in most cases. This means if co-ordinates are
+  fetched from e.g. viewport or scissor data or other GL pipeline state which is perhaps in
+  bottom-left co-ordinates, care must be taken to translate them.
+
 :param ResourceId textureId: The texture to pick the pixel from.
 :param bool customShader: Whether to apply the configured custom shader.
 :param int x: The x co-ordinate to pick from.
@@ -765,6 +806,12 @@ Should only be called for texture outputs.
 
   DOCUMENT(R"(Retrieves the vertex and instance that is under the cursor location, when viewed
 relative to the current window with the current mesh display configuration.
+
+.. note::
+  X and Y co-ordinates are always considered to be top-left, even on GL, for consistency between
+  APIs and preventing the need for API-specific code in most cases. This means if co-ordinates are
+  fetched from e.g. viewport or scissor data or other GL pipeline state which is perhaps in
+  bottom-left co-ordinates, care must be taken to translate them.
 
 Should only be called for mesh outputs.
 
@@ -935,19 +982,19 @@ or hardware-specific ISA formats.
 
   DOCUMENT(R"(Builds a shader suitable for running on the local replay instance as a custom shader.
 
-The language used is native to the local renderer - HLSL for D3D based renderers, GLSL otherwise.
-
 See :data:`TextureDisplay.customShaderId`.
 
 :param str entry: The entry point to use when compiling.
-:param str source: The source file.
+:param ShaderEncoding sourceEncoding: The encoding of the source data.
+:param bytes source: The source data itself.
 :param int compileFlags: API-specific compilation flags.
 :param ShaderStage type: The stage that this shader will be executed at.
 :return: A ``tuple`` with the id of the new shader if compilation was successful,
   :meth:`ResourceId.Null` otherwise, and a ``str`` with any warnings/errors from compilation.
 :rtype: ``tuple`` of :class:`ResourceId` and ``str``.
 )");
-  virtual rdcpair<ResourceId, rdcstr> BuildCustomShader(const char *entry, const char *source,
+  virtual rdcpair<ResourceId, rdcstr> BuildCustomShader(const char *entry,
+                                                        ShaderEncoding sourceEncoding, bytebuf source,
                                                         const ShaderCompileFlags &compileFlags,
                                                         ShaderStage type) = 0;
 
@@ -960,8 +1007,6 @@ See :meth:`BuildCustomShader`.
   virtual void FreeCustomShader(ResourceId id) = 0;
 
   DOCUMENT(R"(Builds a shader suitable for running in the capture's API as a replacement shader.
-
-The language used is native to the API's renderer - HLSL for D3D based renderers, GLSL otherwise.
 
 :param str entry: The entry point to use when compiling.
 :param ShaderEncoding sourceEncoding: The encoding of the source data.
@@ -991,6 +1036,21 @@ of the compile process or using alternate/updated tools.
 :rtype: ``list`` of :class:`ShaderEncoding`
 )");
   virtual rdcarray<ShaderEncoding> GetTargetShaderEncodings() = 0;
+
+  DOCUMENT(R"(Retrieve the list of supported :class:`ShaderEncoding` which can be build using
+:meth:`BuildCustomShader`.
+
+The list is sorted in priority order, so if the caller has a shader in a form but could
+compile/translate it to another, prefer to satisfy the first encoding before later encodings.
+
+This typically means the 'native' encoding is listed first, and then subsequent encodings are
+compiled internally - so compiling externally could be preferable as it allows better customisation
+of the compile process or using alternate/updated tools.
+
+:return: The list of target shader encodings available.
+:rtype: ``list`` of :class:`ShaderEncoding`
+)");
+  virtual rdcarray<ShaderEncoding> GetCustomShaderEncodings() = 0;
 
   DOCUMENT(R"(Replace one resource with another for subsequent replay and analysis work.
 
@@ -1128,6 +1188,12 @@ only ever have one result (only one entry point per shader).
 
   DOCUMENT(R"(Retrieve the history of modifications to the selected pixel on the selected texture.
 
+.. note::
+  X and Y co-ordinates are always considered to be top-left, even on GL, for consistency between
+  APIs and preventing the need for API-specific code in most cases. This means if co-ordinates are
+  fetched from e.g. viewport or scissor data or other GL pipeline state which is perhaps in
+  bottom-left co-ordinates, care must be taken to translate them.
+
 :param ResourceId texture: The texture to search for modifications.
 :param int x: The x co-ordinate.
 :param int y: The y co-ordinate.
@@ -1158,6 +1224,12 @@ only ever have one result (only one entry point per shader).
                                         uint32_t instOffset, uint32_t vertOffset) = 0;
 
   DOCUMENT(R"(Retrieve a debugging trace from running a pixel shader.
+
+.. note::
+  X and Y co-ordinates are always considered to be top-left, even on GL, for consistency between
+  APIs and preventing the need for API-specific code in most cases. This means if co-ordinates are
+  fetched from e.g. viewport or scissor data or other GL pipeline state which is perhaps in
+  bottom-left co-ordinates, care must be taken to translate them.
 
 :param int x: The x co-ordinate.
 :param int y: The y co-ordinate.
@@ -1460,6 +1532,13 @@ Must only be called after :meth:`InitResolver` has returned ``True``.
 )");
   virtual rdcarray<rdcstr> GetResolve(const rdcarray<uint64_t> &callstack) = 0;
 
+  DOCUMENT(R"(Retrieves the name of the driver that was used to create this capture.
+
+:return: A simple string identifying the driver used to make the capture.
+:rtype: ``str``
+)");
+  virtual rdcstr DriverName() = 0;
+
 protected:
   ICaptureAccess() = default;
   ~ICaptureAccess() = default;
@@ -1724,13 +1803,6 @@ replay support.
 :rtype: ReplaySupport
 )");
   virtual ReplaySupport LocalReplaySupport() = 0;
-
-  DOCUMENT(R"(Retrieves the name of the driver that was used to create this capture.
-
-:return: A simple string identifying the driver used to make the capture.
-:rtype: ``str``
-)");
-  virtual const char *DriverName() = 0;
 
   DOCUMENT(R"(Retrieves the identifying string describing what type of machine created this capture.
 
@@ -2221,6 +2293,9 @@ analysis program.
 )");
 extern "C" RENDERDOC_API const char *RENDERDOC_CC RENDERDOC_GetLogFile();
 
+DOCUMENT("Internal function for fetching the contents of a log");
+extern "C" RENDERDOC_API void RENDERDOC_CC RENDERDOC_GetLogFileContents(rdcstr &logfile);
+
 DOCUMENT("Internal function for logging text simply.");
 extern "C" RENDERDOC_API void RENDERDOC_CC RENDERDOC_LogText(const char *text);
 
@@ -2279,7 +2354,7 @@ extern "C" RENDERDOC_API void RENDERDOC_CC RENDERDOC_GetAndroidFriendlyName(cons
                                                                             rdcstr &friendly);
 
 DOCUMENT("Internal function for enumerating android devices.");
-extern "C" RENDERDOC_API void RENDERDOC_CC RENDERDOC_EnumerateAndroidDevices(rdcstr *deviceList);
+extern "C" RENDERDOC_API void RENDERDOC_CC RENDERDOC_EnumerateAndroidDevices(rdcstr &deviceList);
 
 DOCUMENT("Internal function for initialising android use.");
 extern "C" RENDERDOC_API void RENDERDOC_CC RENDERDOC_AndroidInitialise();
@@ -2295,13 +2370,12 @@ extern "C" RENDERDOC_API ReplayStatus RENDERDOC_CC
 RENDERDOC_StartAndroidRemoteServer(const char *device);
 
 DOCUMENT("Internal function for checking remote Android package for requirements");
-extern "C" RENDERDOC_API void RENDERDOC_CC RENDERDOC_CheckAndroidPackage(const char *hostname,
-                                                                         const char *packageName,
-                                                                         AndroidFlags *flags);
+extern "C" RENDERDOC_API void RENDERDOC_CC RENDERDOC_CheckAndroidPackage(
+    const char *hostname, const char *packageAndActivity, AndroidFlags *flags);
 
 DOCUMENT("Internal function that attempts to modify APK contents, adding debuggable flag.");
 extern "C" RENDERDOC_API AndroidFlags RENDERDOC_CC RENDERDOC_MakeDebuggablePackage(
-    const char *hostname, const char *packageName, RENDERDOC_ProgressCallback progress);
+    const char *hostname, const char *packageAndActivity, RENDERDOC_ProgressCallback progress);
 
 DOCUMENT("Internal function that runs unit tests.");
 extern "C" RENDERDOC_API int RENDERDOC_CC RENDERDOC_RunUnitTests(const rdcstr &command,

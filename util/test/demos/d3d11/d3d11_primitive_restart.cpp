@@ -24,15 +24,15 @@
 
 #include "d3d11_test.h"
 
-struct Primitive_Restart : D3D11GraphicsTest
+TEST(D3D11_Primitive_Restart, D3D11GraphicsTest)
 {
   static constexpr const char *Description =
       "Test of primitive restart in triangle strips with -1 index";
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create device, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     ID3DBlobPtr vsblob = Compile(D3DDefaultVertex, "main", "vs_5_0");
@@ -123,4 +123,4 @@ struct Primitive_Restart : D3D11GraphicsTest
   }
 };
 
-REGISTER_TEST(Primitive_Restart);
+REGISTER_TEST();

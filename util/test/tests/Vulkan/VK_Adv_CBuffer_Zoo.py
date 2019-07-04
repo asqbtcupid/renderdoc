@@ -3,8 +3,7 @@ import renderdoc as rd
 
 
 class VK_Adv_CBuffer_Zoo(rdtest.TestCase):
-    def get_capture(self):
-        return rdtest.run_and_capture("demos_x64", "VK_Adv_CBuffer_Zoo", 5)
+    demos_test_name = 'VK_Adv_CBuffer_Zoo'
 
     def check_capture(self):
         draw = self.find_draw("Draw")
@@ -14,11 +13,9 @@ class VK_Adv_CBuffer_Zoo(rdtest.TestCase):
         self.controller.SetFrameEvent(draw.eventId, False)
 
         # Make an output so we can pick pixels
-        out: rd.ReplayOutput = self.controller.CreateOutput(rd.CreateHeadlessWindowingData(), rd.ReplayOutputType.Texture)
+        out: rd.ReplayOutput = self.controller.CreateOutput(rd.CreateHeadlessWindowingData(100, 100), rd.ReplayOutputType.Texture)
 
         self.check(out is not None)
-
-        out.SetDimensions(100, 100)
 
         pipe: rd.PipeState = self.controller.GetPipelineState()
 

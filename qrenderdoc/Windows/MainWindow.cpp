@@ -614,6 +614,7 @@ void MainWindow::OnInjectTrigger(uint32_t PID, const rdcarray<EnvironmentModific
 
       LiveCapture *live = new LiveCapture(m_Ctx, QString(), QString(), ret.ident, this, this);
       ShowLiveCapture(live);
+      callback(live);
     });
   });
   th->start();
@@ -662,7 +663,7 @@ void MainWindow::LoadCapture(const QString &filename, bool temporary, bool local
         return;
       }
 
-      driver = QString::fromUtf8(file->DriverName());
+      driver = file->DriverName();
       machineIdent = QString::fromUtf8(file->RecordedMachineIdent());
       support = file->LocalReplaySupport();
 
@@ -794,10 +795,6 @@ void MainWindow::LoadCapture(const QString &filename, bool temporary, bool local
       if(driver == lit("Image"))
       {
         ANALYTIC_SET(UIFeatures.ImageViewer, true);
-      }
-      else if(!driver.isEmpty())
-      {
-        ANALYTIC_ADDUNIQ(APIs, driver);
       }
 
       m_Ctx.LoadCapture(fileToLoad, origFilename, temporary, local);
@@ -1018,7 +1015,7 @@ void MainWindow::SetTitle(const QString &filename)
   else
     text += tr("Unstable release (%1 - %2)")
                 .arg(lit(FULL_VERSION_STRING))
-                .arg(QString::fromLatin1(GitVersionHash));
+                .arg(QString::fromLatin1(RENDERDOC_GetCommitHash()));
 
   if(IsRunningAsAdmin())
     text += tr(" (Administrator)");
@@ -2583,13 +2580,6 @@ void MainWindow::on_action_View_Documentation_triggered()
     QDesktopServices::openUrl(QUrl::fromUserInput(lit("https://renderdoc.org/docs")));
 }
 
-void MainWindow::on_action_View_Diagnostic_Log_File_triggered()
-{
-  QString logPath = QString::fromUtf8(RENDERDOC_GetLogFile());
-  if(QFileInfo::exists(logPath))
-    QDesktopServices::openUrl(QUrl::fromLocalFile(logPath));
-}
-
 void MainWindow::on_action_Source_on_GitHub_triggered()
 {
   QDesktopServices::openUrl(QUrl::fromUserInput(lit("https://github.com/baldurk/renderdoc")));
@@ -2604,6 +2594,16 @@ void MainWindow::on_action_Show_Tips_triggered()
 {
   TipsDialog tipsDialog(m_Ctx, this);
   RDDialog::show(&tipsDialog);
+}
+
+void MainWindow::on_action_View_Diagnostic_Log_File_triggered()
+{
+  QWidget *logView = m_Ctx.GetDiagnosticLogView()->Widget();
+
+  if(ui->toolWindowManager->toolWindows().contains(logView))
+    ToolWindowManager::raiseToolWindow(logView);
+  else
+    ui->toolWindowManager->addToolWindow(logView, mainToolArea());
 }
 
 void MainWindow::on_action_Counter_Viewer_triggered()
@@ -2634,7 +2634,7 @@ void MainWindow::on_action_Send_Error_Report_triggered()
   QVariantMap json;
 
   json[lit("version")] = lit(FULL_VERSION_STRING);
-  json[lit("gitcommit")] = QString::fromLatin1(GitVersionHash);
+  json[lit("gitcommit")] = QString::fromLatin1(RENDERDOC_GetCommitHash());
   json[lit("replaycrash")] = 1;
   json[lit("report")] = (QString)report;
 

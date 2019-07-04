@@ -45,6 +45,7 @@ class BufferViewer;
 class TextureViewer;
 class CaptureDialog;
 class DebugMessageView;
+class LogView;
 class CommentView;
 class PerformanceCounterViewer;
 class StatisticsViewer;
@@ -141,6 +142,7 @@ public:
   CaptureModifications GetCaptureModifications() override { return m_CaptureMods; }
   const FrameDescription &FrameInfo() override { return m_FrameInfo; }
   const APIProperties &APIProps() override { return m_APIProps; }
+  rdcarray<ShaderEncoding> CustomShaderEncodings() override { return m_CustomEncodings; }
   rdcarray<ShaderEncoding> TargetShaderEncodings() override { return m_TargetEncodings; }
   uint32_t CurSelectedEvent() override { return m_SelectedEventID; }
   uint32_t CurEvent() override { return m_EventID; }
@@ -192,6 +194,7 @@ public:
   IPipelineStateViewer *GetPipelineViewer() override;
   ICaptureDialog *GetCaptureDialog() override;
   IDebugMessageView *GetDebugMessageView() override;
+  IDiagnosticLogView *GetDiagnosticLogView() override;
   ICommentView *GetCommentView() override;
   IPerformanceCounterViewer *GetPerformanceCounterViewer() override;
   IStatisticsViewer *GetStatisticsViewer() override;
@@ -206,6 +209,7 @@ public:
   bool HasMeshPreview() override { return m_MeshPreview != NULL; }
   bool HasCaptureDialog() override { return m_CaptureDialog != NULL; }
   bool HasDebugMessageView() override { return m_DebugMessageView != NULL; }
+  bool HasDiagnosticLogView() override { return m_DiagnosticLogView != NULL; }
   bool HasCommentView() override { return m_CommentView != NULL; }
   bool HasPerformanceCounterViewer() override { return m_PerformanceCounterViewer != NULL; }
   bool HasStatisticsViewer() override { return m_StatisticsViewer != NULL; }
@@ -219,6 +223,7 @@ public:
   void ShowPipelineViewer() override;
   void ShowCaptureDialog() override;
   void ShowDebugMessageView() override;
+  void ShowDiagnosticLogView() override;
   void ShowCommentView() override;
   void ShowPerformanceCounterViewer() override;
   void ShowStatisticsViewer() override;
@@ -332,7 +337,7 @@ private:
   const rdcarray<DrawcallDescription> *m_Drawcalls;
   rdcarray<DrawcallDescription> m_EmptyDraws;
 
-  rdcarray<ShaderEncoding> m_TargetEncodings;
+  rdcarray<ShaderEncoding> m_CustomEncodings, m_TargetEncodings;
   APIProperties m_APIProps;
   FrameDescription m_FrameInfo;
   const DrawcallDescription *m_FirstDrawcall = NULL;
@@ -382,6 +387,7 @@ private:
   PipelineStateViewer *m_PipelineViewer = NULL;
   CaptureDialog *m_CaptureDialog = NULL;
   DebugMessageView *m_DebugMessageView = NULL;
+  LogView *m_DiagnosticLogView = NULL;
   CommentView *m_CommentView = NULL;
   PerformanceCounterViewer *m_PerformanceCounterViewer = NULL;
   StatisticsViewer *m_StatisticsViewer = NULL;

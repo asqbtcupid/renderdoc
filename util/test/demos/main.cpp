@@ -225,6 +225,14 @@ std::vector<TestMetadata> &test_list()
   return list;
 }
 
+void check_tests(int argc, char **argv)
+{
+  std::vector<TestMetadata> &tests = test_list();
+
+  for(TestMetadata &test : tests)
+    test.test->Prepare(argc, argv);
+}
+
 void RegisterTest(TestMetadata test)
 {
   test_list().push_back(test);
@@ -244,9 +252,15 @@ int main(int argc, char **argv)
 Usage: %s Test_Name [test_options]
 
   --help                        Print this help message.
-  --list                        Lists the available tests.
+  --list                        Lists all tests, with name, API, description, availability.
+  --list-available              Lists the available test names only, one per line.
   --validate
   --debug                       Run the demo with API validation enabled.
+  --gpu [identifier]            Try to select the corresponding GPU where available and possible
+                                through the API. Identifier is e.g. 'nv' or 'amd', or can be '1080'
+  --warp                        On D3D APIs, use the software rasterizer.
+  --width / -w                  Specify the window width.
+  --height / -h                 Specify the window height.
   --frames <n>
   --max-frames <n>
   --frame-count <n>             Only run the demo for this number of frames
@@ -263,8 +277,45 @@ Usage: %s Test_Name [test_options]
 
   if(argc >= 2 && !strcmp(argv[1], "--list"))
   {
+    check_tests(argc, argv);
+
+    TestAPI prev = TestAPI::Count;
+
     for(const TestMetadata &test : tests)
-      printf("%s (%s) - %s\n", test.Name, test.APIName(), test.Description);
+    {
+      if(test.API != prev)
+      {
+        if(prev != TestAPI::Count)
+          printf("\n\n");
+        printf("======== %s tests ========\n\n", APIName(test.API));
+      }
+
+      prev = test.API;
+
+      printf("%s: %s", test.Name, test.IsAvailable() ? "Available" : "Unavailable");
+
+      if(!test.IsAvailable())
+        printf(" because %s", test.AvailMessage());
+
+      printf("\n\t%s\n\n", test.Description);
+    }
+
+    fflush(stdout);
+    return 1;
+  }
+
+  if(argc >= 2 && !strcmp(argv[1], "--list-raw"))
+  {
+    check_tests(argc, argv);
+
+    // output TSV
+    printf("Name\tAvailable\tAvailMessage\n");
+
+    for(const TestMetadata &test : tests)
+    {
+      printf("%s\t%s\t%s\n", test.Name, test.IsAvailable() ? "True" : "False",
+             test.IsAvailable() ? "Available" : test.AvailMessage());
+    }
 
     fflush(stdout);
     return 1;
@@ -285,6 +336,8 @@ Usage: %s Test_Name [test_options]
   }
   else
   {
+    check_tests(argc, argv);
+
     const int width = 400, height = 575;
 
     nk_context *ctx = NuklearInit(width, height, "RenderDoc Test Program");
@@ -345,8 +398,10 @@ Usage: %s Test_Name [test_options]
 
           for(int i = 0; i < (int)tests.size(); i++)
           {
-            std::string name = tests[i].QualifiedName();
-            std::string lower_name = strlower(name);
+            if(!tests[i].IsAvailable())
+              continue;
+
+            std::string lower_name = strlower(tests[i].Name);
 
             // apply filters
             if(!allow[(int)tests[i].API] ||
@@ -363,7 +418,7 @@ Usage: %s Test_Name [test_options]
             if(curtest == -1)
               curtest = i;
 
-            if(nk_select_label(ctx, name.c_str(), NK_TEXT_LEFT, curtest == i))
+            if(nk_select_label(ctx, tests[i].Name, NK_TEXT_LEFT, curtest == i))
               curtest = i;
           }
 
@@ -390,7 +445,7 @@ Usage: %s Test_Name [test_options]
             nk_layout_row_push(ctx, 0.25f);
             nk_label(ctx, "API:", NK_TEXT_ALIGN_TOP | NK_TEXT_ALIGN_RIGHT);
             nk_layout_row_push(ctx, 0.75f);
-            nk_label(ctx, selected_test.APIName(), NK_TEXT_ALIGN_TOP | NK_TEXT_ALIGN_LEFT);
+            nk_label(ctx, APIName(selected_test.API), NK_TEXT_ALIGN_TOP | NK_TEXT_ALIGN_LEFT);
             nk_layout_row_end(ctx);
 
             nk_layout_row_begin(ctx, NK_DYNAMIC, 0, 2);
@@ -437,25 +492,20 @@ Usage: %s Test_Name [test_options]
   if(testchoice.empty())
     return 0;
 
-#if defined(WIN32)
-  if(AllocConsole())
-  {
-    FILE *dummy = NULL;
-    freopen_s(&dummy, "CONOUT$", "w", stdout);
-    freopen_s(&dummy, "CONOUT$", "w", stderr);
-  }
-#endif
-
-  //////////////////////////////////////////////////////////////
-  // D3D11 tests
-  //////////////////////////////////////////////////////////////
-
   for(const TestMetadata &test : tests)
   {
     if(testchoice == test.Name)
     {
       TEST_LOG("\n\n======\nRunning %s\n\n", test.Name);
-      int ret = test.test->main(argc, argv);
+      test.test->Prepare(argc, argv);
+
+      if(!test.IsAvailable())
+      {
+        TEST_ERROR("%s is not available: %s", test.Name, test.test->Avail.c_str());
+        return 5;
+      }
+
+      int ret = test.test->main();
       test.test->Shutdown();
       return ret;
     }

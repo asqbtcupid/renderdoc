@@ -24,7 +24,7 @@
 
 #include "d3d11_test.h"
 
-struct D3D11_Mip_Gen_RT : D3D11GraphicsTest
+TEST(D3D11_Mip_Gen_RT, D3D11GraphicsTest)
 {
   static constexpr const char *Description =
       "Tests rendering from one mip to another to do a downsample chain";
@@ -72,10 +72,10 @@ float4 main(v2f IN) : SV_Target0
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create device, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     ID3DBlobPtr vsblob = Compile(common + vertex, "main", "vs_5_0");
@@ -155,4 +155,4 @@ float4 main(v2f IN) : SV_Target0
   }
 };
 
-REGISTER_TEST(D3D11_Mip_Gen_RT);
+REGISTER_TEST();

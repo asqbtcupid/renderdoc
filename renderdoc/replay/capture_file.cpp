@@ -120,7 +120,7 @@ public:
   rdcstr ErrorString() { return m_ErrorString; }
   void Shutdown() { delete this; }
   ReplaySupport LocalReplaySupport() { return m_Support; }
-  const char *DriverName() { return m_DriverName.c_str(); }
+  rdcstr DriverName() { return m_DriverName; }
   const char *RecordedMachineIdent() { return m_Ident.c_str(); }
   rdcpair<ReplayStatus, IReplayController *> OpenCapture(RENDERDOC_ProgressCallback progress);
 
@@ -355,7 +355,7 @@ void CaptureFile::InitStructuredData(RENDERDOC_ProgressCallback progress /*= REN
 rdcpair<ReplayStatus, IReplayController *> CaptureFile::OpenCapture(RENDERDOC_ProgressCallback progress)
 {
   if(!m_RDC || m_RDC->ErrorCode() != ContainerError::NoError)
-    return make_rdcpair<ReplayStatus, IReplayController *>(ReplayStatus::InternalError, NULL);
+    return rdcpair<ReplayStatus, IReplayController *>(ReplayStatus::InternalError, NULL);
 
   ReplayController *render = new ReplayController();
   ReplayStatus ret;
@@ -369,7 +369,7 @@ rdcpair<ReplayStatus, IReplayController *> CaptureFile::OpenCapture(RENDERDOC_Pr
   if(ret != ReplayStatus::Succeeded)
     SAFE_DELETE(render);
 
-  return make_rdcpair<ReplayStatus, IReplayController *>(ret, render);
+  return rdcpair<ReplayStatus, IReplayController *>(ret, render);
 }
 
 void CaptureFile::SetMetadata(const char *driverName, uint64_t machineIdent, FileType thumbType,

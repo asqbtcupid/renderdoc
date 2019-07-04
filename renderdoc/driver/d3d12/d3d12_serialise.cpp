@@ -36,7 +36,7 @@ enum D3D12ResourceBarrierSubresource
 DECLARE_REFLECTION_ENUM(D3D12ResourceBarrierSubresource);
 
 template <>
-std::string DoStringise(const D3D12ResourceBarrierSubresource &el)
+rdcstr DoStringise(const D3D12ResourceBarrierSubresource &el)
 {
   RDCCOMPILE_ASSERT(sizeof(D3D12ResourceBarrierSubresource) == sizeof(uint32_t),
                     "Enum isn't uint sized");
@@ -54,7 +54,7 @@ enum D3D12ComponentMapping
 DECLARE_REFLECTION_ENUM(D3D12ComponentMapping);
 
 template <>
-std::string DoStringise(const D3D12ComponentMapping &el)
+rdcstr DoStringise(const D3D12ComponentMapping &el)
 {
   RDCCOMPILE_ASSERT(sizeof(D3D12ComponentMapping) == sizeof(uint32_t), "Enum isn't uint sized");
 
@@ -170,8 +170,8 @@ void DoSerialise(SerialiserType &ser, DynamicDescriptorCopy &el)
     src = ToPortableHandle(el.src);
   }
 
-  ser.Serialise("dst", dst);
-  ser.Serialise("src", src);
+  ser.Serialise("dst"_lit, dst);
+  ser.Serialise("src"_lit, src);
 
   if(ser.IsReading())
   {
@@ -199,8 +199,8 @@ void DoSerialise(SerialiserType &ser, D3D12BufferLocation &el)
   if(ser.IsWriting())
     WrappedID3D12Resource1::GetResIDFromAddr(el.Location, buffer, offs);
 
-  ser.Serialise("Buffer", buffer);
-  ser.Serialise("Offset", offs);
+  ser.Serialise("Buffer"_lit, buffer);
+  ser.Serialise("Offset"_lit, offs);
 
   if(ser.IsReading())
   {
@@ -215,12 +215,12 @@ template <class SerialiserType>
 void DoSerialise(SerialiserType &ser, D3D12Descriptor &el)
 {
   D3D12DescriptorType type = el.GetType();
-  ser.Serialise("type", type);
+  ser.Serialise("type"_lit, type);
 
   ID3D12DescriptorHeap *heap = (ID3D12DescriptorHeap *)el.data.samp.heap;
 
-  ser.Serialise("heap", heap);
-  ser.Serialise("index", el.data.samp.idx);
+  ser.Serialise("heap"_lit, heap);
+  ser.Serialise("index"_lit, el.data.samp.idx);
 
   if(ser.IsReading())
   {
@@ -235,91 +235,86 @@ void DoSerialise(SerialiserType &ser, D3D12Descriptor &el)
   // also invisibly backwards compatible
   D3D12ResourceManager *rm = (D3D12ResourceManager *)ser.GetUserData();
 
-  ID3D12Resource *resource = NULL;
-  ID3D12Resource *counterResource = NULL;
-
   switch(type)
   {
     case D3D12DescriptorType::Sampler:
     {
-      ser.Serialise("Descriptor", el.data.samp.desc);
+      ser.Serialise("Descriptor"_lit, el.data.samp.desc);
       RDCASSERTEQUAL(el.GetType(), D3D12DescriptorType::Sampler);
       break;
     }
     case D3D12DescriptorType::CBV:
     {
-      ser.Serialise("Descriptor", el.data.nonsamp.cbv);
+      ser.Serialise("Descriptor"_lit, el.data.nonsamp.cbv);
       break;
     }
     case D3D12DescriptorType::SRV:
     {
-      if(ser.IsWriting() && rm && rm->HasCurrentResource(el.data.nonsamp.resource))
-        resource = rm->GetCurrentAs<ID3D12Resource>(el.data.nonsamp.resource);
+      ser.Serialise("Resource"_lit, el.data.nonsamp.resource).TypedAs("ID3D12Resource *"_lit);
 
-      ser.Serialise("Resource", resource);
-
+      // convert to Live ID on replay
       if(ser.IsReading())
-        el.data.nonsamp.resource = GetResID(resource);
+        el.data.nonsamp.resource = rm->HasLiveResource(el.data.nonsamp.resource)
+                                       ? rm->GetLiveID(el.data.nonsamp.resource)
+                                       : ResourceId();
 
       // special case because of squeezed descriptor
       D3D12_SHADER_RESOURCE_VIEW_DESC desc;
       if(ser.IsWriting())
         desc = el.data.nonsamp.srv.AsDesc();
-      ser.Serialise("Descriptor", desc);
+      ser.Serialise("Descriptor"_lit, desc);
       if(ser.IsReading())
         el.data.nonsamp.srv.Init(desc);
       break;
     }
     case D3D12DescriptorType::RTV:
     {
-      if(ser.IsWriting() && rm && rm->HasCurrentResource(el.data.nonsamp.resource))
-        resource = rm->GetCurrentAs<ID3D12Resource>(el.data.nonsamp.resource);
+      ser.Serialise("Resource"_lit, el.data.nonsamp.resource).TypedAs("ID3D12Resource *"_lit);
 
-      ser.Serialise("Resource", resource);
-
+      // convert to Live ID on replay
       if(ser.IsReading())
-        el.data.nonsamp.resource = GetResID(resource);
+        el.data.nonsamp.resource = rm->HasLiveResource(el.data.nonsamp.resource)
+                                       ? rm->GetLiveID(el.data.nonsamp.resource)
+                                       : ResourceId();
 
-      ser.Serialise("Descriptor", el.data.nonsamp.rtv);
+      ser.Serialise("Descriptor"_lit, el.data.nonsamp.rtv);
       break;
     }
     case D3D12DescriptorType::DSV:
     {
-      if(ser.IsWriting() && rm && rm->HasCurrentResource(el.data.nonsamp.resource))
-        resource = rm->GetCurrentAs<ID3D12Resource>(el.data.nonsamp.resource);
+      ser.Serialise("Resource"_lit, el.data.nonsamp.resource).TypedAs("ID3D12Resource *"_lit);
 
-      ser.Serialise("Resource", resource);
-
+      // convert to Live ID on replay
       if(ser.IsReading())
-        el.data.nonsamp.resource = GetResID(resource);
+        el.data.nonsamp.resource = rm->HasLiveResource(el.data.nonsamp.resource)
+                                       ? rm->GetLiveID(el.data.nonsamp.resource)
+                                       : ResourceId();
 
-      ser.Serialise("Descriptor", el.data.nonsamp.dsv);
+      ser.Serialise("Descriptor"_lit, el.data.nonsamp.dsv);
       break;
     }
     case D3D12DescriptorType::UAV:
     {
-      if(ser.IsWriting())
-      {
-        if(rm && rm->HasCurrentResource(el.data.nonsamp.resource))
-          resource = rm->GetCurrentAs<ID3D12Resource>(el.data.nonsamp.resource);
-        if(rm && rm->HasCurrentResource(el.data.nonsamp.counterResource))
-          counterResource = rm->GetCurrentAs<ID3D12Resource>(el.data.nonsamp.counterResource);
-      }
+      ser.Serialise("Resource"_lit, el.data.nonsamp.resource).TypedAs("ID3D12Resource *"_lit);
+      ser.Serialise("CounterResource"_lit, el.data.nonsamp.counterResource)
+          .TypedAs("ID3D12Resource *"_lit);
 
-      ser.Serialise("Resource", resource);
-      ser.Serialise("CounterResource", counterResource);
-
+      // convert to Live ID on replay
       if(ser.IsReading())
       {
-        el.data.nonsamp.resource = GetResID(resource);
-        el.data.nonsamp.counterResource = GetResID(counterResource);
+        el.data.nonsamp.resource = rm->HasLiveResource(el.data.nonsamp.resource)
+                                       ? rm->GetLiveID(el.data.nonsamp.resource)
+                                       : ResourceId();
+        el.data.nonsamp.counterResource = rm->HasLiveResource(el.data.nonsamp.counterResource)
+                                              ? rm->GetLiveID(el.data.nonsamp.counterResource)
+                                              : ResourceId();
       }
 
       // special case because of squeezed descriptor
       D3D12_UNORDERED_ACCESS_VIEW_DESC desc;
       if(ser.IsWriting())
         desc = el.data.nonsamp.uav.AsDesc();
-      ser.Serialise("Descriptor", desc);
+      ser.Serialise("Descriptor"_lit, desc);
       if(ser.IsReading())
         el.data.nonsamp.uav.Init(desc);
       break;
@@ -406,7 +401,7 @@ void DoSerialise(SerialiserType &ser, D3D12_SHADER_BYTECODE &el)
   // don't serialise size_t, otherwise capture/replay between different bit-ness won't work
   {
     uint64_t BytecodeLength = el.BytecodeLength;
-    ser.Serialise("BytecodeLength", BytecodeLength);
+    ser.Serialise("BytecodeLength"_lit, BytecodeLength);
     if(ser.IsReading())
       el.BytecodeLength = (size_t)BytecodeLength;
   }
@@ -569,7 +564,7 @@ void DoSerialise(SerialiserType &ser, D3D12_CACHED_PIPELINE_STATE &el)
   // don't serialise these, just set to NULL/0. See the definition of SERIALISE_MEMBER_DUMMY
   SERIALISE_MEMBER_ARRAY_EMPTY(pCachedBlob);
   uint64_t CachedBlobSizeInBytes = 0;
-  ser.Serialise("CachedBlobSizeInBytes", CachedBlobSizeInBytes);
+  ser.Serialise("CachedBlobSizeInBytes"_lit, CachedBlobSizeInBytes);
 
   if(ser.IsReading())
     el.CachedBlobSizeInBytes = (SIZE_T)CachedBlobSizeInBytes;
@@ -1148,8 +1143,8 @@ void DoSerialise(SerialiserType &ser, D3D12_RANGE &el)
   uint64_t Begin = el.Begin;
   uint64_t End = el.End;
 
-  ser.Serialise("Begin", Begin);
-  ser.Serialise("End", End);
+  ser.Serialise("Begin"_lit, Begin);
+  ser.Serialise("End"_lit, End);
 
   if(ser.IsReading())
   {
@@ -1255,7 +1250,17 @@ void DoSerialise(SerialiserType &ser, D3D12_SUBRESOURCE_RANGE_UINT64 &el)
 template <class SerialiserType>
 void DoSerialise(SerialiserType &ser, D3D12_WRITEBUFFERIMMEDIATE_PARAMETER &el)
 {
-  SERIALISE_MEMBER(Dest);
+  if(ser.VersionAtLeast(0x7))
+  {
+    SERIALISE_MEMBER_TYPED(D3D12BufferLocation, Dest);
+  }
+  else
+  {
+    RDCERR(
+        "Replay will crash - old capture with corrupted D3D12_WRITEBUFFERIMMEDIATE_PARAMETER. "
+        "Re-capture to fix this.");
+    SERIALISE_MEMBER(Dest);
+  }
   SERIALISE_MEMBER(Value);
 }
 

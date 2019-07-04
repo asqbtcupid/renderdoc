@@ -75,7 +75,7 @@ bool CheckReplayContext()
   RDCLOG("Running GL replay on: %s / %s / %s", GL.glGetString(eGL_VENDOR),
          GL.glGetString(eGL_RENDERER), GL.glGetString(eGL_VERSION));
 
-  string extensionString = "";
+  std::string extensionString = "";
 
   GLint numExts = 0;
   GL.glGetIntegerv(eGL_NUM_EXTENSIONS, &numExts);
@@ -479,11 +479,12 @@ void FetchEnabledExtensions()
 void DoVendorChecks(GLPlatform &platform, GLWindowingData context)
 {
   const char *vendor = "";
+  const char *renderer = "";
 
   if(GL.glGetString)
   {
     vendor = (const char *)GL.glGetString(eGL_VENDOR);
-    const char *renderer = (const char *)GL.glGetString(eGL_RENDERER);
+    renderer = (const char *)GL.glGetString(eGL_RENDERER);
     const char *version = (const char *)GL.glGetString(eGL_VERSION);
 
     RDCLOG("Vendor checks for %u (%s / %s / %s)", GLCoreVersion, vendor, renderer, version);
@@ -768,6 +769,17 @@ void DoVendorChecks(GLPlatform &platform, GLWindowingData context)
   // I'm not sure if that's correct (weird) behaviour or buggy, but we can work around it just by
   // avoiding use of the DSA function and always doing our emulated version.
   VendorCheck[VendorCheck_AMD_vertex_array_elem_buffer_query] = true;
+
+  // Qualcomm's implementation of glCopyImageSubData is buggy on some drivers and can cause GPU
+  // crashes or corrupted data. We force the initial state copies to happen via our emulation which
+  // uses framebuffer blits.
+  if(strstr(vendor, "Qualcomm") || strstr(vendor, "Adreno") || strstr(renderer, "Qualcomm") ||
+     strstr(vendor, "Adreno"))
+  {
+    RDCWARN("Using hack to avoid glCopyImageSubData on Qualcomm");
+
+    VendorCheck[VendorCheck_Qualcomm_avoid_glCopyImageSubData] = true;
+  }
 
   if(IsGLES)
   {
@@ -1706,70 +1718,6 @@ BlendOperation MakeBlendOp(GLenum op)
   return BlendOperation::Add;
 }
 
-const char *BlendString(GLenum blendenum)
-{
-  switch(blendenum)
-  {
-    case eGL_FUNC_ADD: return "ADD";
-    case eGL_FUNC_SUBTRACT: return "SUBTRACT";
-    case eGL_FUNC_REVERSE_SUBTRACT: return "INV_SUBTRACT";
-    case eGL_MIN: return "MIN";
-    case eGL_MAX: return "MAX";
-    case GL_ZERO: return "ZERO";
-    case GL_ONE: return "ONE";
-    case eGL_SRC_COLOR: return "SRC_COLOR";
-    case eGL_ONE_MINUS_SRC_COLOR: return "INV_SRC_COLOR";
-    case eGL_DST_COLOR: return "DST_COLOR";
-    case eGL_ONE_MINUS_DST_COLOR: return "INV_DST_COLOR";
-    case eGL_SRC_ALPHA: return "SRC_ALPHA";
-    case eGL_ONE_MINUS_SRC_ALPHA: return "INV_SRC_ALPHA";
-    case eGL_DST_ALPHA: return "DST_ALPHA";
-    case eGL_ONE_MINUS_DST_ALPHA: return "INV_DST_ALPHA";
-    case eGL_CONSTANT_COLOR: return "CONST_COLOR";
-    case eGL_ONE_MINUS_CONSTANT_COLOR: return "INV_CONST_COLOR";
-    case eGL_CONSTANT_ALPHA: return "CONST_ALPHA";
-    case eGL_ONE_MINUS_CONSTANT_ALPHA: return "INV_CONST_ALPHA";
-    case eGL_SRC_ALPHA_SATURATE: return "SRC_ALPHA_SAT";
-    case eGL_SRC1_COLOR: return "SRC1_COL";
-    case eGL_ONE_MINUS_SRC1_COLOR: return "INV_SRC1_COL";
-    case eGL_SRC1_ALPHA: return "SRC1_ALPHA";
-    case eGL_ONE_MINUS_SRC1_ALPHA: return "INV_SRC1_ALPHA";
-    default: break;
-  }
-
-  static string unknown = ToStr(blendenum).substr(3);    // 3 = strlen("GL_");
-
-  RDCERR("Unknown blend enum: %s", unknown.c_str());
-
-  return unknown.c_str();
-}
-
-const char *SamplerString(GLenum smpenum)
-{
-  switch(smpenum)
-  {
-    case eGL_NONE: return "NONE";
-    case eGL_NEAREST: return "NEAREST";
-    case eGL_LINEAR: return "LINEAR";
-    case eGL_NEAREST_MIPMAP_NEAREST: return "NEAREST_MIP_NEAREST";
-    case eGL_LINEAR_MIPMAP_NEAREST: return "LINEAR_MIP_NEAREST";
-    case eGL_NEAREST_MIPMAP_LINEAR: return "NEAREST_MIP_LINEAR";
-    case eGL_LINEAR_MIPMAP_LINEAR: return "LINEAR_MIP_LINEAR";
-    case eGL_CLAMP_TO_EDGE: return "CLAMP_EDGE";
-    case eGL_MIRRORED_REPEAT: return "MIRR_REPEAT";
-    case eGL_REPEAT: return "REPEAT";
-    case eGL_MIRROR_CLAMP_TO_EDGE: return "MIRR_CLAMP_EDGE";
-    case eGL_CLAMP_TO_BORDER: return "CLAMP_BORDER";
-    default: break;
-  }
-
-  static string unknown = ToStr(smpenum).substr(3);    // 3 = strlen("GL_");
-
-  RDCERR("Unknown blend enum: %s", unknown.c_str());
-
-  return unknown.c_str();
-}
-
 ResourceFormat MakeResourceFormat(GLenum target, GLenum fmt)
 {
   ResourceFormat ret;
@@ -1783,12 +1731,19 @@ ResourceFormat MakeResourceFormat(GLenum target, GLenum fmt)
   }
 
   // special handling for formats that don't query neatly
-  if(fmt == eGL_LUMINANCE8_EXT || fmt == eGL_INTENSITY8_EXT || fmt == eGL_ALPHA8_EXT ||
-     fmt == eGL_LUMINANCE || fmt == eGL_ALPHA)
+  if(fmt == eGL_LUMINANCE8_EXT || fmt == eGL_INTENSITY8_EXT || fmt == eGL_LUMINANCE)
   {
     ret.compByteWidth = 1;
     ret.compCount = 1;
     ret.compType = CompType::UNorm;
+    return ret;
+  }
+  else if(fmt == eGL_ALPHA || fmt == eGL_ALPHA8_EXT)
+  {
+    ret.compByteWidth = 1;
+    ret.compCount = 1;
+    ret.compType = CompType::UNorm;
+    ret.type = ResourceFormatType::A8;
     return ret;
   }
   else if(fmt == eGL_LUMINANCE8_ALPHA8_EXT || fmt == eGL_LUMINANCE_ALPHA)
@@ -2184,6 +2139,7 @@ GLenum MakeGLFormat(ResourceFormat fmt)
       case ResourceFormatType::ASTC: RDCERR("ASTC can't be decoded unambiguously"); break;
       case ResourceFormatType::PVRTC: RDCERR("PVRTC can't be decoded unambiguously"); break;
       case ResourceFormatType::S8: ret = eGL_STENCIL_INDEX8; break;
+      case ResourceFormatType::A8: ret = eGL_ALPHA8_EXT; break;
       case ResourceFormatType::Undefined: return eGL_NONE;
       default: RDCERR("Unsupported resource format type %u", fmt.type); break;
     }

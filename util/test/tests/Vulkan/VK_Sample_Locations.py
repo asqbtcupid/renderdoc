@@ -3,8 +3,7 @@ import rdtest
 
 
 class VK_Sample_Locations(rdtest.TestCase):
-    def get_capture(self):
-        return rdtest.run_and_capture("demos_x64", "VK_Sample_Locations", 5)
+    demos_test_name = 'VK_Sample_Locations'
 
     def check_capture(self):
         draw: rd.DrawcallDescription = self.find_draw("Degenerate")
@@ -126,8 +125,8 @@ class VK_Sample_Locations(rdtest.TestCase):
                 degenerate.append(combined_data[row][0:len])
                 rotated.append(combined_data[row][len:])
 
-            rdtest.png_save(degenerate_path, degenerate, halfdim)
-            rdtest.png_save(rotated_path, rotated, halfdim)
+            rdtest.png_save(degenerate_path, degenerate, halfdim, True)
+            rdtest.png_save(rotated_path, rotated, halfdim, True)
 
         # first two degenerate images should be identical, as should the last two, and they should be different.
         if not rdtest.png_compare(degenerate_paths[0], degenerate_paths[1], 0):

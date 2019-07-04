@@ -24,7 +24,7 @@
 
 #include "vk_test.h"
 
-struct VK_Structured_Buffer_Nested : VulkanGraphicsTest
+TEST(VK_Structured_Buffer_Nested, VulkanGraphicsTest)
 {
   static constexpr const char *Description =
       "Just draws a simple triangle, using normal pipeline. Basic test that can be used "
@@ -182,12 +182,17 @@ float4 main() : SV_Target0
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  void Prepare(int argc, char **argv)
   {
-    features.fragmentStoresAndAtomics = true;
+    features.fragmentStoresAndAtomics = VK_TRUE;
 
+    VulkanGraphicsTest::Prepare(argc, argv);
+  }
+
+  int main()
+  {
     // initialise, create window, create context, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     VkDescriptorSetLayout setlayout = createDescriptorSetLayout(vkh::DescriptorSetLayoutCreateInfo({
@@ -202,7 +207,7 @@ float4 main() : SV_Target0
     vkh::GraphicsPipelineCreateInfo pipeCreateInfo;
 
     pipeCreateInfo.layout = layout;
-    pipeCreateInfo.renderPass = swapRenderPass;
+    pipeCreateInfo.renderPass = mainWindow->rp;
 
     pipeCreateInfo.vertexInputState.vertexBindingDescriptions = {vkh::vertexBind(0, DefaultA2V)};
     pipeCreateInfo.vertexInputState.vertexAttributeDescriptions = {
@@ -294,13 +299,13 @@ float4 main() : SV_Target0
           });
 
       vkCmdBeginRenderPass(
-          cmd, vkh::RenderPassBeginInfo(swapRenderPass, swapFramebuffers[swapIndex], scissor),
+          cmd, vkh::RenderPassBeginInfo(mainWindow->rp, mainWindow->GetFB(), mainWindow->scissor),
           VK_SUBPASS_CONTENTS_INLINE);
 
       vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, glslpipe);
       vkh::cmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, {descset}, {});
-      vkCmdSetViewport(cmd, 0, 1, &viewport);
-      vkCmdSetScissor(cmd, 0, 1, &scissor);
+      vkCmdSetViewport(cmd, 0, 1, &mainWindow->viewport);
+      vkCmdSetScissor(cmd, 0, 1, &mainWindow->scissor);
       vkh::cmdBindVertexBuffers(cmd, 0, {vb.buffer}, {0});
       vkCmdDraw(cmd, 3, 1, 0, 0);
 
@@ -315,7 +320,7 @@ float4 main() : SV_Target0
           });
 
       vkCmdBeginRenderPass(
-          cmd, vkh::RenderPassBeginInfo(swapRenderPass, swapFramebuffers[swapIndex], scissor),
+          cmd, vkh::RenderPassBeginInfo(mainWindow->rp, mainWindow->GetFB(), mainWindow->scissor),
           VK_SUBPASS_CONTENTS_INLINE);
 
       vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, hlslpipe);
@@ -337,4 +342,4 @@ float4 main() : SV_Target0
   }
 };
 
-REGISTER_TEST(VK_Structured_Buffer_Nested);
+REGISTER_TEST();

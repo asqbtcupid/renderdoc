@@ -68,7 +68,7 @@ struct QuadGL
 };
 
 template <>
-std::string DoStringise(const CGLError &el)
+rdcstr DoStringise(const CGLError &el)
 {
   BEGIN_ENUM_STRINGISE(CGLError);
   {
@@ -198,7 +198,7 @@ class CGLPlatform : public GLPlatform
 
       return ret;
     }
-    else if(window.system == WindowingSystem::Unknown)
+    else if(window.system == WindowingSystem::Unknown || window.system == WindowingSystem::Headless)
     {
       ret.nsctx = NSGL_createContext(NULL, share_context.nsctx);
 

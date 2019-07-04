@@ -294,13 +294,20 @@ public:
       const char *pStrData = (const char *)pData;
       if(DataSize != 0 && pStrData[DataSize - 1] != '\0')
       {
-        string sName(pStrData, DataSize);
+        std::string sName(pStrData, DataSize);
         m_pDevice->SetResourceName(this, sName.c_str());
       }
       else
       {
         m_pDevice->SetResourceName(this, pStrData);
       }
+    }
+    else if(guid == WKPDID_D3DDebugObjectNameW)
+    {
+      const wchar_t *pStrData = (const wchar_t *)pData;
+      std::wstring wName(pStrData, DataSize / 2);
+      std::string sName = StringFormat::Wide2UTF8(wName);
+      m_pDevice->SetResourceName(this, sName.c_str());
     }
 
     return m_pReal->SetPrivateData(guid, DataSize, pData);
@@ -432,7 +439,7 @@ public:
     uint32_t length;
   };
 
-  static map<ResourceId, BufferEntry> m_BufferList;
+  static std::map<ResourceId, BufferEntry> m_BufferList;
 
   static const int AllocPoolCount = 128 * 1024;
   static const int AllocPoolMaxByteSize = 13 * 1024 * 1024;
@@ -478,7 +485,7 @@ public:
     TextureDisplayType m_Type;
   };
 
-  static map<ResourceId, TextureEntry> m_TextureList;
+  static std::map<ResourceId, TextureEntry> m_TextureList;
 
   WrappedTexture(NestedType *real, WrappedID3D11Device *device, TextureDisplayType type)
       : WrappedResource11(real, device)
@@ -938,9 +945,9 @@ public:
     ResourceId m_ID;
 
     std::string m_DebugInfoPath;
-    vector<std::string> *m_DebugInfoSearchPaths;
+    std::vector<std::string> *m_DebugInfoSearchPaths;
 
-    vector<byte> m_Bytecode;
+    std::vector<byte> m_Bytecode;
 
     bool m_Built = false;
     DXBC::DXBCFile *m_DXBCFile;
@@ -948,7 +955,7 @@ public:
     ShaderBindpointMapping m_Mapping;
   };
 
-  static map<ResourceId, ShaderEntry *> m_ShaderList;
+  static std::map<ResourceId, ShaderEntry *> m_ShaderList;
   static Threading::CriticalSection m_ShaderListLock;
 
   WrappedShader(WrappedID3D11Device *device, ResourceId origId, ResourceId liveId, const byte *code,
@@ -1265,8 +1272,8 @@ class WrappedID3D11CommandList : public WrappedDeviceChild11<ID3D11CommandList>
   bool m_Successful;    // indicates whether we have all of the commands serialised for this command
                         // list
 
-  set<ResourceId> m_Dirty;
-  set<ResourceId> m_References;
+  std::set<ResourceId> m_Dirty;
+  std::set<ResourceId> m_References;
 
 public:
   ALLOCATE_WITH_WRAPPED_POOL(WrappedID3D11CommandList);
@@ -1294,14 +1301,14 @@ public:
 
   WrappedID3D11DeviceContext *GetContext() { return m_pContext; }
   bool IsCaptured() { return m_Successful; }
-  void SwapReferences(set<ResourceId> &refs) { m_References.swap(refs); }
-  void SwapDirtyResources(set<ResourceId> &dirty) { m_Dirty.swap(dirty); }
+  void SwapReferences(std::set<ResourceId> &refs) { m_References.swap(refs); }
+  void SwapDirtyResources(std::set<ResourceId> &dirty) { m_Dirty.swap(dirty); }
   void MarkDirtyResources(D3D11ResourceManager *manager)
   {
     for(auto it = m_Dirty.begin(); it != m_Dirty.end(); ++it)
       manager->MarkDirtyResource(*it);
   }
-  void MarkDirtyResources(set<ResourceId> &missingTracks)
+  void MarkDirtyResources(std::set<ResourceId> &missingTracks)
   {
     for(auto it = m_Dirty.begin(); it != m_Dirty.end(); ++it)
       missingTracks.insert(*it);

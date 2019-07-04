@@ -571,8 +571,6 @@ StencilOperation MakeStencilOp(GLenum op);
 LogicOperation MakeLogicOp(GLenum op);
 BlendMultiplier MakeBlendMultiplier(GLenum blend);
 BlendOperation MakeBlendOp(GLenum op);
-const char *BlendString(GLenum blendenum);
-const char *SamplerString(GLenum smpenum);
 
 void ClearGLErrors();
 
@@ -732,6 +730,7 @@ extern bool IsGLES;
   EXT_TO_CHECK(46, 99, ARB_polygon_offset_clamp)                 \
   EXT_TO_CHECK(46, 99, ARB_texture_filter_anisotropic)           \
   EXT_TO_CHECK(46, 99, ARB_pipeline_statistics_query)            \
+  EXT_TO_CHECK(46, 99, ARB_gl_spirv)                             \
   EXT_TO_CHECK(99, 99, ARB_indirect_parameters)                  \
   EXT_TO_CHECK(99, 99, ARB_seamless_cubemap_per_texture)         \
   EXT_TO_CHECK(99, 99, EXT_depth_bounds_test)                    \
@@ -821,6 +820,7 @@ enum VendorCheckEnum
   VendorCheck_NV_ClearNamedFramebufferfiBugs,
   VendorCheck_AMD_copy_compressed_cubemaps,
   VendorCheck_AMD_vertex_array_elem_buffer_query,
+  VendorCheck_Qualcomm_avoid_glCopyImageSubData,
   VendorCheck_Count,
 };
 extern bool VendorCheck[VendorCheck_Count];
@@ -839,14 +839,23 @@ bool ValidateFunctionPointers();
 
 struct ShaderReflection;
 
-void CopyProgramUniforms(GLuint progSrc, GLuint progDst);
+struct PerStageReflections
+{
+  const ShaderReflection *refls[6] = {};
+  const ShaderBindpointMapping *mappings[6] = {};
+};
+
+void CopyProgramUniforms(const PerStageReflections &srcStages, GLuint progSrc,
+                         const PerStageReflections &dstStages, GLuint progDst);
 template <typename SerialiserType>
-void SerialiseProgramUniforms(SerialiserType &ser, CaptureState state, GLuint prog,
-                              map<GLint, GLint> *locTranslate);
-void CopyProgramAttribBindings(GLuint progsrc, GLuint progdst, ShaderReflection *refl);
-void CopyProgramFragDataBindings(GLuint progsrc, GLuint progdst, ShaderReflection *refl);
+void SerialiseProgramUniforms(SerialiserType &ser, CaptureState state,
+                              const PerStageReflections &stages, GLuint prog,
+                              std::map<GLint, GLint> *locTranslate);
+bool CopyProgramAttribBindings(GLuint progsrc, GLuint progdst, ShaderReflection *refl);
+bool CopyProgramFragDataBindings(GLuint progsrc, GLuint progdst, ShaderReflection *refl);
 template <typename SerialiserType>
-void SerialiseProgramBindings(SerialiserType &ser, CaptureState state, GLuint prog);
+bool SerialiseProgramBindings(SerialiserType &ser, CaptureState state,
+                              const PerStageReflections &stages, GLuint prog);
 
 struct DrawElementsIndirectCommand
 {
@@ -2152,6 +2161,7 @@ enum class GLChunk : uint32_t
   glGetPerfQueryInfoINTEL,
 
   glBlendEquationARB,
+  glPrimitiveBoundingBoxARB,
 
   Max,
 };

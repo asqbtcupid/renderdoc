@@ -47,7 +47,7 @@ enum GLbarrierbitfield
 DECLARE_REFLECTION_ENUM(GLbarrierbitfield);
 
 template <>
-std::string DoStringise(const GLbarrierbitfield &el)
+rdcstr DoStringise(const GLbarrierbitfield &el)
 {
   RDCCOMPILE_ASSERT(sizeof(GLbarrierbitfield) == sizeof(GLbitfield) &&
                         sizeof(GLbarrierbitfield) == sizeof(uint32_t),
@@ -75,7 +75,7 @@ std::string DoStringise(const GLbarrierbitfield &el)
 }
 
 template <>
-std::string DoStringise(const GLframebufferbitfield &el)
+rdcstr DoStringise(const GLframebufferbitfield &el)
 {
   RDCCOMPILE_ASSERT(sizeof(GLframebufferbitfield) == sizeof(GLbitfield) &&
                         sizeof(GLframebufferbitfield) == sizeof(uint32_t),
@@ -140,6 +140,8 @@ bool WrappedOpenGL::Check_SafeDraw(bool indexed)
   {
     ResourceId id = GetResourceManager()->GetID(ProgramPipeRes(GetCtx(), pipe));
     const PipelineData &pipeDetails = m_Pipelines[id];
+
+    GL.glGetProgramPipelineiv(pipe, eGL_VERTEX_SHADER, (GLint *)&prog);
 
     vs = pipeDetails.stageShaders[0];
   }
@@ -2101,7 +2103,7 @@ bool WrappedOpenGL::Serialise_glMultiDrawArrays(SerialiserType &ser, GLenum mode
     }
     else if(IsActiveReplaying(m_State))
     {
-      size_t i = 0;
+      size_t i = m_CurEventID;
       for(; i < m_Events.size(); i++)
       {
         if(m_Events[i].eventId >= m_CurEventID)
@@ -2263,7 +2265,7 @@ bool WrappedOpenGL::Serialise_glMultiDrawElements(SerialiserType &ser, GLenum mo
     }
     else if(IsActiveReplaying(m_State))
     {
-      size_t i = 0;
+      size_t i = m_CurEventID;
       for(; i < m_Events.size(); i++)
       {
         if(m_Events[i].eventId >= m_CurEventID)
@@ -2430,7 +2432,7 @@ bool WrappedOpenGL::Serialise_glMultiDrawElementsBaseVertex(SerialiserType &ser,
     }
     else if(IsActiveReplaying(m_State))
     {
-      size_t i = 0;
+      size_t i = m_CurEventID;
       for(; i < m_Events.size(); i++)
       {
         if(m_Events[i].eventId >= m_CurEventID)
@@ -2600,9 +2602,9 @@ bool WrappedOpenGL::Serialise_glMultiDrawArraysIndirect(SerialiserType &ser, GLe
         {
           StructuredSerialiser structuriser(fakeChunk, ser.GetChunkLookup());
 
-          structuriser.Serialise<uint32_t>("drawIndex", i);
-          structuriser.Serialise<uint64_t>("offset", offs);
-          structuriser.Serialise("command", params);
+          structuriser.Serialise<uint32_t>("drawIndex"_lit, i);
+          structuriser.Serialise<uint64_t>("offset"_lit, offs);
+          structuriser.Serialise("command"_lit, params);
         }
 
         m_StructuredFile->chunks.push_back(fakeChunk);
@@ -2615,7 +2617,7 @@ bool WrappedOpenGL::Serialise_glMultiDrawArraysIndirect(SerialiserType &ser, GLe
     }
     else if(IsActiveReplaying(m_State))
     {
-      size_t i = 0;
+      size_t i = m_CurEventID;
       for(; i < m_Events.size(); i++)
       {
         if(m_Events[i].eventId >= m_CurEventID)
@@ -2823,9 +2825,9 @@ bool WrappedOpenGL::Serialise_glMultiDrawElementsIndirect(SerialiserType &ser, G
         {
           StructuredSerialiser structuriser(fakeChunk, ser.GetChunkLookup());
 
-          structuriser.Serialise<uint32_t>("drawIndex", i);
-          structuriser.Serialise<uint64_t>("offset", offs);
-          structuriser.Serialise("command", params);
+          structuriser.Serialise<uint32_t>("drawIndex"_lit, i);
+          structuriser.Serialise<uint64_t>("offset"_lit, offs);
+          structuriser.Serialise("command"_lit, params);
         }
 
         m_StructuredFile->chunks.push_back(fakeChunk);
@@ -2838,7 +2840,7 @@ bool WrappedOpenGL::Serialise_glMultiDrawElementsIndirect(SerialiserType &ser, G
     }
     else if(IsActiveReplaying(m_State))
     {
-      size_t i = 0;
+      size_t i = m_CurEventID;
       for(; i < m_Events.size(); i++)
       {
         if(m_Events[i].eventId >= m_CurEventID)
@@ -3046,9 +3048,9 @@ bool WrappedOpenGL::Serialise_glMultiDrawArraysIndirectCount(SerialiserType &ser
         {
           StructuredSerialiser structuriser(fakeChunk, ser.GetChunkLookup());
 
-          structuriser.Serialise<uint32_t>("drawIndex", i);
-          structuriser.Serialise<uint64_t>("offset", offs);
-          structuriser.Serialise("command", params);
+          structuriser.Serialise<uint32_t>("drawIndex"_lit, i);
+          structuriser.Serialise<uint64_t>("offset"_lit, offs);
+          structuriser.Serialise("command"_lit, params);
         }
 
         m_StructuredFile->chunks.push_back(fakeChunk);
@@ -3061,7 +3063,7 @@ bool WrappedOpenGL::Serialise_glMultiDrawArraysIndirectCount(SerialiserType &ser
     }
     else if(IsActiveReplaying(m_State))
     {
-      size_t i = 0;
+      size_t i = m_CurEventID;
       for(; i < m_Events.size(); i++)
       {
         if(m_Events[i].eventId >= m_CurEventID)
@@ -3278,9 +3280,9 @@ bool WrappedOpenGL::Serialise_glMultiDrawElementsIndirectCount(SerialiserType &s
         {
           StructuredSerialiser structuriser(fakeChunk, ser.GetChunkLookup());
 
-          structuriser.Serialise<uint32_t>("drawIndex", i);
-          structuriser.Serialise<uint64_t>("offset", offs);
-          structuriser.Serialise("command", params);
+          structuriser.Serialise<uint32_t>("drawIndex"_lit, i);
+          structuriser.Serialise<uint64_t>("offset"_lit, offs);
+          structuriser.Serialise("command"_lit, params);
         }
 
         m_StructuredFile->chunks.push_back(fakeChunk);
@@ -3293,7 +3295,7 @@ bool WrappedOpenGL::Serialise_glMultiDrawElementsIndirectCount(SerialiserType &s
     }
     else if(IsActiveReplaying(m_State))
     {
-      size_t i = 0;
+      size_t i = m_CurEventID;
       for(; i < m_Events.size(); i++)
       {
         if(m_Events[i].eventId >= m_CurEventID)
@@ -4425,7 +4427,7 @@ void WrappedOpenGL::glClearTexImage(GLuint texture, GLint level, GLenum format, 
     Serialise_glClearTexImage(ser, texture, level, format, type, data);
 
     GetContextRecord()->AddChunk(scope.Get());
-    m_MissingTracks.insert(GetResourceManager()->GetID(TextureRes(GetCtx(), texture)));
+    GetResourceManager()->MarkDirtyResource(TextureRes(GetCtx(), texture));
   }
   else if(IsBackgroundCapturing(m_State))
   {
@@ -4542,7 +4544,7 @@ void WrappedOpenGL::glClearTexSubImage(GLuint texture, GLint level, GLint xoffse
                                  depth, format, type, data);
 
     GetContextRecord()->AddChunk(scope.Get());
-    m_MissingTracks.insert(GetResourceManager()->GetID(TextureRes(GetCtx(), texture)));
+    GetResourceManager()->MarkDirtyResource(TextureRes(GetCtx(), texture));
   }
   else if(IsBackgroundCapturing(m_State))
   {

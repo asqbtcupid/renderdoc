@@ -38,12 +38,6 @@
 #include "maths/vec.h"
 #include "os/os_specific.h"
 
-using std::string;
-using std::vector;
-using std::map;
-using std::pair;
-using std::set;
-
 class Chunk;
 struct RDCThumb;
 
@@ -222,11 +216,11 @@ ITERABLE_OPERATORS(VendorExtensions);
 
 struct CaptureData
 {
-  CaptureData(string p, uint64_t t, RDCDriver d, uint32_t f)
+  CaptureData(std::string p, uint64_t t, RDCDriver d, uint32_t f)
       : path(p), timestamp(t), driver(d), frameNumber(f), retrieved(false)
   {
   }
-  string path;
+  std::string path;
   uint64_t timestamp;
   RDCDriver driver;
   uint32_t frameNumber;
@@ -415,8 +409,8 @@ public:
   void RegisterShutdownFunction(ShutdownFunction func) { m_ShutdownFunctions.insert(func); }
   void SetReplayApp(bool replay) { m_Replay = replay; }
   bool IsReplayApp() const { return m_Replay; }
-  const string &GetConfigSetting(string name) { return m_ConfigSettings[name]; }
-  void SetConfigSetting(string name, string value) { m_ConfigSettings[name] = value; }
+  const std::string &GetConfigSetting(std::string name) { return m_ConfigSettings[name]; }
+  void SetConfigSetting(std::string name, std::string value) { m_ConfigSettings[name] = value; }
   void BecomeRemoteServer(const char *listenhost, uint16_t port, RENDERDOC_KillCallback killReplay,
                           RENDERDOC_PreviewWindowCallback previewWindow);
 
@@ -440,15 +434,15 @@ public:
   void AddChildProcess(uint32_t pid, uint32_t ident)
   {
     SCOPED_LOCK(m_ChildLock);
-    m_Children.push_back(std::make_pair(pid, ident));
+    m_Children.push_back(make_rdcpair(pid, ident));
   }
-  vector<pair<uint32_t, uint32_t> > GetChildProcesses()
+  std::vector<rdcpair<uint32_t, uint32_t> > GetChildProcesses()
   {
     SCOPED_LOCK(m_ChildLock);
     return m_Children;
   }
 
-  vector<CaptureData> GetCaptures()
+  std::vector<CaptureData> GetCaptures()
   {
     SCOPED_LOCK(m_CaptureLock);
     return m_Captures;
@@ -508,8 +502,8 @@ public:
 
   bool HasReplaySupport(RDCDriver driverType);
 
-  map<RDCDriver, string> GetReplayDrivers();
-  map<RDCDriver, string> GetRemoteDrivers();
+  std::map<RDCDriver, std::string> GetReplayDrivers();
+  std::map<RDCDriver, std::string> GetRemoteDrivers();
 
   bool HasReplayDriver(RDCDriver driver) const;
   bool HasRemoteDriver(RDCDriver driver) const;
@@ -519,7 +513,7 @@ public:
 
   uint32_t GetTargetControlIdent() const { return m_RemoteIdent; }
   bool IsTargetControlConnected();
-  string GetTargetControlUsername();
+  std::string GetTargetControlUsername();
 
   void Tick();
 
@@ -567,8 +561,8 @@ public:
       m_CaptureKeys[i] = keys[i];
   }
 
-  const vector<RENDERDOC_InputButton> &GetFocusKeys() { return m_FocusKeys; }
-  const vector<RENDERDOC_InputButton> &GetCaptureKeys() { return m_CaptureKeys; }
+  const std::vector<RENDERDOC_InputButton> &GetFocusKeys() { return m_FocusKeys; }
+  const std::vector<RENDERDOC_InputButton> &GetCaptureKeys() { return m_CaptureKeys; }
   bool ShouldTriggerCapture(uint32_t frameNumber);
 
   enum
@@ -577,7 +571,7 @@ public:
     eOverlay_CaptureDisabled = 0x2,
   };
 
-  string GetOverlayText(RDCDriver driver, uint32_t frameNumber, int flags);
+  std::string GetOverlayText(RDCDriver driver, uint32_t frameNumber, int flags);
 
   void CycleActiveWindow();
   uint32_t GetCapturableWindowCount() { return (uint32_t)m_WindowFrameCapturers.size(); }
@@ -591,22 +585,22 @@ private:
 
   uint32_t m_Cap;
 
-  vector<RENDERDOC_InputButton> m_FocusKeys;
-  vector<RENDERDOC_InputButton> m_CaptureKeys;
+  std::vector<RENDERDOC_InputButton> m_FocusKeys;
+  std::vector<RENDERDOC_InputButton> m_CaptureKeys;
 
   GlobalEnvironment m_GlobalEnv;
 
   FrameTimer m_FrameTimer;
 
-  string m_LoggingFilename;
+  std::string m_LoggingFilename;
 
-  string m_Target;
-  string m_CaptureFileTemplate;
-  string m_CurrentLogFile;
+  std::string m_Target;
+  std::string m_CaptureFileTemplate;
+  std::string m_CurrentLogFile;
   CaptureOptions m_Options;
   uint32_t m_Overlay;
 
-  set<uint32_t> m_QueuedFrameCaptures;
+  std::set<uint32_t> m_QueuedFrameCaptures;
 
   uint32_t m_RemoteIdent;
   Threading::ThreadHandle m_RemoteThread;
@@ -615,18 +609,18 @@ private:
   Threading::CriticalSection m_DriverLock;
   std::map<RDCDriver, uint64_t> m_ActiveDrivers;
 
-  std::map<std::string, RENDERDOC_ProgressCallback> m_ProgressCallbacks;
+  std::map<rdcstr, RENDERDOC_ProgressCallback> m_ProgressCallbacks;
 
   Threading::CriticalSection m_CaptureLock;
-  vector<CaptureData> m_Captures;
+  std::vector<CaptureData> m_Captures;
 
   Threading::CriticalSection m_ChildLock;
-  vector<pair<uint32_t, uint32_t> > m_Children;
+  std::vector<rdcpair<uint32_t, uint32_t> > m_Children;
 
-  map<string, string> m_ConfigSettings;
+  std::map<std::string, std::string> m_ConfigSettings;
 
-  map<RDCDriver, ReplayDriverProvider> m_ReplayDriverProviders;
-  map<RDCDriver, RemoteDriverProvider> m_RemoteDriverProviders;
+  std::map<RDCDriver, ReplayDriverProvider> m_ReplayDriverProviders;
+  std::map<RDCDriver, RemoteDriverProvider> m_RemoteDriverProviders;
 
   std::map<RDCDriver, StructuredProcessor> m_StructProcesssors;
 
@@ -637,7 +631,7 @@ private:
   VulkanLayerCheck m_VulkanCheck;
   VulkanLayerInstall m_VulkanInstall;
 
-  set<ShutdownFunction> m_ShutdownFunctions;
+  std::set<ShutdownFunction> m_ShutdownFunctions;
 
   struct FrameCap
   {
@@ -679,9 +673,9 @@ private:
 
   int m_CapturesActive;
 
-  map<DeviceWnd, FrameCap> m_WindowFrameCapturers;
+  std::map<DeviceWnd, FrameCap> m_WindowFrameCapturers;
   DeviceWnd m_ActiveWindow;
-  map<void *, IFrameCapturer *> m_DeviceFrameCapturers;
+  std::map<void *, IFrameCapturer *> m_DeviceFrameCapturers;
 
   IFrameCapturer *MatchFrameCapturer(void *dev, void *wnd);
 
@@ -690,7 +684,7 @@ private:
   volatile bool m_TargetControlThreadShutdown;
   volatile bool m_ControlClientThreadShutdown;
   Threading::CriticalSection m_SingleClientLock;
-  string m_SingleClientName;
+  std::string m_SingleClientName;
 
   PerformanceTimer m_Timer;
 

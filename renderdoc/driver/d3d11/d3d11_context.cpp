@@ -147,6 +147,7 @@ WrappedID3D11DeviceContext::WrappedID3D11DeviceContext(WrappedID3D11Device *real
   if(!RenderDoc::Inst().IsReplayApp())
   {
     m_ContextRecord = m_pDevice->GetResourceManager()->AddResourceRecord(m_ResourceID);
+    m_ContextRecord->ResType = Resource_DeviceContext;
     m_ContextRecord->DataInSerialiser = false;
     m_ContextRecord->InternalResource = true;
     m_ContextRecord->Length = 0;
@@ -537,7 +538,7 @@ void WrappedID3D11DeviceContext::EndCaptureFrame()
   ser.SetDrawChunk();
   SCOPED_SERIALISE_CHUNK(SystemChunk::CaptureEnd);
 
-  SERIALISE_ELEMENT(m_ResourceID).Named("Context").TypedAs("ID3D11DeviceContext *");
+  SERIALISE_ELEMENT(m_ResourceID).Named("Context"_lit).TypedAs("ID3D11DeviceContext *"_lit);
 
   m_ContextRecord->AddChunk(scope.Get());
 }
@@ -546,7 +547,7 @@ void WrappedID3D11DeviceContext::Present(UINT SyncInterval, UINT Flags)
 {
   WriteSerialiser &ser = m_ScratchSerialiser;
   SCOPED_SERIALISE_CHUNK(D3D11Chunk::SwapchainPresent);
-  SERIALISE_ELEMENT(m_ResourceID).Named("Context").TypedAs("ID3D11DeviceContext *");
+  SERIALISE_ELEMENT(m_ResourceID).Named("Context"_lit).TypedAs("ID3D11DeviceContext *"_lit);
   SERIALISE_ELEMENT(SyncInterval);
   SERIALISE_ELEMENT(Flags);
 
@@ -620,14 +621,6 @@ void WrappedID3D11DeviceContext::CleanupCapture()
   m_ContextRecord->UnlockChunks();
 
   m_ContextRecord->FreeParents(m_pDevice->GetResourceManager());
-
-  for(auto it = m_MissingTracks.begin(); it != m_MissingTracks.end(); ++it)
-  {
-    if(m_pDevice->GetResourceManager()->HasResourceRecord(*it))
-      MarkDirtyResource(*it);
-  }
-
-  m_MissingTracks.clear();
 }
 
 void WrappedID3D11DeviceContext::BeginFrame()
@@ -641,9 +634,6 @@ void WrappedID3D11DeviceContext::BeginFrame()
 void WrappedID3D11DeviceContext::EndFrame()
 {
   DrainAnnotationQueue();
-
-  if(IsBackgroundCapturing(m_State))
-    m_pDevice->GetResourceManager()->FlushPendingDirty();
 }
 
 bool WrappedID3D11DeviceContext::IsFL11_1()
@@ -653,7 +643,7 @@ bool WrappedID3D11DeviceContext::IsFL11_1()
 
 bool WrappedID3D11DeviceContext::ProcessChunk(ReadSerialiser &ser, D3D11Chunk chunk)
 {
-  SERIALISE_ELEMENT(m_CurContextId).Named("Context").TypedAs("ID3D11DeviceContext *");
+  SERIALISE_ELEMENT(m_CurContextId).Named("Context"_lit).TypedAs("ID3D11DeviceContext *"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -1101,18 +1091,22 @@ void WrappedID3D11DeviceContext::AddEvent()
   m_CurEvents.push_back(apievent);
 
   if(IsLoading(m_State))
-    m_Events.push_back(apievent);
+  {
+    m_Events.resize(apievent.eventId + 1);
+    m_Events[apievent.eventId] = apievent;
+  }
 }
 
-const APIEvent &WrappedID3D11DeviceContext::GetEvent(uint32_t eventId)
+const APIEvent &WrappedID3D11DeviceContext::GetEvent(uint32_t eventId) const
 {
-  for(const APIEvent &e : m_Events)
-  {
-    if(e.eventId >= eventId)
-      return e;
-  }
+  // start at where the requested eventId would be
+  size_t idx = eventId;
 
-  return m_Events.back();
+  // find the next valid event (some may be skipped)
+  while(idx < m_Events.size() - 1 && m_Events[idx].eventId == 0)
+    idx++;
+
+  return m_Events[RDCMIN(idx, m_Events.size() - 1)];
 }
 
 void WrappedID3D11DeviceContext::ReplayFakeContext(ResourceId id)
@@ -1257,7 +1251,7 @@ ReplayStatus WrappedID3D11DeviceContext::ReplayLog(CaptureState readType, uint32
     // we don't have duplicate uses
     for(auto it = m_ResourceUses.begin(); it != m_ResourceUses.end(); ++it)
     {
-      vector<EventUsage> &v = it->second;
+      std::vector<EventUsage> &v = it->second;
       std::sort(v.begin(), v.end());
       v.erase(std::unique(v.begin(), v.end()), v.end());
 

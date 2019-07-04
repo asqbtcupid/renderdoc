@@ -70,6 +70,7 @@ static uint32_t byteSize(const ResourceFormat &fmt)
       case ResourceFormatType::YUV12:
       case ResourceFormatType::YUV16:
       case ResourceFormatType::PVRTC: return ~0U;
+      case ResourceFormatType::A8: return 1;
       case ResourceFormatType::R10G10B10A2:
       case ResourceFormatType::R11G11B10: return 4;
     }
@@ -1076,7 +1077,7 @@ IShaderViewer *PipelineStateViewer::EditShader(ResourceId id, ShaderStage shader
       ResourceId from = id;
       ResourceId to;
 
-      std::tie(to, errs) =
+      rdctie(to, errs) =
           r->BuildTargetShader(entryFunc.c_str(), shaderEncoding, shaderBytes, flags, shaderType);
 
       GUIInvoke::call(viewer->Widget(), [viewer, errs]() { viewer->ShowErrors(errs); });
@@ -1146,7 +1147,7 @@ IShaderViewer *PipelineStateViewer::EditDecompiledSource(const ShaderProcessingT
   source.assign((const char *)out.result.data(), out.result.size());
 
   rdcstrpairs files;
-  files.push_back(make_rdcpair<rdcstr, rdcstr>("decompiled", source));
+  files.push_back(rdcpair<rdcstr, rdcstr>("decompiled", source));
 
   IShaderViewer *sv = EditShader(id, shaderDetails->stage, shaderDetails->entryPoint,
                                  shaderDetails->debugInfo.compileFlags, tool.output, files);
@@ -1233,7 +1234,7 @@ void PipelineStateViewer::SetupShaderEditButton(QToolButton *button, ResourceId 
 
           GUIInvoke::call(this, [this, shaderId, shaderDetails, editeddisasm]() {
             rdcstrpairs files;
-            files.push_back(make_rdcpair<rdcstr, rdcstr>("pseudocode", editeddisasm));
+            files.push_back(rdcpair<rdcstr, rdcstr>("pseudocode", editeddisasm));
 
             EditShader(shaderId, shaderDetails->stage, shaderDetails->entryPoint,
                        ShaderCompileFlags(), ShaderEncoding::Unknown, files);
@@ -1245,8 +1246,8 @@ void PipelineStateViewer::SetupShaderEditButton(QToolButton *button, ResourceId 
         entry = lit("EditedShader%1S").arg(ToQStr(shaderDetails->stage, GraphicsAPI::D3D11)[0]);
 
         rdcstrpairs files;
-        files.push_back(make_rdcpair<rdcstr, rdcstr>("decompiled_stub.hlsl",
-                                                     GenerateHLSLStub(shaderDetails, entry)));
+        files.push_back(rdcpair<rdcstr, rdcstr>("decompiled_stub.hlsl",
+                                                GenerateHLSLStub(shaderDetails, entry)));
 
         EditShader(shaderId, shaderDetails->stage, entry, ShaderCompileFlags(),
                    ShaderEncoding::HLSL, files);
@@ -1335,7 +1336,7 @@ QString PipelineStateViewer::GetVBufferFormatString(uint32_t slot)
 
     const ResourceFormat &fmt = attrs[i].format;
 
-    offset += byteSize(fmt);
+    offset = attrs[i].byteOffset + byteSize(fmt);
 
     if(fmt.Special())
     {

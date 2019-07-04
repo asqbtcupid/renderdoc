@@ -39,11 +39,8 @@
 
 #define VERBOSE_DEBUG_HOOK OPTION_OFF
 
-using std::vector;
-using std::map;
-
 // map from address of IAT entry, to original contents
-map<void **, void *> s_InstalledHooks;
+std::map<void **, void *> s_InstalledHooks;
 Threading::CriticalSection installedLock;
 
 bool ApplyHook(FunctionHook &hook, void **IATentry, bool &already)
@@ -93,10 +90,10 @@ struct DllHookset
   bool hooksfetched = false;
   // if we have multiple copies of the dll loaded (unlikely), the other module handles will be
   // stored here
-  vector<HMODULE> altmodules;
-  vector<FunctionHook> FunctionHooks;
+  std::vector<HMODULE> altmodules;
+  std::vector<FunctionHook> FunctionHooks;
   DWORD OrdinalBase = 0;
-  vector<string> OrdinalNames;
+  std::vector<std::string> OrdinalNames;
   std::vector<FunctionLoadCallback> Callbacks;
   Threading::CriticalSection ordinallock;
 
@@ -160,7 +157,7 @@ struct CachedHookData
     RDCEraseEl(lowername);
   }
 
-  map<string, DllHookset> DllHooks;
+  std::map<std::string, DllHookset> DllHooks;
   HMODULE ownmodule;
   Threading::CriticalSection lock;
   char lowername[512];
@@ -245,7 +242,7 @@ struct CachedHookData
           DWORD err = GetLastError();
           char *slash = strrchr(filename, L'\\');
 
-          string basename = slash ? strlower(string(slash + 1)) : "";
+          std::string basename = slash ? strlower(std::string(slash + 1)) : "";
 
           if(err == 0 && basename == it->first)
           {
@@ -831,12 +828,12 @@ void LibraryHooks::RegisterFunctionHook(const char *libraryName, const FunctionH
       return;
     }
   }
-  s_HookData->DllHooks[strlower(string(libraryName))].FunctionHooks.push_back(hook);
+  s_HookData->DllHooks[strlower(std::string(libraryName))].FunctionHooks.push_back(hook);
 }
 
 void LibraryHooks::RegisterLibraryHook(const char *libraryName, FunctionLoadCallback loadedCallback)
 {
-  s_HookData->DllHooks[strlower(string(libraryName))].Callbacks.push_back(loadedCallback);
+  s_HookData->DllHooks[strlower(std::string(libraryName))].Callbacks.push_back(loadedCallback);
 }
 
 void LibraryHooks::IgnoreLibrary(const char *libraryName)

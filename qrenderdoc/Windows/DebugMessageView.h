@@ -67,7 +67,6 @@ private:
   Ui::DebugMessageView *ui;
   ICaptureContext &m_Ctx;
 
-  QVector<DebugMessage> m_Messages;
   DebugMessageItemModel *m_ItemModel;
   DebugMessageFilterModel *m_FilterModel;
 

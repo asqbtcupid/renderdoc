@@ -167,11 +167,11 @@ public:
     return ReplayStatus::Succeeded;
   }
   AMDRGPControl *GetRGPControl() { return NULL; }
-  vector<WindowingSystem> GetSupportedWindowSystems()
+  std::vector<WindowingSystem> GetSupportedWindowSystems()
   {
     if(m_Proxy)
       return m_Proxy->GetSupportedWindowSystems();
-    return vector<WindowingSystem>();
+    return std::vector<WindowingSystem>();
   }
   uint64_t MakeOutputWindow(WindowingData window, bool depth)
   {
@@ -194,6 +194,16 @@ public:
   {
     if(m_Proxy)
       return m_Proxy->GetOutputWindowDimensions(id, w, h);
+  }
+  void SetOutputWindowDimensions(uint64_t id, int32_t w, int32_t h)
+  {
+    if(m_Proxy)
+      m_Proxy->SetOutputWindowDimensions(id, w, h);
+  }
+  void GetOutputWindowData(uint64_t id, bytebuf &retData)
+  {
+    if(m_Proxy)
+      m_Proxy->GetOutputWindowData(id, retData);
   }
   void ClearOutputWindowColor(uint64_t id, FloatVector col)
   {
@@ -251,7 +261,7 @@ public:
 
   bool GetHistogram(ResourceId texid, uint32_t sliceFace, uint32_t mip, uint32_t sample,
                     CompType typeHint, float minval, float maxval, bool channels[4],
-                    vector<uint32_t> &histogram)
+                    std::vector<uint32_t> &histogram)
   {
     if(m_Proxy)
     {
@@ -315,7 +325,8 @@ public:
     }
   }
 
-  void RenderMesh(uint32_t eventId, const vector<MeshFormat> &secondaryDraws, const MeshDisplay &cfg)
+  void RenderMesh(uint32_t eventId, const std::vector<MeshFormat> &secondaryDraws,
+                  const MeshDisplay &cfg)
   {
     if(m_Proxy && cfg.position.vertexResourceId != ResourceId())
     {
@@ -339,7 +350,7 @@ public:
         proxiedCfg.position.indexResourceId = m_ProxyBufferIds[proxiedCfg.position.indexResourceId];
       }
 
-      vector<MeshFormat> secDraws = secondaryDraws;
+      std::vector<MeshFormat> secDraws = secondaryDraws;
 
       for(size_t i = 0; i < secDraws.size(); i++)
       {
@@ -390,12 +401,13 @@ public:
     return ~0U;
   }
 
-  void BuildCustomShader(string source, string entry, const ShaderCompileFlags &compileFlags,
-                         ShaderStage type, ResourceId *id, string *errors)
+  void BuildCustomShader(ShaderEncoding sourceEncoding, bytebuf source, const std::string &entry,
+                         const ShaderCompileFlags &compileFlags, ShaderStage type, ResourceId *id,
+                         std::string *errors)
   {
     if(m_Proxy)
     {
-      m_Proxy->BuildCustomShader(source, entry, compileFlags, type, id, errors);
+      m_Proxy->BuildCustomShader(sourceEncoding, source, entry, compileFlags, type, id, errors);
     }
     else
     {
@@ -404,6 +416,14 @@ public:
       if(errors)
         *errors = "Unsupported BuildShader call on proxy without local renderer";
     }
+  }
+
+  rdcarray<ShaderEncoding> GetCustomShaderEncodings()
+  {
+    if(m_Proxy)
+      return m_Proxy->GetCustomShaderEncodings();
+
+    return {};
   }
 
   void FreeCustomShader(ResourceId id)
@@ -511,7 +531,7 @@ public:
 
   IMPLEMENT_FUNCTION_PROXIED(rdcarray<ShaderEncoding>, GetTargetShaderEncodings);
   IMPLEMENT_FUNCTION_PROXIED(void, BuildTargetShader, ShaderEncoding sourceEncoding, bytebuf source,
-                             std::string entry, const ShaderCompileFlags &compileFlags,
+                             const std::string &entry, const ShaderCompileFlags &compileFlags,
                              ShaderStage type, ResourceId *id, std::string *errors);
   IMPLEMENT_FUNCTION_PROXIED(void, ReplaceResource, ResourceId from, ResourceId to);
   IMPLEMENT_FUNCTION_PROXIED(void, RemoveReplacement, ResourceId id);
@@ -583,8 +603,8 @@ private:
   // this cache only exists on the client side, with the proxy renderer. This denotes cases where we
   // already have up-to-date texture data for the current event so we don't need to check for any
   // deltas. It is cleared any time we set event.
-  set<TextureCacheEntry> m_TextureProxyCache;
-  set<ResourceId> m_BufferProxyCache;
+  std::set<TextureCacheEntry> m_TextureProxyCache;
+  std::set<ResourceId> m_BufferProxyCache;
 
   struct ProxyTextureProperties
   {
@@ -600,8 +620,8 @@ private:
   };
   // this cache only exists on the client side, with the proxy renderer. It contains the created
   // proxy textures to stand-in for remote real textures.
-  map<ResourceId, ProxyTextureProperties> m_ProxyTextures;
-  map<ResourceId, ResourceId> m_ProxyBufferIds;
+  std::map<ResourceId, ProxyTextureProperties> m_ProxyTextures;
+  std::map<ResourceId, ResourceId> m_ProxyBufferIds;
 
   // this cache exists on *both* sides of the proxy connection, and must be kept in sync. It is used
   // on the remote side to determine which deltas are necessary, and then each time on the client
@@ -613,7 +633,7 @@ private:
   // should not be treated as proxied.
   std::set<ResourceId> m_LocalTextures;
 
-  map<ResourceId, ResourceId> m_LiveIDs;
+  std::map<ResourceId, ResourceId> m_LiveIDs;
 
   struct ShaderReflKey
   {

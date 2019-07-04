@@ -1,7 +1,7 @@
 /******************************************************************************
  * The MIT License (MIT)
  *
- * Copyright (c) 2018 Baldur Karlsson
+ * Copyright (c) 2018-2019 Baldur Karlsson
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -39,6 +39,7 @@
 #endif
 
 #define BUFIDX 15
+#define INDEX3 4
 #define INDEX1 49
 #define INDEX2 381
 #define NONUNIFORMIDX 20
@@ -46,7 +47,7 @@
 #define STRINGISE2(a) #a
 #define STRINGISE(a) STRINGISE2(a)
 
-struct VK_Descriptor_Indexing : VulkanGraphicsTest
+TEST(VK_Descriptor_Indexing, VulkanGraphicsTest)
 {
   static constexpr const char *Description =
       "Draws a triangle using descriptor indexing with large descriptor sets.";
@@ -185,12 +186,20 @@ void dispatch_indirect_color(int dummy1,
   }
 }
 
+void add_parameterless()
+{
+  // use array directly without it being a function parameter
+  Color += 0.1f * texture(tex1[)EOSHADER" STRINGISE(INDEX3) R"EOSHADER(], vertIn.uv.xy);
+}
+
 void main()
 {
   if(vertIn.uv.y < 0.2f)
   {
     // nonuniform dynamic index
     Color = texture(tex1[nonuniformEXT(int(vertIn.col.w+0.5f))], vertIn.uv.xy);
+
+    add_parameterless();
   }
   else
   {
@@ -214,28 +223,55 @@ void main()
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  void Prepare(int argc, char **argv)
   {
     devExts.push_back(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
 
     // dependencies of VK_EXT_descriptor_indexing
     devExts.push_back(VK_KHR_MAINTENANCE3_EXTENSION_NAME);
-    instExts.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
 
     features.fragmentStoresAndAtomics = VK_TRUE;
 
-    VkPhysicalDeviceDescriptorIndexingFeaturesEXT descIndexing = {
+    VulkanGraphicsTest::Prepare(argc, argv);
+
+    if(!Avail.empty())
+      return;
+
+    VkPhysicalDeviceProperties props;
+    vkGetPhysicalDeviceProperties(phys, &props);
+
+    // lazy - we could reduce this limit to a couple by not using combined image samplers
+    if(props.limits.maxDescriptorSetSamplers < DESC_ARRAY1_SIZE + DESC_ARRAY2_SIZE)
+      Avail = "maxDescriptorSetSamplers " + std::to_string(props.limits.maxDescriptorSetSamplers) +
+              " is insufficient";
+    else if(props.limits.maxDescriptorSetSampledImages < DESC_ARRAY1_SIZE + DESC_ARRAY2_SIZE)
+      Avail = "maxDescriptorSetSampledImages " +
+              std::to_string(props.limits.maxDescriptorSetSampledImages) + " is insufficient";
+
+    if(!Avail.empty())
+      return;
+
+    static VkPhysicalDeviceDescriptorIndexingFeaturesEXT descIndexing = {
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT,
     };
 
-    descIndexing.descriptorBindingPartiallyBound = VK_TRUE;
-    descIndexing.runtimeDescriptorArray = VK_TRUE;
-    descIndexing.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+    getPhysFeatures2(&descIndexing);
+
+    if(!descIndexing.descriptorBindingPartiallyBound)
+      Avail = "Descriptor indexing feature 'descriptorBindingPartiallyBound' not available";
+    else if(!descIndexing.runtimeDescriptorArray)
+      Avail = "Descriptor indexing feature 'runtimeDescriptorArray' not available";
+    else if(!descIndexing.shaderSampledImageArrayNonUniformIndexing)
+      Avail =
+          "Descriptor indexing feature 'shaderSampledImageArrayNonUniformIndexing' not available";
 
     devInfoNext = &descIndexing;
+  }
 
+  int main()
+  {
     // initialise, create window, create context, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     VkDescriptorSetLayoutBindingFlagsCreateInfoEXT descFlags = {
@@ -280,7 +316,7 @@ void main()
     vkh::GraphicsPipelineCreateInfo pipeCreateInfo;
 
     pipeCreateInfo.layout = layout;
-    pipeCreateInfo.renderPass = swapRenderPass;
+    pipeCreateInfo.renderPass = mainWindow->rp;
 
     pipeCreateInfo.vertexInputState.vertexBindingDescriptions = {vkh::vertexBind(0, DefaultA2V)};
     pipeCreateInfo.vertexInputState.vertexAttributeDescriptions = {
@@ -464,6 +500,11 @@ void main()
         device,
         {
             vkh::WriteDescriptorSet(
+                descset[0], 1, INDEX3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                {
+                    vkh::DescriptorImageInfo(imgview, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, sampler),
+                }),
+            vkh::WriteDescriptorSet(
                 descset[0], 1, INDEX1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                 {
                     vkh::DescriptorImageInfo(imgview, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, sampler),
@@ -531,7 +572,7 @@ void main()
                                              ssbo.buffer)});
 
       vkCmdBeginRenderPass(
-          cmd, vkh::RenderPassBeginInfo(swapRenderPass, swapFramebuffers[swapIndex], scissor),
+          cmd, vkh::RenderPassBeginInfo(mainWindow->rp, mainWindow->GetFB(), mainWindow->scissor),
           VK_SUBPASS_CONTENTS_INLINE);
 
       vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
@@ -544,8 +585,8 @@ void main()
       // bind the actual one
       vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &descset[0], 0,
                               NULL);
-      vkCmdSetViewport(cmd, 0, 1, &viewport);
-      vkCmdSetScissor(cmd, 0, 1, &scissor);
+      vkCmdSetViewport(cmd, 0, 1, &mainWindow->viewport);
+      vkCmdSetScissor(cmd, 0, 1, &mainWindow->scissor);
       vkh::cmdBindVertexBuffers(cmd, 0, {vb.buffer}, {0});
       idx = {BUFIDX, 0, 0, 0};
       vkCmdPushConstants(cmd, layout, VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT, 0,
@@ -563,6 +604,8 @@ void main()
       Present();
     }
 
+    vkDeviceWaitIdle(device);
+
     vkDestroyDescriptorPool(device, descpool, NULL);
     vkDestroySampler(device, sampler, NULL);
 
@@ -570,4 +613,4 @@ void main()
   }
 };
 
-REGISTER_TEST(VK_Descriptor_Indexing);
+REGISTER_TEST();

@@ -43,9 +43,12 @@ public:
   void SetTextureDisplay(const TextureDisplay &o);
   void SetMeshDisplay(const MeshDisplay &o);
   void SetDimensions(int32_t width, int32_t height);
+  bytebuf ReadbackOutputTexture();
+  rdcpair<int32_t, int32_t> GetDimensions();
 
   void ClearThumbnails();
-  bool AddThumbnail(WindowingData window, ResourceId texID, CompType typeHint);
+  bool AddThumbnail(WindowingData window, ResourceId texID, CompType typeHint, uint32_t mip,
+                    uint32_t slice);
 
   void Display();
 
@@ -91,6 +94,8 @@ private:
   {
     ResourceId texture;
     bool depthMode;
+    uint32_t mip;
+    uint32_t slice;
     uint64_t wndHandle;
     CompType typeHint;
     uint64_t outputID;
@@ -110,7 +115,7 @@ private:
   uint32_t m_EventID;
   ReplayOutputType m_Type;
 
-  vector<uint32_t> passEvents;
+  std::vector<uint32_t> passEvents;
 
   int32_t m_Width;
   int32_t m_Height;
@@ -148,11 +153,13 @@ public:
   rdcarray<rdcstr> GetDisassemblyTargets();
   rdcstr DisassembleShader(ResourceId pipeline, const ShaderReflection *refl, const char *target);
 
-  rdcpair<ResourceId, rdcstr> BuildCustomShader(const char *entry, const char *source,
+  rdcpair<ResourceId, rdcstr> BuildCustomShader(const char *entry, ShaderEncoding sourceEncoding,
+                                                bytebuf source,
                                                 const ShaderCompileFlags &compileFlags,
                                                 ShaderStage type);
   void FreeCustomShader(ResourceId id);
 
+  rdcarray<ShaderEncoding> GetCustomShaderEncodings();
   rdcarray<ShaderEncoding> GetTargetShaderEncodings();
   rdcpair<ResourceId, rdcstr> BuildTargetShader(const char *entry, ShaderEncoding sourceEncoding,
                                                 bytebuf source,
@@ -221,7 +228,7 @@ private:
 
   IReplayDriver *GetDevice() { return m_pDevice; }
   FrameRecord m_FrameRecord;
-  vector<DrawcallDescription *> m_Drawcalls;
+  std::vector<DrawcallDescription *> m_Drawcalls;
 
   uint64_t m_ThreadID;
 

@@ -26,6 +26,16 @@
 #include "gl_driver.h"
 #include "gl_manager.h"
 
+// declare emulated glCopyImageSubData in case we need to force its use when the driver's version is
+// buggy
+namespace glEmulate
+{
+void APIENTRY _glCopyImageSubData(GLuint srcName, GLenum srcTarget, GLint srcLevel, GLint srcX,
+                                  GLint srcY, GLint srcZ, GLuint dstName, GLenum dstTarget,
+                                  GLint dstLevel, GLint dstX, GLint dstY, GLint dstZ,
+                                  GLsizei srcWidth, GLsizei srcHeight, GLsizei srcDepth);
+};
+
 const GLenum FramebufferInitialData::attachmentNames[10] = {
     eGL_COLOR_ATTACHMENT0, eGL_COLOR_ATTACHMENT1,  eGL_COLOR_ATTACHMENT2, eGL_COLOR_ATTACHMENT3,
     eGL_COLOR_ATTACHMENT4, eGL_COLOR_ATTACHMENT5,  eGL_COLOR_ATTACHMENT6, eGL_COLOR_ATTACHMENT7,
@@ -160,7 +170,7 @@ void DoSerialise(SerialiserType &ser, TextureStateInitialData &el)
 void WrappedOpenGL::TextureData::GetCompressedImageDataGLES(int mip, GLenum target, size_t size,
                                                             byte *buf)
 {
-  const vector<byte> &data = compressedData[mip];
+  const std::vector<byte> &data = compressedData[mip];
 
   memset(buf, 0, size);
 
@@ -173,14 +183,11 @@ void WrappedOpenGL::TextureData::GetCompressedImageDataGLES(int mip, GLenum targ
   }
 }
 
-bool GLResourceManager::Need_InitialStateChunk(GLResource res)
-{
-  return true;
-}
-
 void GLResourceManager::ContextPrepare_InitialState(GLResource res)
 {
   GLInitialContents initContents;
+
+  initContents.type = res.Namespace;
 
   ResourceId id = GetID(res);
 
@@ -228,11 +235,14 @@ void GLResourceManager::ContextPrepare_InitialState(GLResource res)
 
     SCOPED_SERIALISE_CHUNK(SystemChunk::InitialContents);
 
-    SERIALISE_ELEMENT(id).TypedAs("GLResource");
+    SERIALISE_ELEMENT(id).TypedAs("GLResource"_lit);
     SERIALISE_ELEMENT(res.Namespace);
 
-    SerialiseProgramBindings(ser, CaptureState::ActiveCapturing, res.name);
-    SerialiseProgramUniforms(ser, CaptureState::ActiveCapturing, res.name, NULL);
+    PerStageReflections stages;
+    m_Driver->FillReflectionArray(id, stages);
+
+    SerialiseProgramBindings(ser, CaptureState::ActiveCapturing, stages, res.name);
+    SerialiseProgramUniforms(ser, CaptureState::ActiveCapturing, stages, res.name, NULL);
 
     SetInitialChunk(id, scope.Get());
     return;
@@ -521,7 +531,10 @@ void GLResourceManager::ContextPrepare_InitialState(GLResource res)
     RDCERR("Unexpected type of resource requiring initial state");
   }
 
-  SetInitialContents(id, initContents);
+  if(IsReplayMode(m_State))
+    SetInitialContents(GetOriginalID(id), initContents);
+  else
+    SetInitialContents(id, initContents);
 }
 
 bool GLResourceManager::Prepare_InitialState(GLResource res)
@@ -619,7 +632,7 @@ void GLResourceManager::CreateTextureImage(GLuint tex, GLenum internalFormat,
         {
           GLsizei compSize = (GLsizei)GetCompressedByteSize(w, h, d, internalFormat);
 
-          vector<byte> dummy;
+          std::vector<byte> dummy;
           dummy.resize(compSize);
 
           if(dim == 1)
@@ -683,6 +696,8 @@ void GLResourceManager::PrepareTextureInitialContents(ResourceId liveid, Resourc
   WrappedOpenGL::TextureData &details = m_Driver->m_Textures[liveid];
 
   GLInitialContents initContents;
+
+  initContents.type = eResTexture;
 
   TextureStateInitialData &state = initContents.tex;
 
@@ -951,10 +966,18 @@ void GLResourceManager::PrepareTextureInitialContents(ResourceId liveid, Resourc
           // it might require would be depth-only formatted).
           if(details.internalFormat == eGL_DEPTH32F_STENCIL8 &&
              VendorCheck[VendorCheck_NV_avoid_D32S8_copy])
+          {
             RDCDEBUG("Not fetching initial contents of D32F_S8 texture");
+          }
           else
-            GL.glCopyImageSubData(res.name, details.curType, i, 0, 0, 0, tex, details.curType, i, 0,
-                                  0, 0, w, h, d);
+          {
+            if(VendorCheck[VendorCheck_Qualcomm_avoid_glCopyImageSubData])
+              glEmulate::_glCopyImageSubData(res.name, details.curType, i, 0, 0, 0, tex,
+                                             details.curType, i, 0, 0, 0, w, h, d);
+            else
+              GL.glCopyImageSubData(res.name, details.curType, i, 0, 0, 0, tex, details.curType, i,
+                                    0, 0, 0, w, h, d);
+          }
         }
       }
 
@@ -999,53 +1022,47 @@ void GLResourceManager::PrepareTextureInitialContents(ResourceId liveid, Resourc
   SetInitialContents(origid, initContents);
 }
 
-bool GLResourceManager::Force_InitialState(GLResource res, bool prepare)
+void GLResourceManager::Force_ReferenceViews()
 {
-  if(res.Namespace != eResBuffer && res.Namespace != eResTexture)
-    return false;
-
   // don't need to force anything if we're already including all resources
   if(RenderDoc::Inst().GetCaptureOptions().refAllResources)
-    return false;
+    return;
 
-  GLResourceRecord *record = GetResourceRecord(res);
-
-  // if we have some viewers, check to see if they were referenced but we weren't, and force our own
-  // initial state inclusion.
-  if(record && !record->viewTextures.empty())
+  for(auto recordit = m_ResourceRecords.begin(); recordit != m_ResourceRecords.end(); ++recordit)
   {
-    // need to prepare all such resources, just in case for the worst case.
-    if(prepare)
-      return true;
+    GLResourceRecord *record = recordit->second;
 
-    // if this data resource was referenced already, just skip
-    if(m_FrameReferencedResources.find(record->GetResourceID()) != m_FrameReferencedResources.end())
-      return false;
-
-    // see if any of our viewers were referenced
-    for(auto it = record->viewTextures.begin(); it != record->viewTextures.end(); ++it)
+    // if this resource has some viewers, check to see if they were referenced by the frame but we
+    // weren't, and force our own reference as well so that our initial states are included
+    if(record && !record->viewTextures.empty())
     {
-      // if so, return true to force our inclusion, for the benefit of the view
-      if(m_FrameReferencedResources.find(*it) != m_FrameReferencedResources.end())
+      // if this data resource was referenced already, just skip
+      if(m_FrameReferencedResources.find(record->GetResourceID()) != m_FrameReferencedResources.end())
+        continue;
+
+      // see if any of our viewers were referenced
+      for(auto it = record->viewTextures.begin(); it != record->viewTextures.end(); ++it)
       {
-        RDCDEBUG("Forcing inclusion of %llu for %llu", record->GetResourceID(), *it);
-        return true;
+        // if so, return true to force our inclusion, for the benefit of the view
+        if(m_FrameReferencedResources.find(*it) != m_FrameReferencedResources.end())
+        {
+          RDCDEBUG("Forcing inclusion of %llu for %llu", record->GetResourceID(), *it);
+          MarkResourceFrameReferenced(record->GetResourceID(), eFrameRef_ReadBeforeWrite);
+          break;
+        }
       }
     }
   }
-
-  return false;
 }
 
-uint32_t GLResourceManager::GetSize_InitialState(ResourceId resid, GLResource res)
+uint64_t GLResourceManager::GetSize_InitialState(ResourceId resid, const GLInitialContents &initial)
 {
-  if(res.Namespace == eResBuffer)
+  if(initial.type == eResBuffer)
   {
     // buffers just have their contents, no metadata needed
-    return GetInitialContents(resid).bufferLength + (uint32_t)WriteSerialiser::GetChunkAlignment() +
-           16;
+    return initial.bufferLength + WriteSerialiser::GetChunkAlignment() + 16;
   }
-  else if(res.Namespace == eResProgram)
+  else if(initial.type == eResProgram)
   {
     // need to estimate based on how many bindings and uniforms there are. This is a rare path -
     // only happening when a program is created at runtime in the middle of a frameand we didn't
@@ -1055,21 +1072,26 @@ uint32_t GLResourceManager::GetSize_InitialState(ResourceId resid, GLResource re
 
     SCOPED_SERIALISE_CHUNK(SystemChunk::InitialContents);
 
-    SERIALISE_ELEMENT(resid).TypedAs("GLResource");
+    GLResource res = GetCurrentResource(resid);
+
+    SERIALISE_ELEMENT(resid).TypedAs("GLResource"_lit);
     SERIALISE_ELEMENT(res.Namespace);
 
-    SerialiseProgramBindings(ser, CaptureState::ActiveCapturing, res.name);
-    SerialiseProgramUniforms(ser, CaptureState::ActiveCapturing, res.name, NULL);
+    PerStageReflections stages;
+    m_Driver->FillReflectionArray(GetID(res), stages);
 
-    return (uint32_t)ser.GetWriter()->GetOffset() + 256;
+    SerialiseProgramBindings(ser, CaptureState::ActiveCapturing, stages, res.name);
+    SerialiseProgramUniforms(ser, CaptureState::ActiveCapturing, stages, res.name, NULL);
+
+    return ser.GetWriter()->GetOffset() + 256;
   }
-  else if(res.Namespace == eResTexture)
+  else if(initial.type == eResTexture)
   {
-    uint32_t ret = 0;
+    uint64_t ret = 0;
 
     ret += sizeof(TextureStateInitialData) + 64;
 
-    TextureStateInitialData TextureState = GetInitialContents(resid).tex;
+    const TextureStateInitialData &TextureState = initial.tex;
 
     // in these cases, no more data is serialised
     if(TextureState.internalformat == eGL_NONE || TextureState.type == eGL_TEXTURE_BUFFER ||
@@ -1112,72 +1134,73 @@ uint32_t GLResourceManager::GetSize_InitialState(ResourceId resid, GLResource re
         targetcount = 6;
 
       for(int t = 0; t < targetcount; t++)
-        ret += (uint32_t)WriteSerialiser::GetChunkAlignment() + size;
+        ret += WriteSerialiser::GetChunkAlignment() + size;
     }
 
     return ret;
   }
-  else if(res.Namespace == eResFramebuffer)
+  else if(initial.type == eResFramebuffer)
   {
     return sizeof(FramebufferInitialData);
   }
-  else if(res.Namespace == eResSampler)
+  else if(initial.type == eResSampler)
   {
     // reserve some extra size to account for array count
     return sizeof(SamplerInitialData) + 32;
   }
-  else if(res.Namespace == eResFeedback)
+  else if(initial.type == eResFeedback)
   {
     return sizeof(FeedbackInitialData);
   }
-  else if(res.Namespace == eResProgramPipe)
+  else if(initial.type == eResProgramPipe)
   {
     return sizeof(PipelineInitialData);
   }
-  else if(res.Namespace == eResVertexArray)
+  else if(initial.type == eResVertexArray)
   {
     return sizeof(VAOInitialData);
   }
-  else if(res.Namespace == eResRenderbuffer)
+  else if(initial.type == eResRenderbuffer)
   {
   }
   else
   {
-    RDCERR("Unexpected type of resource requiring initial state");
+    RDCERR("Unexpected type of resource requiring initial state %d", initial.type);
   }
 
   return 16;
 }
 
 template <typename SerialiserType>
-bool GLResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId resid, GLResource res)
+bool GLResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId id,
+                                               GLResourceRecord *record,
+                                               const GLInitialContents *initial)
 {
   m_State = m_Driver->GetState();
 
-  SERIALISE_ELEMENT_LOCAL(Id, GetID(res)).TypedAs("GLResource");
-  SERIALISE_ELEMENT_LOCAL(Type, res.Namespace);
-  GLInitialContents initContents = GetInitialContents(Id);
+  GLInitialContents initContents;
+  if(initial)
+    initContents = *initial;
+
+  SERIALISE_ELEMENT(id).TypedAs("GLResource"_lit);
+  SERIALISE_ELEMENT_LOCAL(Type, initial->type);
 
   if(IsReplayingAndReading())
   {
-    if(HasLiveResource(Id))
-      res = GetLiveResource(Id);
-    else
-      res = GLResource(MakeNullResource);
-
-    m_Driver->AddResourceCurChunk(Id);
+    m_Driver->AddResourceCurChunk(id);
   }
 
   if(Type == eResBuffer)
   {
+    GLResource mappedBuffer = GLResource(MakeNullResource);
     uint32_t BufferContentsSize = 0;
     byte *BufferContents = NULL;
 
     if(ser.IsWriting())
     {
-      res = initContents.resource;
-      BufferContentsSize = initContents.bufferLength;
-      BufferContents = (byte *)GL.glMapNamedBufferEXT(res.name, eGL_READ_ONLY);
+      mappedBuffer = initial->resource;
+      BufferContentsSize = initial->bufferLength;
+      BufferContents = (byte *)GL.glMapNamedBufferEXT(mappedBuffer.name, eGL_READ_ONLY);
 
       if(!BufferContents)
         RDCERR("Couldn't map initial contents buffer for readback!");
@@ -1190,27 +1213,23 @@ bool GLResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId r
     {
       if(!ser.IsErrored())
       {
-        GL.glGenBuffers(1, &res.name);
-        GL.glBindBuffer(eGL_COPY_WRITE_BUFFER, res.name);
-        GL.glNamedBufferDataEXT(res.name, (GLsizeiptr)RDCMAX(BufferContentsSize, 4U), NULL,
+        GL.glGenBuffers(1, &mappedBuffer.name);
+        GL.glBindBuffer(eGL_COPY_WRITE_BUFFER, mappedBuffer.name);
+        GL.glNamedBufferDataEXT(mappedBuffer.name, (GLsizeiptr)RDCMAX(BufferContentsSize, 4U), NULL,
                                 eGL_STATIC_DRAW);
-        BufferContents = (byte *)GL.glMapNamedBufferEXT(res.name, eGL_WRITE_ONLY);
+        BufferContents = (byte *)GL.glMapNamedBufferEXT(mappedBuffer.name, eGL_WRITE_ONLY);
 
-        SetInitialContents(
-            Id, GLInitialContents(BufferRes(m_Driver->GetCtx(), res.name), BufferContentsSize));
-      }
-      else
-      {
-        res = GLResource(MakeNullResource);
+        SetInitialContents(id, GLInitialContents(BufferRes(m_Driver->GetCtx(), mappedBuffer.name),
+                                                 BufferContentsSize));
       }
     }
 
     // not using SERIALISE_ELEMENT_ARRAY so we can deliberately avoid allocation - we serialise
     // directly into upload memory
-    ser.Serialise("BufferContents", BufferContents, BufferContentsSize, SerialiserFlags::NoFlags);
+    ser.Serialise("BufferContents"_lit, BufferContents, BufferContentsSize, SerialiserFlags::NoFlags);
 
-    if(res.name)
-      GL.glUnmapNamedBufferEXT(res.name);
+    if(mappedBuffer.name)
+      GL.glUnmapNamedBufferEXT(mappedBuffer.name);
 
     SERIALISE_CHECK_READ_ERRORS();
   }
@@ -1221,9 +1240,15 @@ bool GLResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId r
     GLuint bindingsProgram = 0, uniformsProgram = 0;
     std::map<GLint, GLint> *translationTable = NULL;
 
+    PerStageReflections stages;
+
+    bool IsProgramSPIRV = false;
+
     if(IsReplayingAndReading())
     {
-      WrappedOpenGL::ProgramData &details = m_Driver->m_Programs[GetLiveID(Id)];
+      WrappedOpenGL::ProgramData &details = m_Driver->m_Programs[GetLiveID(id)];
+
+      m_Driver->FillReflectionArray(GetLiveID(id), stages);
 
       GLuint initProg = drv.glCreateProgram();
 
@@ -1238,6 +1263,8 @@ bool GLResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId r
         numShaders++;
 
         const auto &shadDetails = m_Driver->m_Shaders[details.stageShaders[i]];
+
+        IsProgramSPIRV |= shadDetails.reflection.encoding == ShaderEncoding::SPIRV;
 
         GLuint shad = drv.glCreateShader(shadDetails.type);
 
@@ -1295,12 +1322,18 @@ bool GLResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId r
       // some uniforms were only intended to affect TF. Therefore set a TF mode for all varyings.
       // As the initial state program is never used for TF, this wont adversely affect anything.
 
+      // don't print debug messages from these links - we know some might fail but as long as we
+      // eventually get one to work that's fine.
+      m_Driver->SuppressDebugMessages(true);
+
       std::vector<const char *> vertexOutputsPtr;
       vertexOutputsPtr.resize(vertexOutputs.size());
       for(size_t i = 0; i < vertexOutputs.size(); i++)
         vertexOutputsPtr[i] = vertexOutputs[i].c_str();
-      drv.glTransformFeedbackVaryings(initProg, (GLsizei)vertexOutputsPtr.size(),
-                                      &vertexOutputsPtr[0], eGL_INTERLEAVED_ATTRIBS);
+
+      if(!IsProgramSPIRV)
+        drv.glTransformFeedbackVaryings(initProg, (GLsizei)vertexOutputsPtr.size(),
+                                        &vertexOutputsPtr[0], eGL_INTERLEAVED_ATTRIBS);
       drv.glLinkProgram(initProg);
 
       GLint status = 0;
@@ -1308,7 +1341,7 @@ bool GLResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId r
 
       // if it failed to link, first remove the varyings hack above as maybe the driver is barfing
       // on trying to make some output a varying
-      if(status == 0)
+      if(status == 0 && !IsProgramSPIRV)
       {
         drv.glTransformFeedbackVaryings(initProg, 0, NULL, eGL_INTERLEAVED_ATTRIBS);
         drv.glLinkProgram(initProg);
@@ -1326,6 +1359,8 @@ bool GLResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId r
 
         drv.glGetProgramiv(initProg, eGL_LINK_STATUS, &status);
       }
+
+      m_Driver->SuppressDebugMessages(false);
 
       if(status == 0)
       {
@@ -1346,9 +1381,13 @@ bool GLResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId r
       // uniforms directly into the live program, then copy back to the initial state so that we
       // have a pristine copy of them for later use.
       bindingsProgram = initProg;
-      uniformsProgram = GetLiveResource(Id).name;
+      uniformsProgram = GetLiveResource(id).name;
 
       translationTable = &details.locationTranslate;
+    }
+    else
+    {
+      m_Driver->FillReflectionArray(id, stages);
     }
 
     if(ser.IsWriting())
@@ -1356,25 +1395,27 @@ bool GLResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId r
       // most of the time Prepare_InitialState sets the serialise chunk directly on write, but if a
       // program is newly created within a frame we won't have prepared its initial contents, so we
       // need to be ready to write it out here.
-      bindingsProgram = uniformsProgram = res.name;
+      bindingsProgram = uniformsProgram = GetCurrentResource(id).name;
     }
 
-    SerialiseProgramBindings(ser, m_State, bindingsProgram);
+    bool changedBindings = SerialiseProgramBindings(ser, m_State, stages, bindingsProgram);
 
     // re-link the program to set the new attrib bindings
-    if(IsReplayingAndReading() && !ser.IsErrored())
+    if(IsReplayingAndReading() && !ser.IsErrored() && changedBindings)
       GL.glLinkProgram(bindingsProgram);
 
-    SerialiseProgramUniforms(ser, m_State, uniformsProgram, translationTable);
+    SerialiseProgramUniforms(ser, m_State, stages, uniformsProgram, translationTable);
 
     SERIALISE_CHECK_READ_ERRORS();
 
     if(IsReplayingAndReading())
     {
       // see above for why we're copying this back
-      CopyProgramUniforms(uniformsProgram, bindingsProgram);
+      // we can pass in the same stages array, it's the same program essentially (reflection is
+      // identical)
+      CopyProgramUniforms(stages, uniformsProgram, stages, bindingsProgram);
 
-      SetInitialContents(Id, GLInitialContents(ProgramRes(m_Driver->GetCtx(), bindingsProgram), 0));
+      SetInitialContents(id, GLInitialContents(ProgramRes(m_Driver->GetCtx(), bindingsProgram), 0));
     }
   }
   else if(Type == eResTexture)
@@ -1399,16 +1440,20 @@ bool GLResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId r
       ResetPixelUnpackState(false, 1);
     }
 
-    // serialise the texture metadata which was fetched during state preparation
     TextureStateInitialData &TextureState = initContents.tex;
 
+    if(initial)
+      TextureState = initial->tex;
+
+    // serialise the texture metadata which was fetched during state preparation
     SERIALISE_ELEMENT(TextureState);
 
     // only continue with serialising the contents if the format is valid (storage allocated).
     // Otherwise this texture has no initial state to apply
     if(TextureState.internalformat != eGL_NONE && !ser.IsErrored())
     {
-      WrappedOpenGL::TextureData &details = m_Driver->m_Textures[GetID(res)];
+      WrappedOpenGL::TextureData &details =
+          ser.IsWriting() ? m_Driver->m_Textures[id] : m_Driver->m_Textures[GetLiveID(id)];
 
       if(TextureState.type == eGL_TEXTURE_BUFFER || TextureState.isView)
       {
@@ -1443,14 +1488,16 @@ bool GLResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId r
         // after we stop tracking it glGenerateMipmap is called.
         if(IsReplayingAndReading() && !ser.IsErrored())
         {
+          GLResource liveRes = GetLiveResource(id);
+
           // this is only relevant for non-immutable textures
           GLint immut = 0;
 
-          GL.glGetTextureParameterivEXT(res.name, TextureState.type, eGL_TEXTURE_IMMUTABLE_FORMAT,
-                                        &immut);
+          GL.glGetTextureParameterivEXT(liveRes.name, TextureState.type,
+                                        eGL_TEXTURE_IMMUTABLE_FORMAT, &immut);
 
           GLenum dummy = eGL_RGBA;
-          EmulateLuminanceFormat(res.name, TextureState.type, TextureState.internalformat, dummy);
+          EmulateLuminanceFormat(liveRes.name, TextureState.type, TextureState.internalformat, dummy);
 
           if(immut == 0)
           {
@@ -1459,7 +1506,7 @@ bool GLResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId r
             GLsizei d = (GLsizei)TextureState.depth;
 
             // see how many mips we actually have available
-            int liveMips = GetNumMips(TextureState.type, res.name, w, h, d);
+            int liveMips = GetNumMips(TextureState.type, liveRes.name, w, h, d);
 
             std::vector<byte> scratchBuf;
 
@@ -1488,35 +1535,35 @@ bool GLResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId r
                     scratchBuf.resize(compSize);
 
                     if(TextureState.dim == 1)
-                      GL.glCompressedTextureImage1DEXT(res.name, targets[t], m,
+                      GL.glCompressedTextureImage1DEXT(liveRes.name, targets[t], m,
                                                        TextureState.internalformat, w, 0, compSize,
                                                        &scratchBuf[0]);
                     else if(TextureState.dim == 2)
-                      GL.glCompressedTextureImage2DEXT(res.name, targets[t], m,
+                      GL.glCompressedTextureImage2DEXT(liveRes.name, targets[t], m,
                                                        TextureState.internalformat, w, h, 0,
                                                        compSize, &scratchBuf[0]);
                     else if(TextureState.dim == 3)
-                      GL.glCompressedTextureImage3DEXT(res.name, targets[t], m,
+                      GL.glCompressedTextureImage3DEXT(liveRes.name, targets[t], m,
                                                        TextureState.internalformat, w, h, d, 0,
                                                        compSize, &scratchBuf[0]);
                   }
                   else
                   {
                     if(TextureState.dim == 1)
-                      GL.glTextureImage1DEXT(res.name, targets[t], m, TextureState.internalformat,
-                                             (GLsizei)w, 0,
+                      GL.glTextureImage1DEXT(liveRes.name, targets[t], m,
+                                             TextureState.internalformat, (GLsizei)w, 0,
                                              GetBaseFormat(TextureState.internalformat),
                                              GetDataType(TextureState.internalformat), NULL);
                     else if(TextureState.dim == 2)
-                      GL.glTextureImage2DEXT(res.name, targets[t], m, TextureState.internalformat,
-                                             (GLsizei)w, (GLsizei)h, 0,
+                      GL.glTextureImage2DEXT(liveRes.name, targets[t], m,
+                                             TextureState.internalformat, (GLsizei)w, (GLsizei)h, 0,
                                              GetBaseFormat(TextureState.internalformat),
                                              GetDataType(TextureState.internalformat), NULL);
                     else if(TextureState.dim == 3)
-                      GL.glTextureImage3DEXT(res.name, targets[t], m, TextureState.internalformat,
-                                             (GLsizei)w, (GLsizei)h, (GLsizei)d, 0,
-                                             GetBaseFormat(TextureState.internalformat),
-                                             GetDataType(TextureState.internalformat), NULL);
+                      GL.glTextureImage3DEXT(
+                          liveRes.name, targets[t], m, TextureState.internalformat, (GLsizei)w,
+                          (GLsizei)h, (GLsizei)d, 0, GetBaseFormat(TextureState.internalformat),
+                          GetDataType(TextureState.internalformat), NULL);
                   }
                 }
               }
@@ -1546,7 +1593,7 @@ bool GLResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId r
         else if(ser.IsWriting())
         {
           // on writing, bind the prepared texture with initial contents to grab
-          tex = initContents.resource.name;
+          tex = initial->resource.name;
 
           GL.glBindTexture(TextureState.type, tex);
         }
@@ -1623,7 +1670,7 @@ bool GLResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId r
               }
 
               // serialise without allocating memory as we already have our scratch buf sized.
-              ser.Serialise("SubresourceContents", scratchBuf, size, SerialiserFlags::NoFlags);
+              ser.Serialise("SubresourceContents"_lit, scratchBuf, size, SerialiserFlags::NoFlags);
 
               // on replay, restore the data into the initial contents texture
               if(IsReplayingAndReading() && !ser.IsErrored())
@@ -1680,7 +1727,7 @@ bool GLResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId r
 
       if(IsReplayingAndReading() && !ser.IsErrored())
       {
-        SetInitialContents(Id, initContents);
+        SetInitialContents(id, initContents);
       }
     }
 
@@ -1705,7 +1752,7 @@ bool GLResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId r
 
     if(IsReplayingAndReading())
     {
-      SetInitialContents(Id, initContents);
+      SetInitialContents(id, initContents);
     }
   }
   else if(Type == eResSampler)
@@ -1718,7 +1765,7 @@ bool GLResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId r
 
     if(IsReplayingAndReading())
     {
-      SetInitialContents(Id, initContents);
+      SetInitialContents(id, initContents);
     }
   }
   else if(Type == eResFeedback)
@@ -1731,7 +1778,7 @@ bool GLResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId r
 
     if(IsReplayingAndReading())
     {
-      SetInitialContents(Id, initContents);
+      SetInitialContents(id, initContents);
     }
   }
   else if(Type == eResProgramPipe)
@@ -1744,7 +1791,7 @@ bool GLResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId r
 
     if(IsReplayingAndReading())
     {
-      SetInitialContents(Id, initContents);
+      SetInitialContents(id, initContents);
     }
   }
   else if(Type == eResVertexArray)
@@ -1757,7 +1804,7 @@ bool GLResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId r
 
     if(IsReplayingAndReading())
     {
-      SetInitialContents(Id, initContents);
+      SetInitialContents(id, initContents);
     }
   }
   else if(Type == eResRenderbuffer)
@@ -1774,10 +1821,12 @@ bool GLResourceManager::Serialise_InitialState(SerialiserType &ser, ResourceId r
   return true;
 }
 
-template bool GLResourceManager::Serialise_InitialState<>(ReadSerialiser &ser, ResourceId resid,
-                                                          GLResource res);
-template bool GLResourceManager::Serialise_InitialState<>(WriteSerialiser &ser, ResourceId resid,
-                                                          GLResource res);
+template bool GLResourceManager::Serialise_InitialState<>(ReadSerialiser &ser, ResourceId id,
+                                                          GLResourceRecord *record,
+                                                          const GLInitialContents *initial);
+template bool GLResourceManager::Serialise_InitialState<>(WriteSerialiser &ser, ResourceId id,
+                                                          GLResourceRecord *record,
+                                                          const GLInitialContents *initial);
 
 void GLResourceManager::Create_InitialState(ResourceId id, GLResource live, bool hasData)
 {
@@ -1794,18 +1843,26 @@ void GLResourceManager::Create_InitialState(ResourceId id, GLResource live, bool
     // textures to be cleared instead of copied.
     PrepareTextureInitialContents(GetID(live), id, live);
   }
-  else if(live.Namespace == eResVertexArray)
+  else if(live.Namespace == eResBuffer)
   {
     ContextPrepare_InitialState(live);
   }
-  else if(live.Namespace != eResBuffer && live.Namespace != eResProgram &&
-          live.Namespace != eResRenderbuffer)
+  else if(live.Namespace == eResVertexArray || live.Namespace == eResFramebuffer ||
+          live.Namespace == eResFeedback || live.Namespace == eResSampler ||
+          live.Namespace == eResProgramPipe)
   {
-    RDCUNIMPLEMENTED("Expect all initial states to be created & not skipped, presently");
+    ContextPrepare_InitialState(live);
+  }
+  else if(live.Namespace == eResRenderbuffer)
+  {
+  }
+  else
+  {
+    RDCUNIMPLEMENTED("Unhandled type of resource needing initial states created");
   }
 }
 
-void GLResourceManager::Apply_InitialState(GLResource live, GLInitialContents initial)
+void GLResourceManager::Apply_InitialState(GLResource live, const GLInitialContents &initial)
 {
   if(live.Namespace == eResBuffer)
   {
@@ -1972,10 +2029,18 @@ void GLResourceManager::Apply_InitialState(GLResource live, GLInitialContents in
             // (shadow maps that it might require would be depth-only formatted).
             if(details.internalFormat == eGL_DEPTH32F_STENCIL8 &&
                VendorCheck[VendorCheck_NV_avoid_D32S8_copy])
+            {
               RDCDEBUG("Not fetching initial contents of D32F_S8 texture");
+            }
             else
-              GL.glCopyImageSubData(tex, details.curType, i, 0, 0, 0, live.name, details.curType, i,
-                                    0, 0, 0, w, h, d);
+            {
+              if(VendorCheck[VendorCheck_Qualcomm_avoid_glCopyImageSubData])
+                glEmulate::_glCopyImageSubData(tex, details.curType, i, 0, 0, 0, live.name,
+                                               details.curType, i, 0, 0, 0, w, h, d);
+              else
+                GL.glCopyImageSubData(tex, details.curType, i, 0, 0, 0, live.name, details.curType,
+                                      i, 0, 0, 0, w, h, d);
+            }
           }
         }
 
@@ -2085,20 +2150,27 @@ void GLResourceManager::Apply_InitialState(GLResource live, GLInitialContents in
 
     const WrappedOpenGL::ProgramData &prog = m_Driver->m_Programs[Id];
 
+    bool changedBindings = false;
+
     if(prog.stageShaders[0] != ResourceId())
-      CopyProgramAttribBindings(initial.resource.name, live.name,
-                                &m_Driver->m_Shaders[prog.stageShaders[0]].reflection);
+      changedBindings |= CopyProgramAttribBindings(
+          initial.resource.name, live.name, &m_Driver->m_Shaders[prog.stageShaders[0]].reflection);
 
     if(prog.stageShaders[4] != ResourceId())
-      CopyProgramFragDataBindings(initial.resource.name, live.name,
-                                  &m_Driver->m_Shaders[prog.stageShaders[4]].reflection);
+      changedBindings |= CopyProgramFragDataBindings(
+          initial.resource.name, live.name, &m_Driver->m_Shaders[prog.stageShaders[4]].reflection);
 
     // we need to re-link the program to apply the bindings, as long as it's linkable.
     // See the comment on shaderProgramUnlinkable for more information.
-    if(!prog.shaderProgramUnlinkable)
+    if(!prog.shaderProgramUnlinkable && changedBindings)
       GL.glLinkProgram(live.name);
 
-    CopyProgramUniforms(initial.resource.name, live.name);
+    PerStageReflections stages;
+    m_Driver->FillReflectionArray(Id, stages);
+
+    // we can pass in the same stages array, it's the same program essentially (reflection is
+    // identical)
+    CopyProgramUniforms(stages, initial.resource.name, stages, live.name);
   }
   else if(live.Namespace == eResFramebuffer)
   {
@@ -2317,13 +2389,13 @@ void GLResourceManager::Apply_InitialState(GLResource live, GLInitialContents in
 
         // now build up the bitmask that we'll bind with. Starting with the current bit, searching
         // forwards
-        GLbitfield stages = 1 << a;
+        GLbitfield stages = ShaderBit(a);
         for(int b = a + 1; b < 5; b++)
           if(data.programs[a].name == data.programs[b].name)
-            stages |= (1 << b);
+            stages |= ShaderBit(b);
 
         // bind the program on all relevant stages
-        GL.glUseProgramStages(live.name, stages, data.programs[a].name);
+        m_Driver->glUseProgramStages(live.name, stages, data.programs[a].name);
 
         // now we can continue - any of the stages we just bound will discard themselves with the
         // 'previous' check above.
@@ -2332,7 +2404,7 @@ void GLResourceManager::Apply_InitialState(GLResource live, GLInitialContents in
       // if we have a compute program, bind that. It's outside of the others since it can't be
       // shared
       if(data.programs[5].name)
-        GL.glUseProgramStages(live.name, eGL_COMPUTE_SHADER_BIT, data.programs[5].name);
+        m_Driver->glUseProgramStages(live.name, eGL_COMPUTE_SHADER_BIT, data.programs[5].name);
     }
   }
   else if(live.Namespace == eResVertexArray)

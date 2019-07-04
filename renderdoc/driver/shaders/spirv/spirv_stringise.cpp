@@ -27,7 +27,7 @@
 #include "common/common.h"
 
 template <>
-std::string DoStringise(const spv::Op &el)
+rdcstr DoStringise(const spv::Op &el)
 {
   BEGIN_ENUM_STRINGISE(spv::Op)
   {
@@ -405,6 +405,11 @@ std::string DoStringise(const spv::Op &el)
     STRINGISE_ENUM_NAMED(spv::OpTraceNV, "TraceNV");
     STRINGISE_ENUM_NAMED(spv::OpTypeAccelerationStructureNV, "TypeAccelerationStructureNV");
     STRINGISE_ENUM_NAMED(spv::OpExecuteCallableNV, "ExecuteCallableNV");
+    STRINGISE_ENUM_NAMED(spv::OpTypeCooperativeMatrixNV, "TypeCooperativeMatrixNV");
+    STRINGISE_ENUM_NAMED(spv::OpCooperativeMatrixLoadNV, "CooperativeMatrixLoadNV");
+    STRINGISE_ENUM_NAMED(spv::OpCooperativeMatrixStoreNV, "CooperativeMatrixStoreNV");
+    STRINGISE_ENUM_NAMED(spv::OpCooperativeMatrixMulAddNV, "CooperativeMatrixMulAddNV");
+    STRINGISE_ENUM_NAMED(spv::OpCooperativeMatrixLengthNV, "CooperativeMatrixLengthNV");
     STRINGISE_ENUM_NAMED(spv::OpSubgroupShuffleINTEL, "SubgroupShuffleINTEL");
     STRINGISE_ENUM_NAMED(spv::OpSubgroupShuffleDownINTEL, "SubgroupShuffleDownINTEL");
     STRINGISE_ENUM_NAMED(spv::OpSubgroupShuffleUpINTEL, "SubgroupShuffleUpINTEL");
@@ -413,15 +418,239 @@ std::string DoStringise(const spv::Op &el)
     STRINGISE_ENUM_NAMED(spv::OpSubgroupBlockWriteINTEL, "SubgroupBlockWriteINTEL");
     STRINGISE_ENUM_NAMED(spv::OpSubgroupImageBlockReadINTEL, "SubgroupImageBlockReadINTEL");
     STRINGISE_ENUM_NAMED(spv::OpSubgroupImageBlockWriteINTEL, "SubgroupImageBlockWriteINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupImageMediaBlockReadINTEL,
+                         "SubgroupImageMediaBlockReadINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupImageMediaBlockWriteINTEL,
+                         "SubgroupImageMediaBlockWriteINTEL");
     STRINGISE_ENUM_NAMED(spv::OpDecorateStringGOOGLE, "DecorateStringGOOGLE");
     STRINGISE_ENUM_NAMED(spv::OpMemberDecorateStringGOOGLE, "MemberDecorateStringGOOGLE");
+    STRINGISE_ENUM_NAMED(spv::OpVmeImageINTEL, "VmeImageINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpTypeVmeImageINTEL, "TypeVmeImageINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpTypeAvcImePayloadINTEL, "TypeAvcImePayloadINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpTypeAvcRefPayloadINTEL, "TypeAvcRefPayloadINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpTypeAvcSicPayloadINTEL, "TypeAvcSicPayloadINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpTypeAvcMcePayloadINTEL, "TypeAvcMcePayloadINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpTypeAvcMceResultINTEL, "TypeAvcMceResultINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpTypeAvcImeResultINTEL, "TypeAvcImeResultINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpTypeAvcImeResultSingleReferenceStreamoutINTEL,
+                         "TypeAvcImeResultSingleReferenceStreamoutINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpTypeAvcImeResultDualReferenceStreamoutINTEL,
+                         "TypeAvcImeResultDualReferenceStreamoutINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpTypeAvcImeSingleReferenceStreaminINTEL,
+                         "TypeAvcImeSingleReferenceStreaminINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpTypeAvcImeDualReferenceStreaminINTEL,
+                         "TypeAvcImeDualReferenceStreaminINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpTypeAvcRefResultINTEL, "TypeAvcRefResultINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpTypeAvcSicResultINTEL, "TypeAvcSicResultINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceGetDefaultInterBaseMultiReferencePenaltyINTEL,
+                         "SubgroupAvcMceGetDefaultInterBaseMultiReferencePenaltyINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceSetInterBaseMultiReferencePenaltyINTEL,
+                         "SubgroupAvcMceSetInterBaseMultiReferencePenaltyINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceGetDefaultInterShapePenaltyINTEL,
+                         "SubgroupAvcMceGetDefaultInterShapePenaltyINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceSetInterShapePenaltyINTEL,
+                         "SubgroupAvcMceSetInterShapePenaltyINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceGetDefaultInterDirectionPenaltyINTEL,
+                         "SubgroupAvcMceGetDefaultInterDirectionPenaltyINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceSetInterDirectionPenaltyINTEL,
+                         "SubgroupAvcMceSetInterDirectionPenaltyINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceGetDefaultIntraLumaShapePenaltyINTEL,
+                         "SubgroupAvcMceGetDefaultIntraLumaShapePenaltyINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceGetDefaultInterMotionVectorCostTableINTEL,
+                         "SubgroupAvcMceGetDefaultInterMotionVectorCostTableINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceGetDefaultHighPenaltyCostTableINTEL,
+                         "SubgroupAvcMceGetDefaultHighPenaltyCostTableINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceGetDefaultMediumPenaltyCostTableINTEL,
+                         "SubgroupAvcMceGetDefaultMediumPenaltyCostTableINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceGetDefaultLowPenaltyCostTableINTEL,
+                         "SubgroupAvcMceGetDefaultLowPenaltyCostTableINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceSetMotionVectorCostFunctionINTEL,
+                         "SubgroupAvcMceSetMotionVectorCostFunctionINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceGetDefaultIntraLumaModePenaltyINTEL,
+                         "SubgroupAvcMceGetDefaultIntraLumaModePenaltyINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceGetDefaultNonDcLumaIntraPenaltyINTEL,
+                         "SubgroupAvcMceGetDefaultNonDcLumaIntraPenaltyINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceGetDefaultIntraChromaModeBasePenaltyINTEL,
+                         "SubgroupAvcMceGetDefaultIntraChromaModeBasePenaltyINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceSetAcOnlyHaarINTEL,
+                         "SubgroupAvcMceSetAcOnlyHaarINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceSetSourceInterlacedFieldPolarityINTEL,
+                         "SubgroupAvcMceSetSourceInterlacedFieldPolarityINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceSetSingleReferenceInterlacedFieldPolarityINTEL,
+                         "SubgroupAvcMceSetSingleReferenceInterlacedFieldPolarityINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceSetDualReferenceInterlacedFieldPolaritiesINTEL,
+                         "SubgroupAvcMceSetDualReferenceInterlacedFieldPolaritiesINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceConvertToImePayloadINTEL,
+                         "SubgroupAvcMceConvertToImePayloadINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceConvertToImeResultINTEL,
+                         "SubgroupAvcMceConvertToImeResultINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceConvertToRefPayloadINTEL,
+                         "SubgroupAvcMceConvertToRefPayloadINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceConvertToRefResultINTEL,
+                         "SubgroupAvcMceConvertToRefResultINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceConvertToSicPayloadINTEL,
+                         "SubgroupAvcMceConvertToSicPayloadINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceConvertToSicResultINTEL,
+                         "SubgroupAvcMceConvertToSicResultINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceGetMotionVectorsINTEL,
+                         "SubgroupAvcMceGetMotionVectorsINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceGetInterDistortionsINTEL,
+                         "SubgroupAvcMceGetInterDistortionsINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceGetBestInterDistortionsINTEL,
+                         "SubgroupAvcMceGetBestInterDistortionsINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceGetInterMajorShapeINTEL,
+                         "SubgroupAvcMceGetInterMajorShapeINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceGetInterMinorShapeINTEL,
+                         "SubgroupAvcMceGetInterMinorShapeINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceGetInterDirectionsINTEL,
+                         "SubgroupAvcMceGetInterDirectionsINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceGetInterMotionVectorCountINTEL,
+                         "SubgroupAvcMceGetInterMotionVectorCountINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceGetInterReferenceIdsINTEL,
+                         "SubgroupAvcMceGetInterReferenceIdsINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcMceGetInterReferenceInterlacedFieldPolaritiesINTEL,
+                         "SubgroupAvcMceGetInterReferenceInterlacedFieldPolaritiesINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeInitializeINTEL, "SubgroupAvcImeInitializeINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeSetSingleReferenceINTEL,
+                         "SubgroupAvcImeSetSingleReferenceINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeSetDualReferenceINTEL,
+                         "SubgroupAvcImeSetDualReferenceINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeRefWindowSizeINTEL,
+                         "SubgroupAvcImeRefWindowSizeINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeAdjustRefOffsetINTEL,
+                         "SubgroupAvcImeAdjustRefOffsetINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeConvertToMcePayloadINTEL,
+                         "SubgroupAvcImeConvertToMcePayloadINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeSetMaxMotionVectorCountINTEL,
+                         "SubgroupAvcImeSetMaxMotionVectorCountINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeSetUnidirectionalMixDisableINTEL,
+                         "SubgroupAvcImeSetUnidirectionalMixDisableINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeSetEarlySearchTerminationThresholdINTEL,
+                         "SubgroupAvcImeSetEarlySearchTerminationThresholdINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeSetWeightedSadINTEL,
+                         "SubgroupAvcImeSetWeightedSadINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeEvaluateWithSingleReferenceINTEL,
+                         "SubgroupAvcImeEvaluateWithSingleReferenceINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeEvaluateWithDualReferenceINTEL,
+                         "SubgroupAvcImeEvaluateWithDualReferenceINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeEvaluateWithSingleReferenceStreaminINTEL,
+                         "SubgroupAvcImeEvaluateWithSingleReferenceStreaminINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeEvaluateWithDualReferenceStreaminINTEL,
+                         "SubgroupAvcImeEvaluateWithDualReferenceStreaminINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeEvaluateWithSingleReferenceStreamoutINTEL,
+                         "SubgroupAvcImeEvaluateWithSingleReferenceStreamoutINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeEvaluateWithDualReferenceStreamoutINTEL,
+                         "SubgroupAvcImeEvaluateWithDualReferenceStreamoutINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeEvaluateWithSingleReferenceStreaminoutINTEL,
+                         "SubgroupAvcImeEvaluateWithSingleReferenceStreaminoutINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeEvaluateWithDualReferenceStreaminoutINTEL,
+                         "SubgroupAvcImeEvaluateWithDualReferenceStreaminoutINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeConvertToMceResultINTEL,
+                         "SubgroupAvcImeConvertToMceResultINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeGetSingleReferenceStreaminINTEL,
+                         "SubgroupAvcImeGetSingleReferenceStreaminINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeGetDualReferenceStreaminINTEL,
+                         "SubgroupAvcImeGetDualReferenceStreaminINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeStripSingleReferenceStreamoutINTEL,
+                         "SubgroupAvcImeStripSingleReferenceStreamoutINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeStripDualReferenceStreamoutINTEL,
+                         "SubgroupAvcImeStripDualReferenceStreamoutINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeGetStreamoutSingleReferenceMajorShapeMotionVectorsINTEL,
+                         "SubgroupAvcImeGetStreamoutSingleReferenceMajorShapeMotionVectorsINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeGetStreamoutSingleReferenceMajorShapeDistortionsINTEL,
+                         "SubgroupAvcImeGetStreamoutSingleReferenceMajorShapeDistortionsINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeGetStreamoutSingleReferenceMajorShapeReferenceIdsINTEL,
+                         "SubgroupAvcImeGetStreamoutSingleReferenceMajorShapeReferenceIdsINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeGetStreamoutDualReferenceMajorShapeMotionVectorsINTEL,
+                         "SubgroupAvcImeGetStreamoutDualReferenceMajorShapeMotionVectorsINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeGetStreamoutDualReferenceMajorShapeDistortionsINTEL,
+                         "SubgroupAvcImeGetStreamoutDualReferenceMajorShapeDistortionsINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeGetStreamoutDualReferenceMajorShapeReferenceIdsINTEL,
+                         "SubgroupAvcImeGetStreamoutDualReferenceMajorShapeReferenceIdsINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeGetBorderReachedINTEL,
+                         "SubgroupAvcImeGetBorderReachedINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeGetTruncatedSearchIndicationINTEL,
+                         "SubgroupAvcImeGetTruncatedSearchIndicationINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeGetUnidirectionalEarlySearchTerminationINTEL,
+                         "SubgroupAvcImeGetUnidirectionalEarlySearchTerminationINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeGetWeightingPatternMinimumMotionVectorINTEL,
+                         "SubgroupAvcImeGetWeightingPatternMinimumMotionVectorINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcImeGetWeightingPatternMinimumDistortionINTEL,
+                         "SubgroupAvcImeGetWeightingPatternMinimumDistortionINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcFmeInitializeINTEL, "SubgroupAvcFmeInitializeINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcBmeInitializeINTEL, "SubgroupAvcBmeInitializeINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcRefConvertToMcePayloadINTEL,
+                         "SubgroupAvcRefConvertToMcePayloadINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcRefSetBidirectionalMixDisableINTEL,
+                         "SubgroupAvcRefSetBidirectionalMixDisableINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcRefSetBilinearFilterEnableINTEL,
+                         "SubgroupAvcRefSetBilinearFilterEnableINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcRefEvaluateWithSingleReferenceINTEL,
+                         "SubgroupAvcRefEvaluateWithSingleReferenceINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcRefEvaluateWithDualReferenceINTEL,
+                         "SubgroupAvcRefEvaluateWithDualReferenceINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcRefEvaluateWithMultiReferenceINTEL,
+                         "SubgroupAvcRefEvaluateWithMultiReferenceINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcRefEvaluateWithMultiReferenceInterlacedINTEL,
+                         "SubgroupAvcRefEvaluateWithMultiReferenceInterlacedINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcRefConvertToMceResultINTEL,
+                         "SubgroupAvcRefConvertToMceResultINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicInitializeINTEL, "SubgroupAvcSicInitializeINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicConfigureSkcINTEL, "SubgroupAvcSicConfigureSkcINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicConfigureIpeLumaINTEL,
+                         "SubgroupAvcSicConfigureIpeLumaINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicConfigureIpeLumaChromaINTEL,
+                         "SubgroupAvcSicConfigureIpeLumaChromaINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicGetMotionVectorMaskINTEL,
+                         "SubgroupAvcSicGetMotionVectorMaskINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicConvertToMcePayloadINTEL,
+                         "SubgroupAvcSicConvertToMcePayloadINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicSetIntraLumaShapePenaltyINTEL,
+                         "SubgroupAvcSicSetIntraLumaShapePenaltyINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicSetIntraLumaModeCostFunctionINTEL,
+                         "SubgroupAvcSicSetIntraLumaModeCostFunctionINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicSetIntraChromaModeCostFunctionINTEL,
+                         "SubgroupAvcSicSetIntraChromaModeCostFunctionINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicSetBilinearFilterEnableINTEL,
+                         "SubgroupAvcSicSetBilinearFilterEnableINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicSetSkcForwardTransformEnableINTEL,
+                         "SubgroupAvcSicSetSkcForwardTransformEnableINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicSetBlockBasedRawSkipSadINTEL,
+                         "SubgroupAvcSicSetBlockBasedRawSkipSadINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicEvaluateIpeINTEL, "SubgroupAvcSicEvaluateIpeINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicEvaluateWithSingleReferenceINTEL,
+                         "SubgroupAvcSicEvaluateWithSingleReferenceINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicEvaluateWithDualReferenceINTEL,
+                         "SubgroupAvcSicEvaluateWithDualReferenceINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicEvaluateWithMultiReferenceINTEL,
+                         "SubgroupAvcSicEvaluateWithMultiReferenceINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicEvaluateWithMultiReferenceInterlacedINTEL,
+                         "SubgroupAvcSicEvaluateWithMultiReferenceInterlacedINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicConvertToMceResultINTEL,
+                         "SubgroupAvcSicConvertToMceResultINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicGetIpeLumaShapeINTEL,
+                         "SubgroupAvcSicGetIpeLumaShapeINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicGetBestIpeLumaDistortionINTEL,
+                         "SubgroupAvcSicGetBestIpeLumaDistortionINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicGetBestIpeChromaDistortionINTEL,
+                         "SubgroupAvcSicGetBestIpeChromaDistortionINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicGetPackedIpeLumaModesINTEL,
+                         "SubgroupAvcSicGetPackedIpeLumaModesINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicGetIpeChromaModeINTEL,
+                         "SubgroupAvcSicGetIpeChromaModeINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicGetPackedSkcLumaCountThresholdINTEL,
+                         "SubgroupAvcSicGetPackedSkcLumaCountThresholdINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicGetPackedSkcLumaSumThresholdINTEL,
+                         "SubgroupAvcSicGetPackedSkcLumaSumThresholdINTEL");
+    STRINGISE_ENUM_NAMED(spv::OpSubgroupAvcSicGetInterRawSadsINTEL,
+                         "SubgroupAvcSicGetInterRawSadsINTEL");
     STRINGISE_ENUM_NAMED(spv::OpMax, "Max");
   }
   END_ENUM_STRINGISE()
 }
 
 template <>
-std::string DoStringise(const spv::SourceLanguage &el)
+rdcstr DoStringise(const spv::SourceLanguage &el)
 {
   BEGIN_ENUM_STRINGISE(spv::SourceLanguage)
   {
@@ -437,7 +666,7 @@ std::string DoStringise(const spv::SourceLanguage &el)
 }
 
 template <>
-std::string DoStringise(const spv::Capability &el)
+rdcstr DoStringise(const spv::Capability &el)
 {
   BEGIN_ENUM_STRINGISE(spv::Capability)
   {
@@ -589,16 +818,25 @@ std::string DoStringise(const spv::Capability &el)
                          "PhysicalStorageBufferAddressesEXT");
     STRINGISE_ENUM_NAMED(spv::CapabilityComputeDerivativeGroupLinearNV,
                          "ComputeDerivativeGroupLinearNV");
+    STRINGISE_ENUM_NAMED(spv::CapabilityCooperativeMatrixNV, "CooperativeMatrixNV");
     STRINGISE_ENUM_NAMED(spv::CapabilitySubgroupShuffleINTEL, "SubgroupShuffleINTEL");
     STRINGISE_ENUM_NAMED(spv::CapabilitySubgroupBufferBlockIOINTEL, "SubgroupBufferBlockIOINTEL");
     STRINGISE_ENUM_NAMED(spv::CapabilitySubgroupImageBlockIOINTEL, "SubgroupImageBlockIOINTEL");
+    STRINGISE_ENUM_NAMED(spv::CapabilitySubgroupImageMediaBlockIOINTEL,
+                         "SubgroupImageMediaBlockIOINTEL");
+    STRINGISE_ENUM_NAMED(spv::CapabilitySubgroupAvcMotionEstimationINTEL,
+                         "SubgroupAvcMotionEstimationINTEL");
+    STRINGISE_ENUM_NAMED(spv::CapabilitySubgroupAvcMotionEstimationIntraINTEL,
+                         "SubgroupAvcMotionEstimationIntraINTEL");
+    STRINGISE_ENUM_NAMED(spv::CapabilitySubgroupAvcMotionEstimationChromaINTEL,
+                         "SubgroupAvcMotionEstimationChromaINTEL");
     STRINGISE_ENUM_NAMED(spv::CapabilityMax, "Max");
   }
   END_ENUM_STRINGISE()
 }
 
 template <>
-std::string DoStringise(const spv::ExecutionMode &el)
+rdcstr DoStringise(const spv::ExecutionMode &el)
 {
   BEGIN_ENUM_STRINGISE(spv::ExecutionMode)
   {
@@ -658,7 +896,7 @@ std::string DoStringise(const spv::ExecutionMode &el)
 }
 
 template <>
-std::string DoStringise(const spv::AddressingModel &el)
+rdcstr DoStringise(const spv::AddressingModel &el)
 {
   BEGIN_ENUM_STRINGISE(spv::AddressingModel)
   {
@@ -673,7 +911,7 @@ std::string DoStringise(const spv::AddressingModel &el)
 }
 
 template <>
-std::string DoStringise(const spv::MemoryModel &el)
+rdcstr DoStringise(const spv::MemoryModel &el)
 {
   BEGIN_ENUM_STRINGISE(spv::MemoryModel)
   {
@@ -687,7 +925,7 @@ std::string DoStringise(const spv::MemoryModel &el)
 }
 
 template <>
-std::string DoStringise(const spv::ExecutionModel &el)
+rdcstr DoStringise(const spv::ExecutionModel &el)
 {
   BEGIN_ENUM_STRINGISE(spv::ExecutionModel)
   {
@@ -712,7 +950,7 @@ std::string DoStringise(const spv::ExecutionModel &el)
 }
 
 template <>
-std::string DoStringise(const spv::Decoration &el)
+rdcstr DoStringise(const spv::Decoration &el)
 {
   BEGIN_ENUM_STRINGISE(spv::Decoration)
   {
@@ -784,7 +1022,7 @@ std::string DoStringise(const spv::Decoration &el)
 }
 
 template <>
-std::string DoStringise(const spv::Dim &el)
+rdcstr DoStringise(const spv::Dim &el)
 {
   BEGIN_ENUM_STRINGISE(spv::Dim)
   {
@@ -801,7 +1039,7 @@ std::string DoStringise(const spv::Dim &el)
 }
 
 template <>
-std::string DoStringise(const spv::StorageClass &el)
+rdcstr DoStringise(const spv::StorageClass &el)
 {
   BEGIN_ENUM_STRINGISE(spv::StorageClass)
   {
@@ -831,7 +1069,7 @@ std::string DoStringise(const spv::StorageClass &el)
 }
 
 template <>
-std::string DoStringise(const spv::ImageFormat &el)
+rdcstr DoStringise(const spv::ImageFormat &el)
 {
   BEGIN_ENUM_STRINGISE(spv::ImageFormat)
   {
@@ -881,7 +1119,7 @@ std::string DoStringise(const spv::ImageFormat &el)
 }
 
 template <>
-std::string DoStringise(const spv::BuiltIn &el)
+rdcstr DoStringise(const spv::BuiltIn &el)
 {
   BEGIN_ENUM_STRINGISE(spv::BuiltIn)
   {
@@ -982,7 +1220,7 @@ std::string DoStringise(const spv::BuiltIn &el)
 }
 
 template <>
-std::string DoStringise(const spv::Scope &el)
+rdcstr DoStringise(const spv::Scope &el)
 {
   BEGIN_ENUM_STRINGISE(spv::Scope)
   {
@@ -998,7 +1236,7 @@ std::string DoStringise(const spv::Scope &el)
 }
 
 template <>
-std::string DoStringise(const spv::GroupOperation &el)
+rdcstr DoStringise(const spv::GroupOperation &el)
 {
   BEGIN_ENUM_STRINGISE(spv::GroupOperation)
   {
@@ -1017,7 +1255,7 @@ std::string DoStringise(const spv::GroupOperation &el)
 }
 
 template <>
-std::string DoStringise(const spv::FunctionControlMask &el)
+rdcstr DoStringise(const spv::FunctionControlMask &el)
 {
   BEGIN_BITFIELD_STRINGISE(spv::FunctionControlMask);
   {
@@ -1030,7 +1268,7 @@ std::string DoStringise(const spv::FunctionControlMask &el)
 }
 
 template <>
-std::string DoStringise(const spv::SelectionControlMask &el)
+rdcstr DoStringise(const spv::SelectionControlMask &el)
 {
   BEGIN_BITFIELD_STRINGISE(spv::SelectionControlMask);
   {
@@ -1041,7 +1279,7 @@ std::string DoStringise(const spv::SelectionControlMask &el)
 }
 
 template <>
-std::string DoStringise(const spv::LoopControlMask &el)
+rdcstr DoStringise(const spv::LoopControlMask &el)
 {
   BEGIN_BITFIELD_STRINGISE(spv::LoopControlMask);
   {
@@ -1054,7 +1292,7 @@ std::string DoStringise(const spv::LoopControlMask &el)
 }
 
 template <>
-std::string DoStringise(const spv::MemoryAccessMask &el)
+rdcstr DoStringise(const spv::MemoryAccessMask &el)
 {
   BEGIN_BITFIELD_STRINGISE(spv::MemoryAccessMask);
   {
@@ -1070,7 +1308,7 @@ std::string DoStringise(const spv::MemoryAccessMask &el)
 }
 
 template <>
-std::string DoStringise(const spv::MemorySemanticsMask &el)
+rdcstr DoStringise(const spv::MemorySemanticsMask &el)
 {
   BEGIN_BITFIELD_STRINGISE(spv::MemorySemanticsMask);
   {

@@ -27,6 +27,7 @@
 #include <algorithm>
 #include "common/common.h"
 #include "data/glsl_shaders.h"
+#include "driver/shaders/spirv/glslang_compile.h"
 #include "maths/camera.h"
 #include "maths/formatpacking.h"
 #include "maths/matrix.h"
@@ -46,6 +47,46 @@ GLuint GLReplay::CreateShader(GLenum shaderType, const std::string &src)
   GL.glShaderSource(ret, 1, &csrc, NULL);
 
   GL.glCompileShader(ret);
+
+  char buffer[1024] = {};
+  GLint status = 0;
+  GL.glGetShaderiv(ret, eGL_COMPILE_STATUS, &status);
+  if(status == 0)
+  {
+    GL.glGetShaderInfoLog(ret, 1024, NULL, buffer);
+    RDCERR("%s compile error: %s", ToStr(shaderType).c_str(), buffer);
+    return 0;
+  }
+
+  return ret;
+}
+
+GLuint GLReplay::CreateSPIRVShader(GLenum shaderType, const std::string &src)
+{
+  if(!HasExt[ARB_gl_spirv])
+  {
+    RDCERR("Compiling SPIR-V shader without ARB_gl_spirv - should be checked above!");
+    return 0;
+  }
+
+  SPIRVCompilationSettings settings(SPIRVSourceLanguage::OpenGLGLSL,
+                                    SPIRVShaderStage(ShaderIdx(shaderType)));
+
+  std::vector<uint32_t> spirv;
+  std::string s = CompileSPIRV(settings, {src}, spirv);
+
+  if(spirv.empty())
+  {
+    RDCERR("Couldn't compile shader to SPIR-V: %s", s.c_str());
+    return 0;
+  }
+
+  GLuint ret = GL.glCreateShader(shaderType);
+
+  GL.glShaderBinary(1, &ret, eGL_SHADER_BINARY_FORMAT_SPIR_V, spirv.data(),
+                    (GLsizei)spirv.size() * 4);
+
+  GL.glSpecializeShader(ret, "main", 0, NULL, NULL);
 
   char buffer[1024] = {};
   GLint status = 0;
@@ -368,13 +409,37 @@ void GLReplay::InitDebugData()
 
   vs = GenerateGLSLShader(GetEmbeddedResource(glsl_blit_vert), shaderType, glslBaseVer);
 
+  // pre-compile SPIR-V shaders up front since this is more expensive
+  if(HasExt[ARB_gl_spirv])
+  {
+    // SPIR-V shaders are always generated as desktop GL 430, for ease
+    std::string source =
+        GenerateGLSLShader(GetEmbeddedResource(glsl_fixedcol_frag), eShaderGLSPIRV, 430);
+    DebugData.fixedcolFragShaderSPIRV = CreateSPIRVShader(eGL_FRAGMENT_SHADER, source);
+
+    if(HasExt[ARB_gpu_shader5] && HasExt[ARB_shader_image_load_store])
+    {
+      std::string defines = "";
+
+      if(!HasExt[ARB_derivative_control])
+      {
+        defines += "#define dFdxFine dFdx\n\n";
+        defines += "#define dFdyFine dFdy\n\n";
+      }
+
+      source =
+          GenerateGLSLShader(GetEmbeddedResource(glsl_quadwrite_frag), eShaderGLSPIRV, 430, defines);
+      DebugData.quadoverdrawFragShaderSPIRV = CreateSPIRVShader(eGL_FRAGMENT_SHADER, source);
+    }
+  }
+
   // used to combine with custom shaders.
   DebugData.texDisplayVertexShader = CreateShader(eGL_VERTEX_SHADER, vs);
 
   for(int i = 0; i < 3; i++)
   {
-    string defines = string("#define UINT_TEX ") + (i == 1 ? "1" : "0") + "\n";
-    defines += string("#define SINT_TEX ") + (i == 2 ? "1" : "0") + "\n";
+    std::string defines = std::string("#define UINT_TEX ") + (i == 1 ? "1" : "0") + "\n";
+    defines += std::string("#define SINT_TEX ") + (i == 2 ? "1" : "0") + "\n";
 
     fs = GenerateGLSLShader(GetEmbeddedResource(glsl_texdisplay_frag), shaderType, glslBaseVer,
                             defines + texSampleDefines);
@@ -703,10 +768,10 @@ void GLReplay::InitDebugData()
             idx |= TEXDISPLAY_SINT_TEX;
 
           {
-            string defines;
-            defines += string("#define SHADER_RESTYPE ") + ToStr(t) + "\n";
-            defines += string("#define UINT_TEX ") + (i == 1 ? "1" : "0") + "\n";
-            defines += string("#define SINT_TEX ") + (i == 2 ? "1" : "0") + "\n";
+            std::string defines;
+            defines += std::string("#define SHADER_RESTYPE ") + ToStr(t) + "\n";
+            defines += std::string("#define UINT_TEX ") + (i == 1 ? "1" : "0") + "\n";
+            defines += std::string("#define SINT_TEX ") + (i == 2 ? "1" : "0") + "\n";
             defines += texSampleDefines;
 
             cs = GenerateGLSLShader(GetEmbeddedResource(glsl_minmaxtile_comp), shaderType,
@@ -719,10 +784,10 @@ void GLReplay::InitDebugData()
           }
 
           {
-            string defines;
-            defines += string("#define SHADER_RESTYPE ") + ToStr(t) + "\n";
-            defines += string("#define UINT_TEX ") + (i == 1 ? "1" : "0") + "\n";
-            defines += string("#define SINT_TEX ") + (i == 2 ? "1" : "0") + "\n";
+            std::string defines;
+            defines += std::string("#define SHADER_RESTYPE ") + ToStr(t) + "\n";
+            defines += std::string("#define UINT_TEX ") + (i == 1 ? "1" : "0") + "\n";
+            defines += std::string("#define SINT_TEX ") + (i == 2 ? "1" : "0") + "\n";
             defines += texSampleDefines;
 
             cs = GenerateGLSLShader(GetEmbeddedResource(glsl_histogram_comp), shaderType, glslCSVer,
@@ -736,10 +801,10 @@ void GLReplay::InitDebugData()
 
           if(t == 1)
           {
-            string defines;
-            defines += string("#define SHADER_RESTYPE ") + ToStr(t) + "\n";
-            defines += string("#define UINT_TEX ") + (i == 1 ? "1" : "0") + "\n";
-            defines += string("#define SINT_TEX ") + (i == 2 ? "1" : "0") + "\n";
+            std::string defines;
+            defines += std::string("#define SHADER_RESTYPE ") + ToStr(t) + "\n";
+            defines += std::string("#define UINT_TEX ") + (i == 1 ? "1" : "0") + "\n";
+            defines += std::string("#define SINT_TEX ") + (i == 2 ? "1" : "0") + "\n";
 
             cs = GenerateGLSLShader(GetEmbeddedResource(glsl_minmaxresult_comp), shaderType,
                                     glslCSVer, defines);
@@ -780,7 +845,8 @@ void GLReplay::InitDebugData()
                              eGL_DYNAMIC_READ);
   }
 
-  if(HasExt[ARB_compute_shader] && HasExt[ARB_shader_image_load_store])
+  if(HasExt[ARB_compute_shader] && HasExt[ARB_shader_image_load_store] &&
+     HasExt[ARB_texture_multisample])
   {
     cs = GenerateGLSLShader(GetEmbeddedResource(glsl_ms2array_comp), shaderType, glslCSVer);
     DebugData.MS2Array = CreateCShaderProgram(cs);
@@ -798,8 +864,8 @@ void GLReplay::InitDebugData()
     DebugData.MS2Array = 0;
     DebugData.Array2MS = 0;
     RDCWARN(
-        "GL_ARB_compute_shader or ARB_shader_image_load_store not supported, disabling 2DMS "
-        "save/load.");
+        "GL_ARB_compute_shader or ARB_shader_image_load_store or ARB_texture_multisample not "
+        "supported, disabling 2DMS save/load.");
     m_pDriver->AddDebugMessage(MessageCategory::Portability, MessageSeverity::Medium,
                                MessageSource::RuntimeWarning,
                                "GL_ARB_compute_shader or ARB_shader_image_load_store not "
@@ -1070,7 +1136,7 @@ void GLReplay::DeleteDebugData()
 
   MakeCurrentReplayContext(&m_ReplayCtx);
 
-  if(DebugData.overlayProg != 0)
+  if(DebugData.overlayProg)
     drv.glDeleteProgram(DebugData.overlayProg);
 
   drv.glDeleteTransformFeedbacks(1, &DebugData.feedbackObj);
@@ -1084,23 +1150,35 @@ void GLReplay::DeleteDebugData()
   drv.glDeleteFramebuffers(1, &DebugData.overlayFBO);
   drv.glDeleteTextures(1, &DebugData.overlayTex);
 
-  drv.glDeleteShader(DebugData.quadoverdrawFragShader);
-  drv.glDeleteProgram(DebugData.quadoverdrawResolveProg);
+  if(DebugData.quadoverdrawFragShader)
+    drv.glDeleteShader(DebugData.quadoverdrawFragShader);
+  if(DebugData.quadoverdrawFragShaderSPIRV)
+    drv.glDeleteShader(DebugData.quadoverdrawFragShaderSPIRV);
+  if(DebugData.quadoverdrawResolveProg)
+    drv.glDeleteProgram(DebugData.quadoverdrawResolveProg);
 
-  drv.glDeleteShader(DebugData.texDisplayVertexShader);
+  if(DebugData.texDisplayVertexShader)
+    drv.glDeleteShader(DebugData.texDisplayVertexShader);
   for(int i = 0; i < 3; i++)
-    drv.glDeleteProgram(DebugData.texDisplayProg[i]);
+    if(DebugData.texDisplayProg[i])
+      drv.glDeleteProgram(DebugData.texDisplayProg[i]);
 
-  drv.glDeleteProgram(DebugData.checkerProg);
+  if(DebugData.checkerProg)
+    drv.glDeleteProgram(DebugData.checkerProg);
   if(DebugData.fixedcolFragShader)
     drv.glDeleteShader(DebugData.fixedcolFragShader);
+  if(DebugData.fixedcolFragShaderSPIRV)
+    drv.glDeleteShader(DebugData.fixedcolFragShaderSPIRV);
 
   for(size_t i = 0; i < ARRAY_COUNT(DebugData.meshProg); i++)
   {
-    drv.glDeleteProgram(DebugData.meshProg[i]);
-    drv.glDeleteProgram(DebugData.meshgsProg[i]);
+    if(DebugData.meshProg[i])
+      drv.glDeleteProgram(DebugData.meshProg[i]);
+    if(DebugData.meshgsProg[i])
+      drv.glDeleteProgram(DebugData.meshgsProg[i]);
   }
-  drv.glDeleteProgram(DebugData.trisizeProg);
+  if(DebugData.trisizeProg)
+    drv.glDeleteProgram(DebugData.trisizeProg);
 
   drv.glDeleteBuffers(ARRAY_COUNT(DebugData.UBOs), DebugData.UBOs);
   drv.glDeleteFramebuffers(1, &DebugData.pickPixelFBO);
@@ -1125,24 +1203,34 @@ void GLReplay::DeleteDebugData()
       if(i == 2)
         idx |= TEXDISPLAY_SINT_TEX;
 
-      drv.glDeleteProgram(DebugData.minmaxTileProgram[idx]);
-      drv.glDeleteProgram(DebugData.histogramProgram[idx]);
+      if(DebugData.minmaxTileProgram[idx])
+        drv.glDeleteProgram(DebugData.minmaxTileProgram[idx]);
+      if(DebugData.histogramProgram[idx])
+        drv.glDeleteProgram(DebugData.histogramProgram[idx]);
 
-      drv.glDeleteProgram(DebugData.minmaxResultProgram[i]);
-      DebugData.minmaxResultProgram[i] = 0;
+      if(t == 1)
+      {
+        if(DebugData.minmaxResultProgram[i])
+          drv.glDeleteProgram(DebugData.minmaxResultProgram[i]);
+      }
     }
   }
 
-  drv.glDeleteProgram(DebugData.meshPickProgram);
+  if(DebugData.meshPickProgram)
+    drv.glDeleteProgram(DebugData.meshPickProgram);
   drv.glDeleteBuffers(1, &DebugData.pickIBBuf);
   drv.glDeleteBuffers(1, &DebugData.pickVBBuf);
   drv.glDeleteBuffers(1, &DebugData.pickResultBuf);
 
-  drv.glDeleteProgram(DebugData.Array2MS);
-  drv.glDeleteProgram(DebugData.MS2Array);
+  if(DebugData.Array2MS)
+    drv.glDeleteProgram(DebugData.Array2MS);
+  if(DebugData.MS2Array)
+    drv.glDeleteProgram(DebugData.MS2Array);
 
-  drv.glDeleteProgram(DebugData.DepthArray2MS);
-  drv.glDeleteProgram(DebugData.DepthMS2Array);
+  if(DebugData.DepthArray2MS)
+    drv.glDeleteProgram(DebugData.DepthArray2MS);
+  if(DebugData.DepthMS2Array)
+    drv.glDeleteProgram(DebugData.DepthMS2Array);
 
   drv.glDeleteBuffers(1, &DebugData.minmaxTileResult);
   drv.glDeleteBuffers(1, &DebugData.minmaxResult);
@@ -1498,7 +1586,7 @@ bool GLReplay::GetMinMax(ResourceId texid, uint32_t sliceFace, uint32_t mip, uin
 
 bool GLReplay::GetHistogram(ResourceId texid, uint32_t sliceFace, uint32_t mip, uint32_t sample,
                             CompType typeHint, float minval, float maxval, bool channels[4],
-                            vector<uint32_t> &histogram)
+                            std::vector<uint32_t> &histogram)
 {
   if(minval >= maxval || texid == ResourceId())
     return false;

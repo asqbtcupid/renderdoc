@@ -799,7 +799,7 @@ void WrappedID3D12Device::FirstFrame(WrappedIDXGISwapChain4 *swap)
   }
 }
 
-void WrappedID3D12Device::ApplyBarriers(vector<D3D12_RESOURCE_BARRIER> &barriers)
+void WrappedID3D12Device::ApplyBarriers(std::vector<D3D12_RESOURCE_BARRIER> &barriers)
 {
   SCOPED_LOCK(m_ResourceStatesLock);
   GetResourceManager()->ApplyBarriers(barriers, m_ResourceStates);
@@ -871,7 +871,7 @@ bool WrappedID3D12Device::Serialise_WrapSwapchainBuffer(SerialiserType &ser,
   WrappedID3D12Resource1 *pRes = (WrappedID3D12Resource1 *)realSurface;
 
   SERIALISE_ELEMENT(Buffer);
-  SERIALISE_ELEMENT_LOCAL(SwapbufferID, GetResID(pRes)).TypedAs("ID3D12Resource *");
+  SERIALISE_ELEMENT_LOCAL(SwapbufferID, GetResID(pRes)).TypedAs("ID3D12Resource *"_lit);
   SERIALISE_ELEMENT_LOCAL(BackbufferDescriptor, pRes->GetDesc());
 
   SERIALISE_CHECK_READ_ERRORS();
@@ -1101,7 +1101,7 @@ bool WrappedID3D12Device::Serialise_MapDataWrite(SerialiserType &ser, ID3D12Reso
     flags = SerialiserFlags::NoFlags;
   }
 
-  ser.Serialise("MappedData", MappedData, range.End - range.Begin, flags);
+  ser.Serialise("MappedData"_lit, MappedData, range.End - range.Begin, flags);
 
   SERIALISE_ELEMENT(range);
 
@@ -1386,8 +1386,11 @@ HRESULT WrappedID3D12Device::Present(WrappedIDXGISwapChain4 *swap, UINT SyncInte
         list->OMSetRenderTargets(1, &rtv, FALSE, NULL);
 
         int flags = activeWindow ? RenderDoc::eOverlay_ActiveWindow : 0;
-        string overlayText =
+        std::string overlayText =
             RenderDoc::Inst().GetOverlayText(RDCDriver::D3D12, m_FrameCounter, flags);
+
+        if(m_InvalidPSO)
+          overlayText += "ERROR: Invalid PSO created, likely using DXIL which is not supported.\n";
 
         if(!overlayText.empty())
           m_TextRenderer->RenderText(list, 0.0f, 0.0f, overlayText.c_str());
@@ -1407,6 +1410,10 @@ HRESULT WrappedID3D12Device::Present(WrappedIDXGISwapChain4 *swap, UINT SyncInte
   RenderDoc::Inst().AddActiveDriver(RDCDriver::D3D12, true);
 
   if(!activeWindow)
+    return S_OK;
+
+  // disallow capturing if an invalid PSO has been created
+  if(m_InvalidPSO)
     return S_OK;
 
   // kill any current capture that isn't application defined
@@ -1476,7 +1483,8 @@ void WrappedID3D12Device::EndCaptureFrame(ID3D12Resource *presentImage)
   ser.SetDrawChunk();
   SCOPED_SERIALISE_CHUNK(SystemChunk::CaptureEnd);
 
-  SERIALISE_ELEMENT_LOCAL(PresentedBackbuffer, GetResID(presentImage)).TypedAs("ID3D12Resource *");
+  SERIALISE_ELEMENT_LOCAL(PresentedBackbuffer, GetResID(presentImage))
+      .TypedAs("ID3D12Resource *"_lit);
 
   m_FrameCaptureRecord->AddChunk(scope.Get());
 }
@@ -1798,7 +1806,7 @@ bool WrappedID3D12Device::EndFrameCapture(void *dev, void *wnd)
     // in capframe (the transition is thread-protected) so nothing will be
     // pushed to the vector
 
-    map<int32_t, Chunk *> recordlist;
+    std::map<int32_t, Chunk *> recordlist;
 
     for(auto it = queues.begin(); it != queues.end(); ++it)
     {
@@ -1855,8 +1863,6 @@ bool WrappedID3D12Device::EndFrameCapture(void *dev, void *wnd)
 
   GetResourceManager()->FreeInitialContents();
 
-  GetResourceManager()->FlushPendingDirty();
-
   FlushPendingDescriptorWrites();
 
   return true;
@@ -1900,8 +1906,6 @@ bool WrappedID3D12Device::DiscardFrameCapture(void *dev, void *wnd)
   GetResourceManager()->ClearReferencedResources();
 
   GetResourceManager()->FreeInitialContents();
-
-  GetResourceManager()->FlushPendingDirty();
 
   FlushPendingDescriptorWrites();
 
@@ -2102,7 +2106,7 @@ std::vector<DebugMessage> WrappedID3D12Device::GetDebugMessages()
     }
 
     msg.messageID = (uint32_t)message->ID;
-    msg.description = string(message->pDescription);
+    msg.description = std::string(message->pDescription);
 
     ret.push_back(msg);
 
@@ -2593,7 +2597,7 @@ void WrappedID3D12Device::ExecuteLists(WrappedID3D12CommandQueue *queue, bool In
   if(m_InternalCmds.pendingcmds.empty())
     return;
 
-  vector<ID3D12CommandList *> cmds;
+  std::vector<ID3D12CommandList *> cmds;
   cmds.resize(m_InternalCmds.pendingcmds.size());
   for(size_t i = 0; i < cmds.size(); i++)
     cmds[i] = m_InternalCmds.pendingcmds[i];
@@ -2727,7 +2731,7 @@ bool WrappedID3D12Device::ProcessChunk(ReadSerialiser &ser, D3D12Chunk context)
       }
       else if(system == SystemChunk::InitialContents)
       {
-        return GetResourceManager()->Serialise_InitialState(ser, ResourceId(), NULL);
+        return GetResourceManager()->Serialise_InitialState(ser, ResourceId(), NULL, NULL);
       }
       else if(system == SystemChunk::CaptureScope)
       {

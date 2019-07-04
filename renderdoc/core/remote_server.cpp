@@ -63,6 +63,7 @@ enum RemoteServerPacket
   eRemoteServer_ListDir,
   eRemoteServer_ExecuteAndInject,
   eRemoteServer_ShutdownServer,
+  eRemoteServer_GetDriverName,
   eRemoteServer_GetSectionCount,
   eRemoteServer_FindSectionByName,
   eRemoteServer_FindSectionByType,
@@ -584,6 +585,17 @@ static void ActiveRemoteClientThread(ClientThread *threadData,
         SERIALISE_ELEMENT(StackFrames);
       }
     }
+    else if(type == eRemoteServer_GetDriverName)
+    {
+      reader.EndChunk();
+
+      std::string driver = rdc ? rdc->GetDriverName() : "";
+      {
+        WRITE_DATA_SCOPE();
+        SCOPED_SERIALISE_CHUNK(eRemoteServer_GetDriverName);
+        SERIALISE_ELEMENT(driver);
+      }
+    }
     else if(type == eRemoteServer_GetSectionCount)
     {
       reader.EndChunk();
@@ -812,14 +824,14 @@ void RenderDoc::BecomeRemoteServer(const char *listenhost, uint16_t port,
   if(sock == NULL)
     return;
 
-  std::vector<std::pair<uint32_t, uint32_t> > listenRanges;
+  std::vector<rdcpair<uint32_t, uint32_t> > listenRanges;
   bool allowExecution = true;
 
   FILE *f = FileIO::fopen(FileIO::GetAppFolderFilename("remoteserver.conf").c_str(), "r");
 
   while(f && !FileIO::feof(f))
   {
-    string line = trim(FileIO::getline(f));
+    std::string line = trim(FileIO::getline(f));
 
     if(line == "")
       continue;
@@ -837,7 +849,7 @@ void RenderDoc::BecomeRemoteServer(const char *listenhost, uint16_t port,
 
       if(found)
       {
-        listenRanges.push_back(std::make_pair(ip, mask));
+        listenRanges.push_back(make_rdcpair(ip, mask));
         continue;
       }
       else
@@ -868,9 +880,9 @@ void RenderDoc::BecomeRemoteServer(const char *listenhost, uint16_t port,
         "narrow "
         "this down or accept connections from more ranges.");
 
-    listenRanges.push_back(std::make_pair(Network::MakeIP(10, 0, 0, 0), 0xff000000));
-    listenRanges.push_back(std::make_pair(Network::MakeIP(172, 16, 0, 0), 0xfff00000));
-    listenRanges.push_back(std::make_pair(Network::MakeIP(192, 168, 0, 0), 0xffff0000));
+    listenRanges.push_back(make_rdcpair(Network::MakeIP(10, 0, 0, 0), 0xff000000));
+    listenRanges.push_back(make_rdcpair(Network::MakeIP(172, 16, 0, 0), 0xfff00000));
+    listenRanges.push_back(make_rdcpair(Network::MakeIP(192, 168, 0, 0), 0xffff0000));
   }
 
   RDCLOG("Allowing connections from:");
@@ -1031,7 +1043,7 @@ public:
 
     m_Proxies.reserve(m.size());
     for(auto it = m.begin(); it != m.end(); ++it)
-      m_Proxies.push_back(*it);
+      m_Proxies.push_back({it->first, it->second});
 
     m_LogcatThread = NULL;
   }
@@ -1197,32 +1209,133 @@ public:
       std::string deviceID;
       Android::ExtractDeviceIDAndIndex(m_hostname, index, deviceID);
 
-      string adbStdout = Android::adbExecCommand(deviceID, "shell pm list packages -3").strStdout;
-      using namespace std;
-      istringstream stdoutStream(adbStdout);
-      string line;
-      vector<PathEntry> packages;
-      while(getline(stdoutStream, line))
+      if(path[0] == 0 || (path[0] == '/' && path[1] == 0))
       {
-        vector<string> tokens;
-        split(line, tokens, ':');
-        if(tokens.size() == 2 && tokens[0] == "package")
-        {
-          PathEntry package;
-          package.filename = trim(tokens[1]);
-          package.size = 0;
-          package.lastmod = 0;
-          package.flags = PathProperty::Executable;
+        SCOPED_TIMER("Fetching android packages and activities");
 
+        std::string adbStdout =
+            Android::adbExecCommand(deviceID, "shell pm list packages -3").strStdout;
+
+        std::vector<std::string> lines;
+        split(adbStdout, lines, '\n');
+
+        std::vector<PathEntry> packages;
+        for(const std::string &line : lines)
+        {
           // hide our own internal packages
-          if(strstr(package.filename.c_str(), "org.renderdoc."))
+          if(strstr(line.c_str(), "package:org.renderdoc."))
             continue;
 
-          packages.push_back(package);
-        }
-      }
+          if(!strncmp(line.c_str(), "package:", 8))
+          {
+            PathEntry pkg;
+            pkg.filename = trim(line.substr(8));
+            pkg.size = 0;
+            pkg.lastmod = 0;
+            pkg.flags = PathProperty::Directory;
 
-      return packages;
+            packages.push_back(pkg);
+          }
+        }
+
+        adbStdout = Android::adbExecCommand(deviceID, "shell dumpsys package").strStdout;
+
+        split(adbStdout, lines, '\n');
+
+        for(const std::string &line : lines)
+        {
+          // quick check, look for a /
+          if(line.find('/') == std::string::npos)
+            continue;
+
+          // line should be something like: '    78f9sba com.package.name/.NameOfActivity .....'
+
+          const char *c = line.c_str();
+
+          // expect whitespace
+          while(*c && isspace(*c))
+            c++;
+
+          // expect hex
+          while(*c && ((*c >= '0' && *c <= '9') || (*c >= 'a' && *c <= 'f')))
+            c++;
+
+          // expect space
+          if(*c != ' ')
+            continue;
+
+          c++;
+
+          // expect the package now. Search to see if it's one of the ones we listed above
+          std::string package;
+
+          for(const PathEntry &p : packages)
+            if(!strncmp(c, p.filename.c_str(), p.filename.size()))
+              package = p.filename;
+
+          // didn't find a matching package
+          if(package.empty())
+            continue;
+
+          c += package.size();
+
+          // expect a /
+          if(*c != '/')
+            continue;
+
+          c++;
+
+          const char *end = strchr(c, ' ');
+
+          if(end == NULL)
+            end = c + strlen(c);
+
+          while(isspace(*(end - 1)))
+            end--;
+
+          m_AndroidActivities.insert({package, rdcstr(c, end - c)});
+        }
+
+        return packages;
+      }
+      else
+      {
+        rdcstr package = path;
+
+        if(!package.empty() && package[0] == '/')
+          package.erase(0);
+
+        std::vector<PathEntry> activities;
+
+        for(const Activity &act : m_AndroidActivities)
+        {
+          if(act.package == package)
+          {
+            PathEntry activity;
+            if(act.activity[0] == '.')
+              activity.filename = package + act.activity;
+            else
+              activity.filename = act.activity;
+            activity.size = 0;
+            activity.lastmod = 0;
+            activity.flags = PathProperty::Executable;
+            activities.push_back(activity);
+          }
+        }
+
+        PathEntry defaultActivity;
+        defaultActivity.filename = "#DefaultActivity";
+        defaultActivity.size = 0;
+        defaultActivity.lastmod = 0;
+        defaultActivity.flags = PathProperty::Executable;
+
+        // if there's only one activity listed, assume it's the default and don't add a virtual
+        // entry
+        if(activities.size() != 1)
+          activities.push_back(defaultActivity);
+
+        return activities;
+      }
     }
 
     {
@@ -1528,6 +1641,37 @@ public:
     }
 
     rend->Shutdown();
+  }
+
+  rdcstr DriverName()
+  {
+    if(!Connected())
+      return "";
+
+    {
+      WRITE_DATA_SCOPE();
+      SCOPED_SERIALISE_CHUNK(eRemoteServer_GetDriverName);
+    }
+
+    std::string driverName = "";
+
+    {
+      READ_DATA_SCOPE();
+      RemoteServerPacket type = ser.ReadChunk<RemoteServerPacket>();
+
+      if(type == eRemoteServer_GetDriverName)
+      {
+        SERIALISE_ELEMENT(driverName);
+      }
+      else
+      {
+        RDCERR("Unexpected response to GetDriverName");
+      }
+
+      ser.EndChunk();
+    }
+
+    return driverName;
   }
 
   int GetSectionCount()
@@ -1857,7 +2001,22 @@ private:
   std::string m_hostname;
   Android::LogcatThread *m_LogcatThread;
 
-  std::vector<std::pair<RDCDriver, std::string> > m_Proxies;
+  std::vector<rdcpair<RDCDriver, std::string> > m_Proxies;
+
+  struct Activity
+  {
+    rdcstr package;
+    rdcstr activity;
+
+    bool operator<(const Activity &o) const
+    {
+      if(package != o.package)
+        return package < o.package;
+      return activity < o.activity;
+    }
+  };
+
+  std::set<Activity> m_AndroidActivities;
 };
 
 extern "C" RENDERDOC_API ReplayStatus RENDERDOC_CC
@@ -1866,7 +2025,7 @@ RENDERDOC_CreateRemoteServerConnection(const char *host, uint32_t port, IRemoteS
   if(rend == NULL)
     return ReplayStatus::InternalError;
 
-  string s = "localhost";
+  std::string s = "localhost";
   if(host != NULL && host[0] != '\0')
     s = host;
 

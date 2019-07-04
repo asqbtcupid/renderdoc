@@ -54,7 +54,7 @@ void SetReplayResourceIDs()
 INSTANTIATE_SERIALISE_TYPE(ResourceManagerInternal::WrittenRecord);
 
 template <>
-std::string DoStringise(const FrameRefType &el)
+rdcstr DoStringise(const FrameRefType &el)
 {
   BEGIN_ENUM_STRINGISE(FrameRefType)
   {
@@ -170,10 +170,7 @@ void ResourceRecord::Delete(ResourceRecordHandler *mgr)
     DeleteChunks();
 
     if(ResID != ResourceId())
-    {
-      mgr->MarkCleanResource(ResID);
       mgr->RemoveResourceRecord(ResID);
-    }
 
     mgr->DestroyResourceRecord(this);
   }

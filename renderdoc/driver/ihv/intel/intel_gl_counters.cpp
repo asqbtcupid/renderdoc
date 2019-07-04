@@ -1,7 +1,7 @@
 /******************************************************************************
  * The MIT License (MIT)
  *
- * Copyright (c) 2018 Baldur Karlsson
+ * Copyright (c) 2018-2019 Baldur Karlsson
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -27,7 +27,6 @@
 
 #include "common/common.h"
 #include "driver/gl/gl_dispatch_table.h"
-#include "driver/gl/gl_driver.h"
 #include "strings/string_utils.h"
 
 #include "intel_gl_counters.h"
@@ -48,7 +47,7 @@ IntelGlCounters::~IntelGlCounters()
 
 std::vector<GPUCounter> IntelGlCounters::GetPublicCounterIds() const
 {
-  vector<GPUCounter> counters;
+  std::vector<GPUCounter> counters;
 
   for(const IntelGlCounter &c : m_Counters)
     counters.push_back(c.desc.counter);
@@ -102,6 +101,7 @@ void IntelGlCounters::addCounter(const IntelGlQuery &query, GLuint counterId)
   uint32_t desc_hash = strhash(counter.desc.description.c_str());
   counter.desc.uuid = Uuid(0x8086, query_hash, name_hash, desc_hash);
   counter.desc.resultType = glToRdcCounterType(counter.dataType);
+  counter.desc.unit = CounterUnit::Absolute;
 
   m_Counters.push_back(counter);
   m_CounterNames[counter.desc.name] = counter;

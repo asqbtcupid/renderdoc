@@ -129,14 +129,17 @@ public:
       AddRef();
       return S_OK;
     }
-    if(riid == __uuidof(NestedType))
+    else if(riid == __uuidof(NestedType))
     {
       *ppvObject = (NestedType *)this;
       AddRef();
       return S_OK;
     }
-    if(riid == __uuidof(NestedType1) && m_pReal)
+    else if(riid == __uuidof(NestedType1))
     {
+      if(!m_pReal)
+        return E_NOINTERFACE;
+
       // check that the real interface supports this
       NestedType1 *dummy = NULL;
       HRESULT check = m_pReal->QueryInterface(riid, (void **)&dummy);
@@ -150,8 +153,11 @@ public:
       AddRef();
       return S_OK;
     }
-    if(riid == __uuidof(NestedType2) && m_pReal)
+    else if(riid == __uuidof(NestedType2))
     {
+      if(!m_pReal)
+        return E_NOINTERFACE;
+
       // check that the real interface supports this
       NestedType2 *dummy = NULL;
       HRESULT check = m_pReal->QueryInterface(riid, (void **)&dummy);
@@ -165,13 +171,32 @@ public:
       AddRef();
       return S_OK;
     }
-    if(riid == __uuidof(ID3D12Object))
+    else if(riid == __uuidof(ID3D12Pageable))
+    {
+      // not all child classes support this, so check it on the real interface
+      if(!m_pReal)
+        return E_NOINTERFACE;
+
+      // check that the real interface supports this
+      ID3D12Pageable *dummy = NULL;
+      HRESULT check = m_pReal->QueryInterface(riid, (void **)&dummy);
+
+      SAFE_RELEASE(dummy);
+
+      if(FAILED(check))
+        return check;
+
+      *ppvObject = (ID3D12Pageable *)this;
+      AddRef();
+      return S_OK;
+    }
+    else if(riid == __uuidof(ID3D12Object))
     {
       *ppvObject = (ID3D12DeviceChild *)this;
       AddRef();
       return S_OK;
     }
-    if(riid == __uuidof(ID3D12DeviceChild))
+    else if(riid == __uuidof(ID3D12DeviceChild))
     {
       *ppvObject = (ID3D12DeviceChild *)this;
       AddRef();
@@ -270,7 +295,15 @@ public:
       return m_pDevice->SetShaderDebugPath(this, (const char *)pData);
 
     if(guid == WKPDID_D3DDebugObjectName)
+    {
       m_pDevice->SetName(this, (const char *)pData);
+    }
+    else if(guid == WKPDID_D3DDebugObjectNameW)
+    {
+      std::wstring wName((const wchar_t *)pData, DataSize / 2);
+      std::string sName = StringFormat::Wide2UTF8(wName);
+      m_pDevice->SetName(this, sName.c_str());
+    }
 
     if(!m_pReal)
       return S_OK;
@@ -288,7 +321,7 @@ public:
 
   HRESULT STDMETHODCALLTYPE SetName(LPCWSTR Name)
   {
-    string utf8 = Name ? StringFormat::Wide2UTF8(Name) : "";
+    std::string utf8 = Name ? StringFormat::Wide2UTF8(Name) : "";
     m_pDevice->SetName(this, utf8.c_str());
 
     if(!m_pReal)
@@ -707,7 +740,7 @@ public:
     }
 
     DXBCKey GetKey() { return m_Key; }
-    void SetDebugInfoPath(vector<std::string> *searchPaths, const std::string &path)
+    void SetDebugInfoPath(std::vector<std::string> *searchPaths, const std::string &path)
     {
       m_DebugInfoSearchPaths = searchPaths;
       m_DebugInfoPath = path;
@@ -746,7 +779,7 @@ public:
       return m_Mapping;
     }
 
-    vector<WrappedID3D12PipelineState *> m_Pipes;
+    std::vector<WrappedID3D12PipelineState *> m_Pipes;
 
   private:
     ShaderEntry(const ShaderEntry &e);
@@ -758,16 +791,16 @@ public:
     DXBCKey m_Key;
 
     std::string m_DebugInfoPath;
-    vector<std::string> *m_DebugInfoSearchPaths;
+    std::vector<std::string> *m_DebugInfoSearchPaths;
 
-    vector<byte> m_Bytecode;
+    std::vector<byte> m_Bytecode;
 
     bool m_Built;
     DXBC::DXBCFile *m_DXBCFile;
     ShaderReflection m_Details;
     ShaderBindpointMapping m_Mapping;
 
-    static map<DXBCKey, ShaderEntry *> m_Shaders;
+    static std::map<DXBCKey, ShaderEntry *> m_Shaders;
   };
 
   enum

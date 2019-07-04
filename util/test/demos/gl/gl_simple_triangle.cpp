@@ -24,7 +24,7 @@
 
 #include "gl_test.h"
 
-struct GL_Simple_Triangle : OpenGLGraphicsTest
+TEST(GL_Simple_Triangle, OpenGLGraphicsTest)
 {
   static constexpr const char *Description =
       "Just draws a simple triangle, using normal pipeline. Basic test that can be used "
@@ -74,10 +74,10 @@ void main()
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create context, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     GLuint vao = MakeVAO();
@@ -97,7 +97,6 @@ void main()
     glEnableVertexAttribArray(2);
 
     GLuint program = MakeProgram(common + vertex, common + pixel);
-    glObjectLabel(GL_PROGRAM, program, -1, "Full program");
 
     while(Running())
     {
@@ -119,4 +118,4 @@ void main()
   }
 };
 
-REGISTER_TEST(GL_Simple_Triangle);
+REGISTER_TEST();

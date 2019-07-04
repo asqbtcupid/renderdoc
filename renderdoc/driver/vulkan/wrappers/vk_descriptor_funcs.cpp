@@ -176,7 +176,8 @@ bool WrappedVulkan::Serialise_vkCreateDescriptorPool(SerialiserType &ser, VkDevi
   SERIALISE_ELEMENT(device);
   SERIALISE_ELEMENT_LOCAL(CreateInfo, *pCreateInfo);
   SERIALISE_ELEMENT_OPT(pAllocator);
-  SERIALISE_ELEMENT_LOCAL(DescriptorPool, GetResID(*pDescriptorPool)).TypedAs("VkDescriptorPool");
+  SERIALISE_ELEMENT_LOCAL(DescriptorPool, GetResID(*pDescriptorPool))
+      .TypedAs("VkDescriptorPool"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -252,7 +253,7 @@ bool WrappedVulkan::Serialise_vkCreateDescriptorSetLayout(
   SERIALISE_ELEMENT(device);
   SERIALISE_ELEMENT_LOCAL(CreateInfo, *pCreateInfo);
   SERIALISE_ELEMENT_OPT(pAllocator);
-  SERIALISE_ELEMENT_LOCAL(SetLayout, GetResID(*pSetLayout)).TypedAs("VkDescriptorSetLayout");
+  SERIALISE_ELEMENT_LOCAL(SetLayout, GetResID(*pSetLayout)).TypedAs("VkDescriptorSetLayout"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -378,7 +379,7 @@ bool WrappedVulkan::Serialise_vkAllocateDescriptorSets(SerialiserType &ser, VkDe
 {
   SERIALISE_ELEMENT(device);
   SERIALISE_ELEMENT_LOCAL(AllocateInfo, *pAllocateInfo);
-  SERIALISE_ELEMENT_LOCAL(DescriptorSet, GetResID(*pDescriptorSets)).TypedAs("VkDescriptorSet");
+  SERIALISE_ELEMENT_LOCAL(DescriptorSet, GetResID(*pDescriptorSets)).TypedAs("VkDescriptorSet"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -506,21 +507,11 @@ VkResult WrappedVulkan::vkAllocateDescriptorSets(VkDevice device,
       record->AddParent(poolrecord);
       record->AddParent(GetResourceManager()->GetResourceRecord(layoutID));
 
-      bool capframe = false;
-      // just always treat descriptor sets as dirty
-      {
-        SCOPED_LOCK(m_CapTransitionLock);
-        capframe = IsActiveCapturing(m_State);
-      }
-
       // only mark descriptor set as dirty if it's not a push descriptor layout
       if((layoutRecord->descInfo->layout->flags &
           VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR) == 0)
       {
-        if(capframe)
-          GetResourceManager()->MarkPendingDirty(id);
-        else
-          GetResourceManager()->MarkDirtyResource(id);
+        GetResourceManager()->MarkDirtyResource(id);
       }
 
       record->descInfo = new DescriptorSetData();
@@ -653,13 +644,13 @@ void WrappedVulkan::ReplayDescriptorSetWrite(VkDevice device, const VkWriteDescr
     ObjDisp(device)->UpdateDescriptorSets(Unwrap(device), 1, &unwrapped, 0, NULL);
 
     // update our local tracking
-    std::vector<DescriptorSetSlot *> &bindings =
+    std::vector<DescriptorSetBindingElement *> &bindings =
         m_DescriptorSetState[GetResID(writeDesc.dstSet)].currentBindings;
 
     {
       RDCASSERT(writeDesc.dstBinding < bindings.size());
 
-      DescriptorSetSlot **bind = &bindings[writeDesc.dstBinding];
+      DescriptorSetBindingElement **bind = &bindings[writeDesc.dstBinding];
       layoutBinding = &layout.bindings[writeDesc.dstBinding];
       curIdx = writeDesc.dstArrayElement;
 
@@ -733,8 +724,10 @@ void WrappedVulkan::ReplayDescriptorSetCopy(VkDevice device, const VkCopyDescrip
   ResourceId srcSetId = GetResID(copyDesc.srcSet);
 
   // update our local tracking
-  std::vector<DescriptorSetSlot *> &dstbindings = m_DescriptorSetState[dstSetId].currentBindings;
-  std::vector<DescriptorSetSlot *> &srcbindings = m_DescriptorSetState[srcSetId].currentBindings;
+  std::vector<DescriptorSetBindingElement *> &dstbindings =
+      m_DescriptorSetState[dstSetId].currentBindings;
+  std::vector<DescriptorSetBindingElement *> &srcbindings =
+      m_DescriptorSetState[srcSetId].currentBindings;
 
   {
     RDCASSERT(copyDesc.dstBinding < dstbindings.size());
@@ -748,8 +741,8 @@ void WrappedVulkan::ReplayDescriptorSetCopy(VkDevice device, const VkCopyDescrip
     const DescSetLayout::Binding *layoutSrcBinding = &srclayout.bindings[copyDesc.srcBinding];
     const DescSetLayout::Binding *layoutDstBinding = &dstlayout.bindings[copyDesc.dstBinding];
 
-    DescriptorSetSlot **dstbind = &dstbindings[copyDesc.dstBinding];
-    DescriptorSetSlot **srcbind = &srcbindings[copyDesc.srcBinding];
+    DescriptorSetBindingElement **dstbind = &dstbindings[copyDesc.dstBinding];
+    DescriptorSetBindingElement **srcbind = &srcbindings[copyDesc.srcBinding];
 
     uint32_t curDstIdx = copyDesc.dstArrayElement;
     uint32_t curSrcIdx = copyDesc.srcArrayElement;
@@ -986,7 +979,7 @@ void WrappedVulkan::vkUpdateDescriptorSets(VkDevice device, uint32_t writeCount,
 
       RDCASSERT(descWrite.dstBinding < record->descInfo->descBindings.size());
 
-      DescriptorSetSlot **binding = &record->descInfo->descBindings[descWrite.dstBinding];
+      DescriptorSetBindingElement **binding = &record->descInfo->descBindings[descWrite.dstBinding];
 
       const DescSetLayout::Binding *layoutBinding = &layout.bindings[descWrite.dstBinding];
 
@@ -1030,7 +1023,7 @@ void WrappedVulkan::vkUpdateDescriptorSets(VkDevice device, uint32_t writeCount,
           curIdx = 0;
         }
 
-        DescriptorSetSlot &bind = (*binding)[curIdx];
+        DescriptorSetBindingElement &bind = (*binding)[curIdx];
 
         bind.RemoveBindRefs(record);
 
@@ -1080,9 +1073,9 @@ void WrappedVulkan::vkUpdateDescriptorSets(VkDevice device, uint32_t writeCount,
       RDCASSERT(pDescriptorCopies[i].dstBinding < dstrecord->descInfo->descBindings.size());
       RDCASSERT(pDescriptorCopies[i].srcBinding < srcrecord->descInfo->descBindings.size());
 
-      DescriptorSetSlot **dstbinding =
+      DescriptorSetBindingElement **dstbinding =
           &dstrecord->descInfo->descBindings[pDescriptorCopies[i].dstBinding];
-      DescriptorSetSlot **srcbinding =
+      DescriptorSetBindingElement **srcbinding =
           &srcrecord->descInfo->descBindings[pDescriptorCopies[i].srcBinding];
 
       const DescSetLayout::Binding *dstlayoutBinding =
@@ -1114,7 +1107,7 @@ void WrappedVulkan::vkUpdateDescriptorSets(VkDevice device, uint32_t writeCount,
           curSrcIdx = 0;
         }
 
-        DescriptorSetSlot &bind = (*dstbinding)[curDstIdx];
+        DescriptorSetBindingElement &bind = (*dstbinding)[curDstIdx];
 
         bind.RemoveBindRefs(dstrecord);
         bind = (*srcbinding)[curSrcIdx];
@@ -1133,7 +1126,7 @@ bool WrappedVulkan::Serialise_vkCreateDescriptorUpdateTemplate(
   SERIALISE_ELEMENT_LOCAL(CreateInfo, *pCreateInfo);
   SERIALISE_ELEMENT_OPT(pAllocator);
   SERIALISE_ELEMENT_LOCAL(DescriptorUpdateTemplate, GetResID(*pDescriptorUpdateTemplate))
-      .TypedAs("VkDescriptorUpdateTemplate");
+      .TypedAs("VkDescriptorUpdateTemplate"_lit);
 
   SERIALISE_CHECK_READ_ERRORS();
 
@@ -1232,7 +1225,7 @@ bool WrappedVulkan::Serialise_vkUpdateDescriptorSetWithTemplate(
     GetRecord(descriptorUpdateTemplate)->descTemplateInfo->Apply(pData, apply);
   }
 
-  SERIALISE_ELEMENT(apply.writes).Named("Decoded Writes");
+  SERIALISE_ELEMENT(apply.writes).Named("Decoded Writes"_lit);
 
   Serialise_DebugMessages(ser);
 
@@ -1367,7 +1360,7 @@ void WrappedVulkan::vkUpdateDescriptorSetWithTemplate(
 
       RDCASSERT(entry.dstBinding < record->descInfo->descBindings.size());
 
-      DescriptorSetSlot **binding = &record->descInfo->descBindings[entry.dstBinding];
+      DescriptorSetBindingElement **binding = &record->descInfo->descBindings[entry.dstBinding];
 
       const DescSetLayout::Binding *layoutBinding = &layout.bindings[entry.dstBinding];
 
@@ -1398,7 +1391,7 @@ void WrappedVulkan::vkUpdateDescriptorSetWithTemplate(
 
         const byte *src = (const byte *)pData + entry.offset + entry.stride * d;
 
-        DescriptorSetSlot &bind = (*binding)[curIdx];
+        DescriptorSetBindingElement &bind = (*binding)[curIdx];
 
         bind.RemoveBindRefs(record);
 

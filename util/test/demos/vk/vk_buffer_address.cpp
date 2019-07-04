@@ -1,7 +1,7 @@
 /******************************************************************************
  * The MIT License (MIT)
  *
- * Copyright (c) 2018 Baldur Karlsson
+ * Copyright (c) 2018-2019 Baldur Karlsson
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -30,7 +30,7 @@
 #if defined(__LP64__) || defined(_WIN64) || defined(__x86_64__) || defined(_M_X64) || \
     defined(__ia64) || defined(_M_IA64) || defined(__aarch64__) || defined(__powerpc64__)
 
-struct VK_Buffer_Address : VulkanGraphicsTest
+TEST(VK_Buffer_Address, VulkanGraphicsTest)
 {
   static constexpr const char *Description = "Test capture and replay of VK_EXT_buffer_reference";
 
@@ -66,11 +66,11 @@ struct DefaultA2V {
   vec2 uv;
 };
 
-layout(bufferreference, scalar, bufferreferencealign = 16) buffer TriangleData {
+layout(buffer_reference, scalar, buffer_reference_align = 16) buffer TriangleData {
   DefaultA2V verts[3];
 };
 
-layout(bufferreference, scalar, bufferreferencealign = 16) buffer DrawData {
+layout(buffer_reference, scalar, buffer_reference_align = 16) buffer DrawData {
   TriangleData tri;
   vec4 tint;
   vec2 offset;
@@ -114,22 +114,32 @@ void main()
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  void Prepare(int argc, char **argv)
   {
-    VkPhysicalDeviceBufferAddressFeaturesEXT bufaddrFeatures = {
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_ADDRESS_FEATURES_EXT,
-    };
-
-    bufaddrFeatures.bufferDeviceAddress = VK_TRUE;
-
-    devInfoNext = &bufaddrFeatures;
-
-    instExts.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
     devExts.push_back(VK_EXT_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
     devExts.push_back(VK_EXT_SCALAR_BLOCK_LAYOUT_EXTENSION_NAME);
 
+    VulkanGraphicsTest::Prepare(argc, argv);
+
+    if(!Avail.empty())
+      return;
+
+    static VkPhysicalDeviceBufferAddressFeaturesEXT bufaddrFeatures = {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_ADDRESS_FEATURES_EXT,
+    };
+
+    getPhysFeatures2(&bufaddrFeatures);
+
+    if(!bufaddrFeatures.bufferDeviceAddress)
+      Avail = "Buffer device address feature 'bufferDeviceAddress' not available";
+
+    devInfoNext = &bufaddrFeatures;
+  }
+
+  int main()
+  {
     // initialise, create window, create context, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     VkPipelineLayout layout = createPipelineLayout(
@@ -138,7 +148,7 @@ void main()
     vkh::GraphicsPipelineCreateInfo pipeCreateInfo;
 
     pipeCreateInfo.layout = layout;
-    pipeCreateInfo.renderPass = swapRenderPass;
+    pipeCreateInfo.renderPass = mainWindow->rp;
 
     pipeCreateInfo.stages = {
         CompileShaderModule(common + vertex, ShaderLang::glsl, ShaderStage::vert, "main"),
@@ -227,12 +237,12 @@ void main()
                            vkh::ImageSubresourceRange());
 
       vkCmdBeginRenderPass(
-          cmd, vkh::RenderPassBeginInfo(swapRenderPass, swapFramebuffers[swapIndex], scissor),
+          cmd, vkh::RenderPassBeginInfo(mainWindow->rp, mainWindow->GetFB(), mainWindow->scissor),
           VK_SUBPASS_CONTENTS_INLINE);
 
       vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
-      vkCmdSetViewport(cmd, 0, 1, &viewport);
-      vkCmdSetScissor(cmd, 0, 1, &scissor);
+      vkCmdSetViewport(cmd, 0, 1, &mainWindow->viewport);
+      vkCmdSetScissor(cmd, 0, 1, &mainWindow->scissor);
 
       // look ma, no binds
       DrawData *bindptr = drawsgpu;
@@ -270,6 +280,6 @@ void main()
   }
 };
 
-REGISTER_TEST(VK_Buffer_Address);
+REGISTER_TEST();
 
 #endif    // if 64-bit

@@ -93,7 +93,6 @@ set(sources
     api/replay/vk_pipestate.h
     api/replay/version.h
     api/replay/renderdoc_tostr.inl
-    api/replay/version.cpp
     common/common.cpp
     common/common.h
     common/custom_assert.h
@@ -115,6 +114,8 @@ set(sources
     core/replay_proxy.h
     core/intervals.h
     core/intervals_tests.cpp
+    core/bit_flag_iterator.h
+    core/bit_flag_iterator_tests.cpp
     android/android.cpp
     android/android_patch.cpp
     android/android_tools.cpp
@@ -306,6 +307,11 @@ elseif(UNIX)
         os/posix/posix_specific.h)
 endif()
 
+if(CMAKE_COMPILER_IS_GNUCXX)
+    set_source_files_properties(3rdparty/tinyfiledialogs/tinyfiledialogs.c
+        PROPERTIES COMPILE_FLAGS "-Wno-format-overflow")
+endif()
+
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR APPLE)
     set_source_files_properties(3rdparty/tinyexr/tinyexr.cpp
         PROPERTIES COMPILE_FLAGS "-Wno-extra -Wno-unused-function")
@@ -470,6 +476,12 @@ target_include_directories(rdoc ${RDOC_INCLUDES})
 list(APPEND renderdoc_objects
     $<TARGET_OBJECTS:rdoc>
     ${data_objects})
+
+add_library(rdoc_version OBJECT replay/version.cpp)
+target_compile_definitions(rdoc_version PRIVATE -DGIT_COMMIT_HASH="${GIT_COMMIT_HASH}")
+
+list(APPEND renderdoc_objects
+    $<TARGET_OBJECTS:rdoc_version>)
 
 # posix_libentry must be the last so that library_loaded is called after
 # static objects are constructed. We guarantee this happens after even

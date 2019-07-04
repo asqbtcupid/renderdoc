@@ -58,14 +58,14 @@ WRAPPED_POOL_INST(WrappedID3D11ClassLinkage);
 WRAPPED_POOL_INST(WrappedID3DDeviceContextState);
 WRAPPED_POOL_INST(WrappedID3D11Fence);
 
-map<ResourceId, WrappedID3D11Texture1D::TextureEntry>
+std::map<ResourceId, WrappedID3D11Texture1D::TextureEntry>
     WrappedTexture<ID3D11Texture1D, D3D11_TEXTURE1D_DESC, ID3D11Texture1D>::m_TextureList;
-map<ResourceId, WrappedID3D11Texture2D1::TextureEntry>
+std::map<ResourceId, WrappedID3D11Texture2D1::TextureEntry>
     WrappedTexture<ID3D11Texture2D, D3D11_TEXTURE2D_DESC, ID3D11Texture2D1>::m_TextureList;
-map<ResourceId, WrappedID3D11Texture3D1::TextureEntry>
+std::map<ResourceId, WrappedID3D11Texture3D1::TextureEntry>
     WrappedTexture<ID3D11Texture3D, D3D11_TEXTURE3D_DESC, ID3D11Texture3D1>::m_TextureList;
-map<ResourceId, WrappedID3D11Buffer::BufferEntry> WrappedID3D11Buffer::m_BufferList;
-map<ResourceId, WrappedShader::ShaderEntry *> WrappedShader::m_ShaderList;
+std::map<ResourceId, WrappedID3D11Buffer::BufferEntry> WrappedID3D11Buffer::m_BufferList;
+std::map<ResourceId, WrappedShader::ShaderEntry *> WrappedShader::m_ShaderList;
 Threading::CriticalSection WrappedShader::m_ShaderListLock;
 std::vector<WrappedID3DDeviceContextState *> WrappedID3DDeviceContextState::m_List;
 Threading::CriticalSection WrappedID3DDeviceContextState::m_Lock;
@@ -76,7 +76,7 @@ void WrappedShader::ShaderEntry::TryReplaceOriginalByteCode()
 {
   if(!DXBC::DXBCFile::CheckForDebugInfo((const void *)&m_Bytecode[0], m_Bytecode.size()))
   {
-    string originalPath = m_DebugInfoPath;
+    std::string originalPath = m_DebugInfoPath;
 
     if(originalPath.empty())
       originalPath =
@@ -97,7 +97,7 @@ void WrappedShader::ShaderEntry::TryReplaceOriginalByteCode()
 
       size_t numSearchPaths = m_DebugInfoSearchPaths ? m_DebugInfoSearchPaths->size() : 0;
 
-      string foundPath;
+      std::string foundPath;
 
       // while we haven't found a file, keep trying through the search paths. For i==0
       // check the path on its own, in case it's an absolute path.
@@ -126,7 +126,7 @@ void WrappedShader::ShaderEntry::TryReplaceOriginalByteCode()
 
       if(lz4 || originalShaderSize >= m_Bytecode.size())
       {
-        vector<byte> originalBytecode;
+        std::vector<byte> originalBytecode;
 
         originalBytecode.resize((size_t)originalShaderSize);
         FileIO::fread(&originalBytecode[0], sizeof(byte), (size_t)originalShaderSize,
@@ -134,7 +134,7 @@ void WrappedShader::ShaderEntry::TryReplaceOriginalByteCode()
 
         if(lz4)
         {
-          vector<byte> decompressed;
+          std::vector<byte> decompressed;
 
           // first try decompressing to 1MB flat
           decompressed.resize(100 * 1024);
@@ -432,6 +432,9 @@ D3D11ResourceType IdentifyTypeByPtr(IUnknown *ptr)
 
   if(WrappedID3DDeviceContextState::IsAlloc(ptr))
     return Resource_DeviceState;
+
+  if(WrappedID3D11Fence::IsAlloc(ptr))
+    return Resource_Fence;
 
   RDCERR("Unknown type for ptr 0x%p", ptr);
 

@@ -28,6 +28,7 @@
 #include "data/glsl_shaders.h"
 #include "driver/ihv/amd/amd_counters.h"
 #include "driver/ihv/amd/official/GPUPerfAPI/Include/GPUPerfAPI-VK.h"
+#include "driver/shaders/spirv/spirv_compile.h"
 #include "maths/camera.h"
 #include "maths/formatpacking.h"
 #include "maths/matrix.h"
@@ -968,7 +969,7 @@ uint32_t VulkanReplay::PickVertex(uint32_t eventId, int32_t w, int32_t h, const 
                                   uint32_t x, uint32_t y)
 {
   VkDevice dev = m_pDriver->GetDev();
-  const VkLayerDispatchTable *vt = ObjDisp(dev);
+  const VkDevDispatchTable *vt = ObjDisp(dev);
 
   VkMarkerRegion::Begin(StringFormat::Fmt("VulkanReplay::PickVertex(%u, %u)", x, y));
 
@@ -1425,7 +1426,7 @@ uint32_t VulkanReplay::PickVertex(uint32_t eventId, int32_t w, int32_t h, const 
 void VulkanDebugManager::GetBufferData(ResourceId buff, uint64_t offset, uint64_t len, bytebuf &ret)
 {
   VkDevice dev = m_pDriver->GetDev();
-  const VkLayerDispatchTable *vt = ObjDisp(dev);
+  const VkDevDispatchTable *vt = ObjDisp(dev);
 
   WrappedVkRes *res = m_pDriver->GetResourceManager()->GetCurrentResource(buff);
 
@@ -1656,6 +1657,7 @@ void VulkanReplay::GeneralMisc::Init(WrappedVulkan *driver, VkDescriptorPool des
       {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 128},
       {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 128},
       {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 64},
+      {VK_DESCRIPTOR_TYPE_SAMPLER, 32},
       {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 32},
   };
 
@@ -1690,6 +1692,7 @@ void VulkanReplay::TextureRendering::Init(WrappedVulkan *driver, VkDescriptorPoo
 
   VulkanShaderCache *shaderCache = driver->GetShaderCache();
 
+  CREATE_OBJECT(PointSampler, VK_FILTER_NEAREST);
   CREATE_OBJECT(LinearSampler, VK_FILTER_LINEAR);
 
   CREATE_OBJECT(DescSetLayout,
@@ -1711,6 +1714,8 @@ void VulkanReplay::TextureRendering::Init(WrappedVulkan *driver, VkDescriptorPoo
                     {18, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_ALL, NULL},
                     {19, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_ALL, NULL},
                     {20, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_ALL, NULL},
+                    {50, VK_DESCRIPTOR_TYPE_SAMPLER, 1, VK_SHADER_STAGE_ALL, &PointSampler},
+                    {51, VK_DESCRIPTOR_TYPE_SAMPLER, 1, VK_SHADER_STAGE_ALL, &LinearSampler},
                 });
 
   CREATE_OBJECT(PipeLayout, DescSetLayout, 0);
@@ -2003,6 +2008,7 @@ void VulkanReplay::TextureRendering::Destroy(WrappedVulkan *driver)
   UBO.Destroy();
   HeatmapUBO.Destroy();
 
+  driver->vkDestroySampler(driver->GetDev(), PointSampler, NULL);
   driver->vkDestroySampler(driver->GetDev(), LinearSampler, NULL);
 
   for(size_t i = 0; i < ARRAY_COUNT(DummyImages); i++)
@@ -2116,7 +2122,11 @@ void VulkanReplay::OverlayRendering::Init(WrappedVulkan *driver, VkDescriptorPoo
     pipeInfo.fragment = shaderCache->GetBuiltinModule(BuiltinShader::QuadResolveFS);
     pipeInfo.pipeLayout = m_QuadResolvePipeLayout;
 
-    CREATE_OBJECT(m_QuadResolvePipeline[i], pipeInfo);
+    if(pipeInfo.fragment != VK_NULL_HANDLE &&
+       shaderCache->GetBuiltinModule(BuiltinShader::QuadWriteFS) != VK_NULL_HANDLE)
+    {
+      CREATE_OBJECT(m_QuadResolvePipeline[i], pipeInfo);
+    }
 
     driver->vkDestroyRenderPass(driver->GetDev(), RGBA16MSRP, NULL);
   }
@@ -2470,13 +2480,11 @@ void VulkanReplay::HistogramMinMax::Init(WrappedVulkan *driver, VkDescriptorPool
       SPIRVBlob histogram = NULL;
       std::string err;
 
-      std::string defines = "";
+      std::string defines = shaderCache->GetGlobalDefines();
 
-      if(driver->GetDriverInfo().TexelFetchBrokenDriver())
-        defines += "#define NO_TEXEL_FETCH\n";
-      defines += string("#define SHADER_RESTYPE ") + ToStr(t) + "\n";
-      defines += string("#define UINT_TEX ") + (f == 1 ? "1" : "0") + "\n";
-      defines += string("#define SINT_TEX ") + (f == 2 ? "1" : "0") + "\n";
+      defines += std::string("#define SHADER_RESTYPE ") + ToStr(t) + "\n";
+      defines += std::string("#define UINT_TEX ") + (f == 1 ? "1" : "0") + "\n";
+      defines += std::string("#define SINT_TEX ") + (f == 2 ? "1" : "0") + "\n";
 
       glsl =
           GenerateGLSLShader(GetEmbeddedResource(glsl_histogram_comp), eShaderVulkan, 430, defines);

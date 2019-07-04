@@ -24,15 +24,15 @@
 
 #include "d3d11_test.h"
 
-struct Stripped_Shaders : D3D11GraphicsTest
+TEST(D3D11_Stripped_Shaders, D3D11GraphicsTest)
 {
   static constexpr const char *Description =
       "Tests shaders with their debug/reflection info stripped out and stored in separate blobs";
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create device, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     ID3DBlobPtr vsblobUnstripped = NULL;
@@ -79,4 +79,4 @@ struct Stripped_Shaders : D3D11GraphicsTest
   }
 };
 
-REGISTER_TEST(Stripped_Shaders);
+REGISTER_TEST();

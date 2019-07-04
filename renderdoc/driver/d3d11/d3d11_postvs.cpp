@@ -244,7 +244,7 @@ void D3D11Replay::InitPostVSBuffers(uint32_t eventId)
     RDCASSERT(dxbcDS);
   }
 
-  vector<D3D11_SO_DECLARATION_ENTRY> sodecls;
+  std::vector<D3D11_SO_DECLARATION_ENTRY> sodecls;
 
   UINT stride = 0;
   int posidx = -1;
@@ -356,7 +356,7 @@ void D3D11Replay::InitPostVSBuffers(uint32_t eventId)
 
       SAFE_RELEASE(idxBuf);
 
-      vector<uint32_t> indices;
+      std::vector<uint32_t> indices;
 
       uint16_t *idx16 = (uint16_t *)&idxdata[0];
       uint32_t *idx32 = (uint32_t *)&idxdata[0];
@@ -408,7 +408,7 @@ void D3D11Replay::InitPostVSBuffers(uint32_t eventId)
 
       // we use a map here since the indices may be sparse. Especially considering if an index
       // is 'invalid' like 0xcccccccc then we don't want an array of 3.4 billion entries.
-      map<uint32_t, size_t> indexRemap;
+      std::map<uint32_t, size_t> indexRemap;
       for(size_t i = 0; i < indices.size(); i++)
       {
         // by definition, this index will only appear once in indices[]
@@ -833,6 +833,9 @@ void D3D11Replay::InitPostVSBuffers(uint32_t eventId)
                                              drawcall->instanceOffset);
           m_pImmediateContext->End(m_SOStatsQueries[inst - 1]);
         }
+
+        if((inst % 2000) == 0)
+          SerializeImmediateContext();
       }
     }
 
@@ -1068,7 +1071,7 @@ void D3D11Replay::InitPostVSBuffers(uint32_t eventId)
   }
 }
 
-void D3D11Replay::InitPostVSBuffers(const vector<uint32_t> &passEvents)
+void D3D11Replay::InitPostVSBuffers(const std::vector<uint32_t> &passEvents)
 {
   uint32_t prev = 0;
 

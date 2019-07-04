@@ -28,7 +28,7 @@
 #include "serialise/lz4io.h"
 
 template <>
-std::string DoStringise(const ReplayProxyPacket &el)
+rdcstr DoStringise(const ReplayProxyPacket &el)
 {
   BEGIN_ENUM_STRINGISE(ReplayProxyPacket);
   {
@@ -114,24 +114,24 @@ std::string DoStringise(const ReplayProxyPacket &el)
     ser.BeginChunk(packet, 0);
 
 // end the set of parameters, and that chunk.
-#define END_PARAMS()                            \
-  {                                             \
-    GET_SERIALISER.Serialise("packet", packet); \
-    ser.EndChunk();                             \
-    CheckError(packet, expectedPacket);         \
+#define END_PARAMS()                                \
+  {                                                 \
+    GET_SERIALISER.Serialise("packet"_lit, packet); \
+    ser.EndChunk();                                 \
+    CheckError(packet, expectedPacket);             \
   }
 
 // begin serialising a return value. We begin a chunk here in either the writing or reading case
 // since this chunk is used purely to send/receive the return value and is fully handled within the
 // function.
-#define SERIALISE_RETURN(retval)                \
-  {                                             \
-    ReturnSerialiser &ser = retser;             \
-    PACKET_HEADER(packet);                      \
-    SERIALISE_ELEMENT(retval);                  \
-    GET_SERIALISER.Serialise("packet", packet); \
-    ser.EndChunk();                             \
-    CheckError(packet, expectedPacket);         \
+#define SERIALISE_RETURN(retval)                    \
+  {                                                 \
+    ReturnSerialiser &ser = retser;                 \
+    PACKET_HEADER(packet);                          \
+    SERIALISE_ELEMENT(retval);                      \
+    GET_SERIALISER.Serialise("packet"_lit, packet); \
+    ser.EndChunk();                                 \
+    CheckError(packet, expectedPacket);             \
   }
 
 // similar to the above, but for void functions that don't return anything. We still want to check
@@ -1266,7 +1266,8 @@ rdcarray<ShaderEncoding> ReplayProxy::GetTargetShaderEncodings()
 template <typename ParamSerialiser, typename ReturnSerialiser>
 void ReplayProxy::Proxied_BuildTargetShader(ParamSerialiser &paramser, ReturnSerialiser &retser,
                                             ShaderEncoding sourceEncoding, bytebuf source,
-                                            std::string entry, const ShaderCompileFlags &compileFlags,
+                                            const std::string &entry,
+                                            const ShaderCompileFlags &compileFlags,
                                             ShaderStage type, ResourceId *id, std::string *errors)
 {
   const ReplayProxyPacket expectedPacket = eReplayProxy_BuildTargetShader;
@@ -1309,7 +1310,7 @@ void ReplayProxy::Proxied_BuildTargetShader(ParamSerialiser &paramser, ReturnSer
 }
 
 void ReplayProxy::BuildTargetShader(ShaderEncoding sourceEncoding, bytebuf source,
-                                    std::string entry, const ShaderCompileFlags &compileFlags,
+                                    const std::string &entry, const ShaderCompileFlags &compileFlags,
                                     ShaderStage type, ResourceId *id, std::string *errors)
 {
   PROXY_FUNCTION(BuildTargetShader, sourceEncoding, source, entry, compileFlags, type, id, errors);
@@ -1713,7 +1714,7 @@ void ReplayProxy::Proxied_FetchStructuredFile(ParamSerialiser &paramser, ReturnS
       if(retser.IsReading())
         file->chunks[c] = new SDChunk("");
 
-      ser.Serialise("chunk", *file->chunks[c]);
+      ser.Serialise("chunk"_lit, *file->chunks[c]);
     }
 
     uint64_t bufferCount = file->buffers.size();
@@ -1729,7 +1730,7 @@ void ReplayProxy::Proxied_FetchStructuredFile(ParamSerialiser &paramser, ReturnS
 
       bytebuf *buf = file->buffers[b];
 
-      ser.Serialise("buffer", *buf);
+      ser.Serialise("buffer"_lit, *buf);
     }
 
     SERIALISE_ELEMENT(packet);
@@ -1773,7 +1774,7 @@ void ReplayProxy::DeltaTransferBytes(SerialiserType &xferser, bytebuf &reference
   if(xferser.IsReading())
   {
     uint64_t uncompSize = 0;
-    xferser.Serialise("uncompSize", uncompSize);
+    xferser.Serialise("uncompSize"_lit, uncompSize);
 
     if(uncompSize == 0)
     {
@@ -1968,7 +1969,7 @@ void ReplayProxy::DeltaTransferBytes(SerialiserType &xferser, bytebuf &reference
       uncompSize = ser.GetWriter()->GetOffset() + ser.GetChunkAlignment();
     }
 
-    xferser.Serialise("uncompSize", uncompSize);
+    xferser.Serialise("uncompSize"_lit, uncompSize);
 
     if(uncompSize > 0)
     {
@@ -2614,9 +2615,12 @@ bool ReplayProxy::Tick(int type)
     }
     case eReplayProxy_GetPostVS: GetPostVSBuffers(0, 0, 0, MeshDataStage::Unknown); break;
     case eReplayProxy_BuildTargetShader:
-      BuildTargetShader(ShaderEncoding::Unknown, bytebuf(), "", ShaderCompileFlags(),
+    {
+      std::string entry;
+      BuildTargetShader(ShaderEncoding::Unknown, bytebuf(), entry, ShaderCompileFlags(),
                         ShaderStage::Vertex, NULL, NULL);
       break;
+    }
     case eReplayProxy_ReplaceResource: ReplaceResource(ResourceId(), ResourceId()); break;
     case eReplayProxy_RemoveReplacement: RemoveReplacement(ResourceId()); break;
     case eReplayProxy_DebugVertex: DebugVertex(0, 0, 0, 0, 0, 0); break;
@@ -2629,10 +2633,11 @@ bool ReplayProxy::Tick(int type)
       break;
     }
     case eReplayProxy_RenderOverlay:
-      RenderOverlay(ResourceId(), CompType::Typeless, DebugOverlay::NoOverlay, 0, vector<uint32_t>());
+      RenderOverlay(ResourceId(), CompType::Typeless, DebugOverlay::NoOverlay, 0,
+                    std::vector<uint32_t>());
       break;
     case eReplayProxy_PixelHistory:
-      PixelHistory(vector<EventUsage>(), ResourceId(), 0, 0, 0, 0, 0, CompType::Typeless);
+      PixelHistory(std::vector<EventUsage>(), ResourceId(), 0, 0, 0, 0, 0, CompType::Typeless);
       break;
     case eReplayProxy_DisassembleShader: DisassembleShader(ResourceId(), NULL, ""); break;
     case eReplayProxy_GetDisassemblyTargets: GetDisassemblyTargets(); break;

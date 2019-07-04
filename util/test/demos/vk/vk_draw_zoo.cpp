@@ -24,7 +24,7 @@
 
 #include "vk_test.h"
 
-struct VK_Draw_Zoo : VulkanGraphicsTest
+TEST(VK_Draw_Zoo, VulkanGraphicsTest)
 {
   static constexpr const char *Description =
       "Draws several variants using different vertex/index offsets.";
@@ -81,10 +81,10 @@ void main()
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create context, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     VkPipelineLayout layout = createPipelineLayout(vkh::PipelineLayoutCreateInfo());
@@ -92,7 +92,7 @@ void main()
     vkh::GraphicsPipelineCreateInfo pipeCreateInfo;
 
     pipeCreateInfo.layout = layout;
-    pipeCreateInfo.renderPass = swapRenderPass;
+    pipeCreateInfo.renderPass = mainWindow->rp;
 
     pipeCreateInfo.vertexInputState.vertexBindingDescriptions = {vkh::vertexBind(0, DefaultA2V)};
     pipeCreateInfo.vertexInputState.vertexAttributeDescriptions = {
@@ -319,12 +319,12 @@ void main()
                            vkh::ImageSubresourceRange());
 
       vkCmdBeginRenderPass(
-          cmd, vkh::RenderPassBeginInfo(swapRenderPass, swapFramebuffers[swapIndex], scissor),
+          cmd, vkh::RenderPassBeginInfo(mainWindow->rp, mainWindow->GetFB(), mainWindow->scissor),
           VK_SUBPASS_CONTENTS_INLINE);
 
-      vkCmdSetScissor(cmd, 0, 1, &scissor);
+      vkCmdSetScissor(cmd, 0, 1, &mainWindow->scissor);
 
-      VkViewport vp = viewport;
+      VkViewport vp = mainWindow->viewport;
       vp.width = 48.0f;
       vp.height = 48.0f;
 
@@ -480,4 +480,4 @@ void main()
   }
 };
 
-REGISTER_TEST(VK_Draw_Zoo);
+REGISTER_TEST();

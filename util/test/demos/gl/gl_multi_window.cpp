@@ -24,7 +24,7 @@
 
 #include "gl_test.h"
 
-struct Multi_Window : OpenGLGraphicsTest
+TEST(GL_Multi_Window, OpenGLGraphicsTest)
 {
   static constexpr const char *Description =
       "Render to two different windows to test out different contexts and window resolutions.";
@@ -73,12 +73,12 @@ void main()
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  int main()
   {
     debugDevice = true;
 
     // initialise, create window, create context, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     GLuint vao = MakeVAO();
@@ -98,7 +98,6 @@ void main()
     glEnableVertexAttribArray(2);
 
     GLuint program = MakeProgram(common + vertex, common + pixel);
-    glObjectLabel(GL_PROGRAM, program, -1, "Full program");
 
     GraphicsWindow *win2 = MakeWindow(300, 200, "Autotesting 2");
     void *ctx2 = MakeContext(win2, mainContext);
@@ -165,4 +164,4 @@ void main()
   }
 };
 
-REGISTER_TEST(Multi_Window);
+REGISTER_TEST();

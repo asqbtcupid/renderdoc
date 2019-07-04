@@ -110,7 +110,6 @@ public:
       {
         ++count;
         ResourceId res = it->second;
-        MarkCleanResource(res);
         if(HasResourceRecord(res))
           GetResourceRecord(res)->Delete(this);
         ReleaseCurrentResource(it->second);
@@ -216,9 +215,6 @@ public:
   using ResourceManager::MarkDirtyResource;
 
   void MarkDirtyResource(GLResource res) { return ResourceManager::MarkDirtyResource(GetID(res)); }
-  using ResourceManager::MarkCleanResource;
-
-  void MarkCleanResource(GLResource res) { return ResourceManager::MarkCleanResource(GetID(res)); }
   void RegisterSync(ContextPair &ctx, GLsync sync, GLuint &name, ResourceId &id)
   {
     name = (GLuint)Atomic::Inc64(&m_SyncName);
@@ -243,23 +239,25 @@ public:
   void MarkVAOReferenced(GLResource res, FrameRefType ref, bool allowFake0 = false);
   void MarkFBOReferenced(GLResource res, FrameRefType ref);
 
+  void Force_ReferenceViews();
+
   template <typename SerialiserType>
-  bool Serialise_InitialState(SerialiserType &ser, ResourceId resid, GLResource res);
+  bool Serialise_InitialState(SerialiserType &ser, ResourceId id, GLResourceRecord *record,
+                              const GLInitialContents *initial);
 
   void ContextPrepare_InitialState(GLResource res);
-  bool Serialise_InitialState(WriteSerialiser &ser, ResourceId resid, GLResource res)
+  bool Serialise_InitialState(WriteSerialiser &ser, ResourceId id, GLResourceRecord *record,
+                              const GLInitialContents *initial)
   {
-    return Serialise_InitialState<WriteSerialiser>(ser, resid, res);
+    return Serialise_InitialState<WriteSerialiser>(ser, id, record, initial);
   }
 
   void SetInternalResource(GLResource res);
 
 private:
   bool ResourceTypeRelease(GLResource res);
-  bool Force_InitialState(GLResource res, bool prepare);
-  bool Need_InitialStateChunk(GLResource res);
   bool Prepare_InitialState(GLResource res);
-  uint32_t GetSize_InitialState(ResourceId resid, GLResource res);
+  uint64_t GetSize_InitialState(ResourceId resid, const GLInitialContents &initial);
 
   void CreateTextureImage(GLuint tex, GLenum internalFormat, GLenum internalFormatHint,
                           GLenum textype, GLint dim, GLint width, GLint height, GLint depth,
@@ -267,17 +265,17 @@ private:
   void PrepareTextureInitialContents(ResourceId liveid, ResourceId origid, GLResource res);
 
   void Create_InitialState(ResourceId id, GLResource live, bool hasData);
-  void Apply_InitialState(GLResource live, GLInitialContents initial);
+  void Apply_InitialState(GLResource live, const GLInitialContents &initial);
 
-  map<GLResource, GLResourceRecord *> m_GLResourceRecords;
+  std::map<GLResource, GLResourceRecord *> m_GLResourceRecords;
 
-  map<GLResource, ResourceId> m_CurrentResourceIds;
+  std::map<GLResource, ResourceId> m_CurrentResourceIds;
 
   // sync objects must be treated differently as they're not GLuint names, but pointer sized.
   // We manually give them GLuint names so they're otherwise namespaced as (eResSync, GLuint)
-  map<GLsync, ResourceId> m_SyncIDs;
-  map<GLuint, GLsync> m_CurrentSyncs;
-  map<ResourceId, std::string> m_Names;
+  std::map<GLsync, ResourceId> m_SyncIDs;
+  std::map<GLuint, GLsync> m_CurrentSyncs;
+  std::map<ResourceId, std::string> m_Names;
   volatile int64_t m_SyncName;
 
   CaptureState m_State;

@@ -22,444 +22,17 @@
  * THE SOFTWARE.
  ******************************************************************************/
 
+#define SPV_ENABLE_UTILITY_CODE
+
 #include "spirv_editor.h"
 #include <algorithm>
 #include <utility>
 #include "common/common.h"
 #include "serialise/serialiser.h"
 
-// hopefully this will be in the official spirv.hpp soon
-// clang-format off
-namespace spv
-{
-inline void HasResultAndType(Op opcode, bool *hasResult, bool *hasResultType) {
-    *hasResult = *hasResultType = false;
-    switch (opcode) {
-    default: /* unknown opcode */ break;
-    case OpNop: *hasResult = false; *hasResultType = false; break;
-    case OpUndef: *hasResult = true; *hasResultType = true; break;
-    case OpSourceContinued: *hasResult = false; *hasResultType = false; break;
-    case OpSource: *hasResult = false; *hasResultType = false; break;
-    case OpSourceExtension: *hasResult = false; *hasResultType = false; break;
-    case OpName: *hasResult = false; *hasResultType = false; break;
-    case OpMemberName: *hasResult = false; *hasResultType = false; break;
-    case OpString: *hasResult = true; *hasResultType = false; break;
-    case OpLine: *hasResult = false; *hasResultType = false; break;
-    case OpExtension: *hasResult = false; *hasResultType = false; break;
-    case OpExtInstImport: *hasResult = true; *hasResultType = false; break;
-    case OpExtInst: *hasResult = true; *hasResultType = true; break;
-    case OpMemoryModel: *hasResult = false; *hasResultType = false; break;
-    case OpEntryPoint: *hasResult = false; *hasResultType = false; break;
-    case OpExecutionMode: *hasResult = false; *hasResultType = false; break;
-    case OpCapability: *hasResult = false; *hasResultType = false; break;
-    case OpTypeVoid: *hasResult = true; *hasResultType = false; break;
-    case OpTypeBool: *hasResult = true; *hasResultType = false; break;
-    case OpTypeInt: *hasResult = true; *hasResultType = false; break;
-    case OpTypeFloat: *hasResult = true; *hasResultType = false; break;
-    case OpTypeVector: *hasResult = true; *hasResultType = false; break;
-    case OpTypeMatrix: *hasResult = true; *hasResultType = false; break;
-    case OpTypeImage: *hasResult = true; *hasResultType = false; break;
-    case OpTypeSampler: *hasResult = true; *hasResultType = false; break;
-    case OpTypeSampledImage: *hasResult = true; *hasResultType = false; break;
-    case OpTypeArray: *hasResult = true; *hasResultType = false; break;
-    case OpTypeRuntimeArray: *hasResult = true; *hasResultType = false; break;
-    case OpTypeStruct: *hasResult = true; *hasResultType = false; break;
-    case OpTypeOpaque: *hasResult = true; *hasResultType = false; break;
-    case OpTypePointer: *hasResult = true; *hasResultType = false; break;
-    case OpTypeFunction: *hasResult = true; *hasResultType = false; break;
-    case OpTypeEvent: *hasResult = true; *hasResultType = false; break;
-    case OpTypeDeviceEvent: *hasResult = true; *hasResultType = false; break;
-    case OpTypeReserveId: *hasResult = true; *hasResultType = false; break;
-    case OpTypeQueue: *hasResult = true; *hasResultType = false; break;
-    case OpTypePipe: *hasResult = true; *hasResultType = false; break;
-    case OpTypeForwardPointer: *hasResult = false; *hasResultType = false; break;
-    case OpConstantTrue: *hasResult = true; *hasResultType = true; break;
-    case OpConstantFalse: *hasResult = true; *hasResultType = true; break;
-    case OpConstant: *hasResult = true; *hasResultType = true; break;
-    case OpConstantComposite: *hasResult = true; *hasResultType = true; break;
-    case OpConstantSampler: *hasResult = true; *hasResultType = true; break;
-    case OpConstantNull: *hasResult = true; *hasResultType = true; break;
-    case OpSpecConstantTrue: *hasResult = true; *hasResultType = true; break;
-    case OpSpecConstantFalse: *hasResult = true; *hasResultType = true; break;
-    case OpSpecConstant: *hasResult = true; *hasResultType = true; break;
-    case OpSpecConstantComposite: *hasResult = true; *hasResultType = true; break;
-    case OpSpecConstantOp: *hasResult = true; *hasResultType = true; break;
-    case OpFunction: *hasResult = true; *hasResultType = true; break;
-    case OpFunctionParameter: *hasResult = true; *hasResultType = true; break;
-    case OpFunctionEnd: *hasResult = false; *hasResultType = false; break;
-    case OpFunctionCall: *hasResult = true; *hasResultType = true; break;
-    case OpVariable: *hasResult = true; *hasResultType = true; break;
-    case OpImageTexelPointer: *hasResult = true; *hasResultType = true; break;
-    case OpLoad: *hasResult = true; *hasResultType = true; break;
-    case OpStore: *hasResult = false; *hasResultType = false; break;
-    case OpCopyMemory: *hasResult = false; *hasResultType = false; break;
-    case OpCopyMemorySized: *hasResult = false; *hasResultType = false; break;
-    case OpAccessChain: *hasResult = true; *hasResultType = true; break;
-    case OpInBoundsAccessChain: *hasResult = true; *hasResultType = true; break;
-    case OpPtrAccessChain: *hasResult = true; *hasResultType = true; break;
-    case OpArrayLength: *hasResult = true; *hasResultType = true; break;
-    case OpGenericPtrMemSemantics: *hasResult = true; *hasResultType = true; break;
-    case OpInBoundsPtrAccessChain: *hasResult = true; *hasResultType = true; break;
-    case OpDecorate: *hasResult = false; *hasResultType = false; break;
-    case OpMemberDecorate: *hasResult = false; *hasResultType = false; break;
-    case OpDecorationGroup: *hasResult = true; *hasResultType = false; break;
-    case OpGroupDecorate: *hasResult = false; *hasResultType = false; break;
-    case OpGroupMemberDecorate: *hasResult = false; *hasResultType = false; break;
-    case OpVectorExtractDynamic: *hasResult = true; *hasResultType = true; break;
-    case OpVectorInsertDynamic: *hasResult = true; *hasResultType = true; break;
-    case OpVectorShuffle: *hasResult = true; *hasResultType = true; break;
-    case OpCompositeConstruct: *hasResult = true; *hasResultType = true; break;
-    case OpCompositeExtract: *hasResult = true; *hasResultType = true; break;
-    case OpCompositeInsert: *hasResult = true; *hasResultType = true; break;
-    case OpCopyObject: *hasResult = true; *hasResultType = true; break;
-    case OpTranspose: *hasResult = true; *hasResultType = true; break;
-    case OpSampledImage: *hasResult = true; *hasResultType = true; break;
-    case OpImageSampleImplicitLod: *hasResult = true; *hasResultType = true; break;
-    case OpImageSampleExplicitLod: *hasResult = true; *hasResultType = true; break;
-    case OpImageSampleDrefImplicitLod: *hasResult = true; *hasResultType = true; break;
-    case OpImageSampleDrefExplicitLod: *hasResult = true; *hasResultType = true; break;
-    case OpImageSampleProjImplicitLod: *hasResult = true; *hasResultType = true; break;
-    case OpImageSampleProjExplicitLod: *hasResult = true; *hasResultType = true; break;
-    case OpImageSampleProjDrefImplicitLod: *hasResult = true; *hasResultType = true; break;
-    case OpImageSampleProjDrefExplicitLod: *hasResult = true; *hasResultType = true; break;
-    case OpImageFetch: *hasResult = true; *hasResultType = true; break;
-    case OpImageGather: *hasResult = true; *hasResultType = true; break;
-    case OpImageDrefGather: *hasResult = true; *hasResultType = true; break;
-    case OpImageRead: *hasResult = true; *hasResultType = true; break;
-    case OpImageWrite: *hasResult = false; *hasResultType = false; break;
-    case OpImage: *hasResult = true; *hasResultType = true; break;
-    case OpImageQueryFormat: *hasResult = true; *hasResultType = true; break;
-    case OpImageQueryOrder: *hasResult = true; *hasResultType = true; break;
-    case OpImageQuerySizeLod: *hasResult = true; *hasResultType = true; break;
-    case OpImageQuerySize: *hasResult = true; *hasResultType = true; break;
-    case OpImageQueryLod: *hasResult = true; *hasResultType = true; break;
-    case OpImageQueryLevels: *hasResult = true; *hasResultType = true; break;
-    case OpImageQuerySamples: *hasResult = true; *hasResultType = true; break;
-    case OpConvertFToU: *hasResult = true; *hasResultType = true; break;
-    case OpConvertFToS: *hasResult = true; *hasResultType = true; break;
-    case OpConvertSToF: *hasResult = true; *hasResultType = true; break;
-    case OpConvertUToF: *hasResult = true; *hasResultType = true; break;
-    case OpUConvert: *hasResult = true; *hasResultType = true; break;
-    case OpSConvert: *hasResult = true; *hasResultType = true; break;
-    case OpFConvert: *hasResult = true; *hasResultType = true; break;
-    case OpQuantizeToF16: *hasResult = true; *hasResultType = true; break;
-    case OpConvertPtrToU: *hasResult = true; *hasResultType = true; break;
-    case OpSatConvertSToU: *hasResult = true; *hasResultType = true; break;
-    case OpSatConvertUToS: *hasResult = true; *hasResultType = true; break;
-    case OpConvertUToPtr: *hasResult = true; *hasResultType = true; break;
-    case OpPtrCastToGeneric: *hasResult = true; *hasResultType = true; break;
-    case OpGenericCastToPtr: *hasResult = true; *hasResultType = true; break;
-    case OpGenericCastToPtrExplicit: *hasResult = true; *hasResultType = true; break;
-    case OpBitcast: *hasResult = true; *hasResultType = true; break;
-    case OpSNegate: *hasResult = true; *hasResultType = true; break;
-    case OpFNegate: *hasResult = true; *hasResultType = true; break;
-    case OpIAdd: *hasResult = true; *hasResultType = true; break;
-    case OpFAdd: *hasResult = true; *hasResultType = true; break;
-    case OpISub: *hasResult = true; *hasResultType = true; break;
-    case OpFSub: *hasResult = true; *hasResultType = true; break;
-    case OpIMul: *hasResult = true; *hasResultType = true; break;
-    case OpFMul: *hasResult = true; *hasResultType = true; break;
-    case OpUDiv: *hasResult = true; *hasResultType = true; break;
-    case OpSDiv: *hasResult = true; *hasResultType = true; break;
-    case OpFDiv: *hasResult = true; *hasResultType = true; break;
-    case OpUMod: *hasResult = true; *hasResultType = true; break;
-    case OpSRem: *hasResult = true; *hasResultType = true; break;
-    case OpSMod: *hasResult = true; *hasResultType = true; break;
-    case OpFRem: *hasResult = true; *hasResultType = true; break;
-    case OpFMod: *hasResult = true; *hasResultType = true; break;
-    case OpVectorTimesScalar: *hasResult = true; *hasResultType = true; break;
-    case OpMatrixTimesScalar: *hasResult = true; *hasResultType = true; break;
-    case OpVectorTimesMatrix: *hasResult = true; *hasResultType = true; break;
-    case OpMatrixTimesVector: *hasResult = true; *hasResultType = true; break;
-    case OpMatrixTimesMatrix: *hasResult = true; *hasResultType = true; break;
-    case OpOuterProduct: *hasResult = true; *hasResultType = true; break;
-    case OpDot: *hasResult = true; *hasResultType = true; break;
-    case OpIAddCarry: *hasResult = true; *hasResultType = true; break;
-    case OpISubBorrow: *hasResult = true; *hasResultType = true; break;
-    case OpUMulExtended: *hasResult = true; *hasResultType = true; break;
-    case OpSMulExtended: *hasResult = true; *hasResultType = true; break;
-    case OpAny: *hasResult = true; *hasResultType = true; break;
-    case OpAll: *hasResult = true; *hasResultType = true; break;
-    case OpIsNan: *hasResult = true; *hasResultType = true; break;
-    case OpIsInf: *hasResult = true; *hasResultType = true; break;
-    case OpIsFinite: *hasResult = true; *hasResultType = true; break;
-    case OpIsNormal: *hasResult = true; *hasResultType = true; break;
-    case OpSignBitSet: *hasResult = true; *hasResultType = true; break;
-    case OpLessOrGreater: *hasResult = true; *hasResultType = true; break;
-    case OpOrdered: *hasResult = true; *hasResultType = true; break;
-    case OpUnordered: *hasResult = true; *hasResultType = true; break;
-    case OpLogicalEqual: *hasResult = true; *hasResultType = true; break;
-    case OpLogicalNotEqual: *hasResult = true; *hasResultType = true; break;
-    case OpLogicalOr: *hasResult = true; *hasResultType = true; break;
-    case OpLogicalAnd: *hasResult = true; *hasResultType = true; break;
-    case OpLogicalNot: *hasResult = true; *hasResultType = true; break;
-    case OpSelect: *hasResult = true; *hasResultType = true; break;
-    case OpIEqual: *hasResult = true; *hasResultType = true; break;
-    case OpINotEqual: *hasResult = true; *hasResultType = true; break;
-    case OpUGreaterThan: *hasResult = true; *hasResultType = true; break;
-    case OpSGreaterThan: *hasResult = true; *hasResultType = true; break;
-    case OpUGreaterThanEqual: *hasResult = true; *hasResultType = true; break;
-    case OpSGreaterThanEqual: *hasResult = true; *hasResultType = true; break;
-    case OpULessThan: *hasResult = true; *hasResultType = true; break;
-    case OpSLessThan: *hasResult = true; *hasResultType = true; break;
-    case OpULessThanEqual: *hasResult = true; *hasResultType = true; break;
-    case OpSLessThanEqual: *hasResult = true; *hasResultType = true; break;
-    case OpFOrdEqual: *hasResult = true; *hasResultType = true; break;
-    case OpFUnordEqual: *hasResult = true; *hasResultType = true; break;
-    case OpFOrdNotEqual: *hasResult = true; *hasResultType = true; break;
-    case OpFUnordNotEqual: *hasResult = true; *hasResultType = true; break;
-    case OpFOrdLessThan: *hasResult = true; *hasResultType = true; break;
-    case OpFUnordLessThan: *hasResult = true; *hasResultType = true; break;
-    case OpFOrdGreaterThan: *hasResult = true; *hasResultType = true; break;
-    case OpFUnordGreaterThan: *hasResult = true; *hasResultType = true; break;
-    case OpFOrdLessThanEqual: *hasResult = true; *hasResultType = true; break;
-    case OpFUnordLessThanEqual: *hasResult = true; *hasResultType = true; break;
-    case OpFOrdGreaterThanEqual: *hasResult = true; *hasResultType = true; break;
-    case OpFUnordGreaterThanEqual: *hasResult = true; *hasResultType = true; break;
-    case OpShiftRightLogical: *hasResult = true; *hasResultType = true; break;
-    case OpShiftRightArithmetic: *hasResult = true; *hasResultType = true; break;
-    case OpShiftLeftLogical: *hasResult = true; *hasResultType = true; break;
-    case OpBitwiseOr: *hasResult = true; *hasResultType = true; break;
-    case OpBitwiseXor: *hasResult = true; *hasResultType = true; break;
-    case OpBitwiseAnd: *hasResult = true; *hasResultType = true; break;
-    case OpNot: *hasResult = true; *hasResultType = true; break;
-    case OpBitFieldInsert: *hasResult = true; *hasResultType = true; break;
-    case OpBitFieldSExtract: *hasResult = true; *hasResultType = true; break;
-    case OpBitFieldUExtract: *hasResult = true; *hasResultType = true; break;
-    case OpBitReverse: *hasResult = true; *hasResultType = true; break;
-    case OpBitCount: *hasResult = true; *hasResultType = true; break;
-    case OpDPdx: *hasResult = true; *hasResultType = true; break;
-    case OpDPdy: *hasResult = true; *hasResultType = true; break;
-    case OpFwidth: *hasResult = true; *hasResultType = true; break;
-    case OpDPdxFine: *hasResult = true; *hasResultType = true; break;
-    case OpDPdyFine: *hasResult = true; *hasResultType = true; break;
-    case OpFwidthFine: *hasResult = true; *hasResultType = true; break;
-    case OpDPdxCoarse: *hasResult = true; *hasResultType = true; break;
-    case OpDPdyCoarse: *hasResult = true; *hasResultType = true; break;
-    case OpFwidthCoarse: *hasResult = true; *hasResultType = true; break;
-    case OpEmitVertex: *hasResult = false; *hasResultType = false; break;
-    case OpEndPrimitive: *hasResult = false; *hasResultType = false; break;
-    case OpEmitStreamVertex: *hasResult = false; *hasResultType = false; break;
-    case OpEndStreamPrimitive: *hasResult = false; *hasResultType = false; break;
-    case OpControlBarrier: *hasResult = false; *hasResultType = false; break;
-    case OpMemoryBarrier: *hasResult = false; *hasResultType = false; break;
-    case OpAtomicLoad: *hasResult = true; *hasResultType = true; break;
-    case OpAtomicStore: *hasResult = false; *hasResultType = false; break;
-    case OpAtomicExchange: *hasResult = true; *hasResultType = true; break;
-    case OpAtomicCompareExchange: *hasResult = true; *hasResultType = true; break;
-    case OpAtomicCompareExchangeWeak: *hasResult = true; *hasResultType = true; break;
-    case OpAtomicIIncrement: *hasResult = true; *hasResultType = true; break;
-    case OpAtomicIDecrement: *hasResult = true; *hasResultType = true; break;
-    case OpAtomicIAdd: *hasResult = true; *hasResultType = true; break;
-    case OpAtomicISub: *hasResult = true; *hasResultType = true; break;
-    case OpAtomicSMin: *hasResult = true; *hasResultType = true; break;
-    case OpAtomicUMin: *hasResult = true; *hasResultType = true; break;
-    case OpAtomicSMax: *hasResult = true; *hasResultType = true; break;
-    case OpAtomicUMax: *hasResult = true; *hasResultType = true; break;
-    case OpAtomicAnd: *hasResult = true; *hasResultType = true; break;
-    case OpAtomicOr: *hasResult = true; *hasResultType = true; break;
-    case OpAtomicXor: *hasResult = true; *hasResultType = true; break;
-    case OpPhi: *hasResult = true; *hasResultType = true; break;
-    case OpLoopMerge: *hasResult = false; *hasResultType = false; break;
-    case OpSelectionMerge: *hasResult = false; *hasResultType = false; break;
-    case OpLabel: *hasResult = true; *hasResultType = false; break;
-    case OpBranch: *hasResult = false; *hasResultType = false; break;
-    case OpBranchConditional: *hasResult = false; *hasResultType = false; break;
-    case OpSwitch: *hasResult = false; *hasResultType = false; break;
-    case OpKill: *hasResult = false; *hasResultType = false; break;
-    case OpReturn: *hasResult = false; *hasResultType = false; break;
-    case OpReturnValue: *hasResult = false; *hasResultType = false; break;
-    case OpUnreachable: *hasResult = false; *hasResultType = false; break;
-    case OpLifetimeStart: *hasResult = false; *hasResultType = false; break;
-    case OpLifetimeStop: *hasResult = false; *hasResultType = false; break;
-    case OpGroupAsyncCopy: *hasResult = true; *hasResultType = true; break;
-    case OpGroupWaitEvents: *hasResult = false; *hasResultType = false; break;
-    case OpGroupAll: *hasResult = true; *hasResultType = true; break;
-    case OpGroupAny: *hasResult = true; *hasResultType = true; break;
-    case OpGroupBroadcast: *hasResult = true; *hasResultType = true; break;
-    case OpGroupIAdd: *hasResult = true; *hasResultType = true; break;
-    case OpGroupFAdd: *hasResult = true; *hasResultType = true; break;
-    case OpGroupFMin: *hasResult = true; *hasResultType = true; break;
-    case OpGroupUMin: *hasResult = true; *hasResultType = true; break;
-    case OpGroupSMin: *hasResult = true; *hasResultType = true; break;
-    case OpGroupFMax: *hasResult = true; *hasResultType = true; break;
-    case OpGroupUMax: *hasResult = true; *hasResultType = true; break;
-    case OpGroupSMax: *hasResult = true; *hasResultType = true; break;
-    case OpReadPipe: *hasResult = true; *hasResultType = true; break;
-    case OpWritePipe: *hasResult = true; *hasResultType = true; break;
-    case OpReservedReadPipe: *hasResult = true; *hasResultType = true; break;
-    case OpReservedWritePipe: *hasResult = true; *hasResultType = true; break;
-    case OpReserveReadPipePackets: *hasResult = true; *hasResultType = true; break;
-    case OpReserveWritePipePackets: *hasResult = true; *hasResultType = true; break;
-    case OpCommitReadPipe: *hasResult = false; *hasResultType = false; break;
-    case OpCommitWritePipe: *hasResult = false; *hasResultType = false; break;
-    case OpIsValidReserveId: *hasResult = true; *hasResultType = true; break;
-    case OpGetNumPipePackets: *hasResult = true; *hasResultType = true; break;
-    case OpGetMaxPipePackets: *hasResult = true; *hasResultType = true; break;
-    case OpGroupReserveReadPipePackets: *hasResult = true; *hasResultType = true; break;
-    case OpGroupReserveWritePipePackets: *hasResult = true; *hasResultType = true; break;
-    case OpGroupCommitReadPipe: *hasResult = false; *hasResultType = false; break;
-    case OpGroupCommitWritePipe: *hasResult = false; *hasResultType = false; break;
-    case OpEnqueueMarker: *hasResult = true; *hasResultType = true; break;
-    case OpEnqueueKernel: *hasResult = true; *hasResultType = true; break;
-    case OpGetKernelNDrangeSubGroupCount: *hasResult = true; *hasResultType = true; break;
-    case OpGetKernelNDrangeMaxSubGroupSize: *hasResult = true; *hasResultType = true; break;
-    case OpGetKernelWorkGroupSize: *hasResult = true; *hasResultType = true; break;
-    case OpGetKernelPreferredWorkGroupSizeMultiple: *hasResult = true; *hasResultType = true; break;
-    case OpRetainEvent: *hasResult = false; *hasResultType = false; break;
-    case OpReleaseEvent: *hasResult = false; *hasResultType = false; break;
-    case OpCreateUserEvent: *hasResult = true; *hasResultType = true; break;
-    case OpIsValidEvent: *hasResult = true; *hasResultType = true; break;
-    case OpSetUserEventStatus: *hasResult = false; *hasResultType = false; break;
-    case OpCaptureEventProfilingInfo: *hasResult = false; *hasResultType = false; break;
-    case OpGetDefaultQueue: *hasResult = true; *hasResultType = true; break;
-    case OpBuildNDRange: *hasResult = true; *hasResultType = true; break;
-    case OpImageSparseSampleImplicitLod: *hasResult = true; *hasResultType = true; break;
-    case OpImageSparseSampleExplicitLod: *hasResult = true; *hasResultType = true; break;
-    case OpImageSparseSampleDrefImplicitLod: *hasResult = true; *hasResultType = true; break;
-    case OpImageSparseSampleDrefExplicitLod: *hasResult = true; *hasResultType = true; break;
-    case OpImageSparseSampleProjImplicitLod: *hasResult = true; *hasResultType = true; break;
-    case OpImageSparseSampleProjExplicitLod: *hasResult = true; *hasResultType = true; break;
-    case OpImageSparseSampleProjDrefImplicitLod: *hasResult = true; *hasResultType = true; break;
-    case OpImageSparseSampleProjDrefExplicitLod: *hasResult = true; *hasResultType = true; break;
-    case OpImageSparseFetch: *hasResult = true; *hasResultType = true; break;
-    case OpImageSparseGather: *hasResult = true; *hasResultType = true; break;
-    case OpImageSparseDrefGather: *hasResult = true; *hasResultType = true; break;
-    case OpImageSparseTexelsResident: *hasResult = true; *hasResultType = true; break;
-    case OpNoLine: *hasResult = false; *hasResultType = false; break;
-    case OpAtomicFlagTestAndSet: *hasResult = true; *hasResultType = true; break;
-    case OpAtomicFlagClear: *hasResult = false; *hasResultType = false; break;
-    case OpImageSparseRead: *hasResult = true; *hasResultType = true; break;
-    case OpSizeOf: *hasResult = true; *hasResultType = true; break;
-    case OpTypePipeStorage: *hasResult = true; *hasResultType = false; break;
-    case OpConstantPipeStorage: *hasResult = true; *hasResultType = true; break;
-    case OpCreatePipeFromPipeStorage: *hasResult = true; *hasResultType = true; break;
-    case OpGetKernelLocalSizeForSubgroupCount: *hasResult = true; *hasResultType = true; break;
-    case OpGetKernelMaxNumSubgroups: *hasResult = true; *hasResultType = true; break;
-    case OpTypeNamedBarrier: *hasResult = true; *hasResultType = false; break;
-    case OpNamedBarrierInitialize: *hasResult = true; *hasResultType = true; break;
-    case OpMemoryNamedBarrier: *hasResult = false; *hasResultType = false; break;
-    case OpModuleProcessed: *hasResult = false; *hasResultType = false; break;
-    case OpExecutionModeId: *hasResult = false; *hasResultType = false; break;
-    case OpDecorateId: *hasResult = false; *hasResultType = false; break;
-    case OpGroupNonUniformElect: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformAll: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformAny: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformAllEqual: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformBroadcast: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformBroadcastFirst: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformBallot: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformInverseBallot: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformBallotBitExtract: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformBallotBitCount: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformBallotFindLSB: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformBallotFindMSB: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformShuffle: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformShuffleXor: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformShuffleUp: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformShuffleDown: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformIAdd: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformFAdd: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformIMul: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformFMul: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformSMin: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformUMin: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformFMin: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformSMax: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformUMax: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformFMax: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformBitwiseAnd: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformBitwiseOr: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformBitwiseXor: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformLogicalAnd: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformLogicalOr: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformLogicalXor: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformQuadBroadcast: *hasResult = true; *hasResultType = true; break;
-    case OpGroupNonUniformQuadSwap: *hasResult = true; *hasResultType = true; break;
-    case OpSubgroupBallotKHR: *hasResult = true; *hasResultType = true; break;
-    case OpSubgroupFirstInvocationKHR: *hasResult = true; *hasResultType = true; break;
-    case OpSubgroupAllKHR: *hasResult = true; *hasResultType = true; break;
-    case OpSubgroupAnyKHR: *hasResult = true; *hasResultType = true; break;
-    case OpSubgroupAllEqualKHR: *hasResult = true; *hasResultType = true; break;
-    case OpSubgroupReadInvocationKHR: *hasResult = true; *hasResultType = true; break;
-    case OpGroupIAddNonUniformAMD: *hasResult = true; *hasResultType = true; break;
-    case OpGroupFAddNonUniformAMD: *hasResult = true; *hasResultType = true; break;
-    case OpGroupFMinNonUniformAMD: *hasResult = true; *hasResultType = true; break;
-    case OpGroupUMinNonUniformAMD: *hasResult = true; *hasResultType = true; break;
-    case OpGroupSMinNonUniformAMD: *hasResult = true; *hasResultType = true; break;
-    case OpGroupFMaxNonUniformAMD: *hasResult = true; *hasResultType = true; break;
-    case OpGroupUMaxNonUniformAMD: *hasResult = true; *hasResultType = true; break;
-    case OpGroupSMaxNonUniformAMD: *hasResult = true; *hasResultType = true; break;
-    case OpFragmentMaskFetchAMD: *hasResult = true; *hasResultType = true; break;
-    case OpFragmentFetchAMD: *hasResult = true; *hasResultType = true; break;
-    case OpWritePackedPrimitiveIndices4x8NV: *hasResult = false; *hasResultType = false; break;
-    case OpReportIntersectionNV: *hasResult = true; *hasResultType = true; break;
-    case OpIgnoreIntersectionNV: *hasResult = false; *hasResultType = false; break;
-    case OpTerminateRayNV: *hasResult = false; *hasResultType = false; break;
-    case OpTraceNV: *hasResult = false; *hasResultType = false; break;
-    case OpTypeAccelerationStructureNV: *hasResult = true; *hasResultType = false; break;
-    case OpExecuteCallableNV: *hasResult = false; *hasResultType = false; break;
-    case OpSubgroupShuffleINTEL: *hasResult = true; *hasResultType = true; break;
-    case OpSubgroupShuffleDownINTEL: *hasResult = true; *hasResultType = true; break;
-    case OpSubgroupShuffleUpINTEL: *hasResult = true; *hasResultType = true; break;
-    case OpSubgroupShuffleXorINTEL: *hasResult = true; *hasResultType = true; break;
-    case OpSubgroupBlockReadINTEL: *hasResult = true; *hasResultType = true; break;
-    case OpSubgroupBlockWriteINTEL: *hasResult = false; *hasResultType = false; break;
-    case OpSubgroupImageBlockReadINTEL: *hasResult = true; *hasResultType = true; break;
-    case OpSubgroupImageBlockWriteINTEL: *hasResult = false; *hasResultType = false; break;
-    case OpDecorateStringGOOGLE: *hasResult = false; *hasResultType = false; break;
-    case OpMemberDecorateStringGOOGLE: *hasResult = false; *hasResultType = false; break;
-    case OpGroupNonUniformPartitionNV: *hasResult = true; *hasResultType = true; break;
-    case OpImageSampleFootprintNV: *hasResult = true; *hasResultType = true; break;
-    }
-}
-};    // namespace spv
-// clang-format on
-
 static const uint32_t FirstRealWord = 5;
 
-template <>
-std::string DoStringise(const SPIRVId &el)
-{
-  return StringFormat::Fmt("%u", el.id);
-}
-
-void SPIRVOperation::nopRemove(size_t idx, size_t count)
-{
-  RDCASSERT(idx >= 1);
-  size_t oldSize = size();
-
-  if(count == 0)
-    count = oldSize - idx;
-
-  // reduce the size of this op
-  *iter = MakeHeader(iter.opcode(), oldSize - count);
-
-  if(idx + count < oldSize)
-  {
-    // move any words on the end into the middle, then nop them
-    for(size_t i = 0; i < count; i++)
-    {
-      iter.word(idx + i) = iter.word(idx + count + i);
-      iter.word(oldSize - i - 1) = SPV_NOP;
-    }
-  }
-  else
-  {
-    for(size_t i = 0; i < count; i++)
-    {
-      iter.word(idx + i) = SPV_NOP;
-    }
-  }
-}
-
-void SPIRVOperation::nopRemove()
-{
-  for(size_t i = 0, sz = size(); i < sz; i++)
-    iter.word(i) = SPV_NOP;
-}
-
-SPIRVScalar::SPIRVScalar(SPIRVIterator it)
+SPIRVScalar::SPIRVScalar(rdcspv::Iter it)
 {
   type = it.opcode();
 
@@ -474,47 +47,47 @@ SPIRVScalar::SPIRVScalar(SPIRVIterator it)
     signedness = false;
 }
 
-SPIRVOperation SPIRVVector::decl(SPIRVEditor &editor) const
+rdcspv::Operation SPIRVVector::decl(SPIRVEditor &editor) const
 {
-  return SPIRVOperation(spv::OpTypeVector, {0U, editor.DeclareType(scalar), count});
+  return rdcspv::Operation(spv::OpTypeVector, {0U, editor.DeclareType(scalar).value(), count});
 }
 
-SPIRVOperation SPIRVMatrix::decl(SPIRVEditor &editor) const
+rdcspv::Operation SPIRVMatrix::decl(SPIRVEditor &editor) const
 {
-  return SPIRVOperation(spv::OpTypeMatrix, {0U, editor.DeclareType(vector), count});
+  return rdcspv::Operation(spv::OpTypeMatrix, {0U, editor.DeclareType(vector).value(), count});
 }
 
-SPIRVOperation SPIRVPointer::decl(SPIRVEditor &editor) const
+rdcspv::Operation SPIRVPointer::decl(SPIRVEditor &editor) const
 {
-  return SPIRVOperation(spv::OpTypePointer, {0U, (uint32_t)storage, baseId});
+  return rdcspv::Operation(spv::OpTypePointer, {0U, (uint32_t)storage, baseId.value()});
 }
 
-SPIRVOperation SPIRVImage::decl(SPIRVEditor &editor) const
+rdcspv::Operation SPIRVImage::decl(SPIRVEditor &editor) const
 {
-  return SPIRVOperation(spv::OpTypeImage, {0U, editor.DeclareType(retType), (uint32_t)dim, depth,
-                                           arrayed, ms, sampled, (uint32_t)format});
+  return rdcspv::Operation(spv::OpTypeImage, {0U, editor.DeclareType(retType).value(), (uint32_t)dim,
+                                              depth, arrayed, ms, sampled, (uint32_t)format});
 }
 
-SPIRVOperation SPIRVSampler::decl(SPIRVEditor &editor) const
+rdcspv::Operation SPIRVSampler::decl(SPIRVEditor &editor) const
 {
-  return SPIRVOperation(spv::OpTypeSampler, {0U});
+  return rdcspv::Operation(spv::OpTypeSampler, {0U});
 }
 
-SPIRVOperation SPIRVSampledImage::decl(SPIRVEditor &editor) const
+rdcspv::Operation SPIRVSampledImage::decl(SPIRVEditor &editor) const
 {
-  return SPIRVOperation(spv::OpTypeSampledImage, {0U, baseId});
+  return rdcspv::Operation(spv::OpTypeSampledImage, {0U, baseId.value()});
 }
 
-SPIRVOperation SPIRVFunction::decl(SPIRVEditor &editor) const
+rdcspv::Operation SPIRVFunction::decl(SPIRVEditor &editor) const
 {
   std::vector<uint32_t> words;
 
   words.push_back(0U);
-  words.push_back(returnId);
-  for(SPIRVId id : argumentIds)
-    words.push_back(id);
+  words.push_back(returnId.value());
+  for(rdcspv::Id id : argumentIds)
+    words.push_back(id.value());
 
-  return SPIRVOperation(spv::OpTypeFunction, words);
+  return rdcspv::Operation(spv::OpTypeFunction, words);
 }
 
 SPIRVEditor::SPIRVEditor(std::vector<uint32_t> &spirvWords) : spirv(spirvWords)
@@ -558,9 +131,9 @@ SPIRVEditor::SPIRVEditor(std::vector<uint32_t> &spirvWords) : spirv(spirvWords)
 
 #define START_SECTION(section)           \
   if(sections[section].startOffset == 0) \
-    sections[section].startOffset = it.offset;
+    sections[section].startOffset = it.offs();
 
-  for(SPIRVIterator it(spirv, FirstRealWord); it; it++)
+  for(rdcspv::Iter it(spirv, FirstRealWord); it; it++)
   {
     spv::Op opcode = it.opcode();
 
@@ -642,7 +215,7 @@ SPIRVEditor::SPIRVEditor(std::vector<uint32_t> &spirvWords) : spirv(spirvWords)
   {
     if(sections[s].startOffset == sections[s].endOffset)
     {
-      spirv.insert(spirv.begin() + sections[s].startOffset, SPV_NOP);
+      spirv.insert(spirv.begin() + sections[s].startOffset, rdcspv::OpNopWord);
       sections[s].endOffset++;
 
       for(uint32_t t = s + 1; t < SPIRVSection::Count; t++)
@@ -679,7 +252,7 @@ void SPIRVEditor::StripNops()
 {
   for(size_t i = FirstRealWord; i < spirv.size();)
   {
-    while(spirv[i] == SPV_NOP)
+    while(spirv[i] == rdcspv::OpNopWord)
     {
       spirv.erase(spirv.begin() + i);
       addWords(i, -1);
@@ -697,26 +270,26 @@ void SPIRVEditor::StripNops()
   }
 }
 
-SPIRVId SPIRVEditor::MakeId()
+rdcspv::Id SPIRVEditor::MakeId()
 {
   uint32_t ret = spirv[3];
   spirv[3]++;
   idOffsets.resize(spirv[3]);
   idTypes.resize(spirv[3]);
-  return ret;
+  return rdcspv::Id::fromWord(ret);
 }
 
-void SPIRVEditor::SetName(uint32_t id, const char *name)
+void SPIRVEditor::SetName(rdcspv::Id id, const char *name)
 {
   size_t sz = strlen(name);
   std::vector<uint32_t> uintName((sz / 4) + 1);
   memcpy(&uintName[0], name, sz);
 
-  uintName.insert(uintName.begin(), id);
+  uintName.insert(uintName.begin(), id.value());
 
-  SPIRVOperation op(spv::OpName, uintName);
+  rdcspv::Operation op(spv::OpName, uintName);
 
-  SPIRVIterator it;
+  rdcspv::Iter it;
 
   // OpName must be before OpModuleProcessed.
   for(it = Begin(SPIRVSection::Debug); it < End(SPIRVSection::Debug); ++it)
@@ -725,18 +298,17 @@ void SPIRVEditor::SetName(uint32_t id, const char *name)
       break;
   }
 
-  spirv.insert(spirv.begin() + it.offs(), op.begin(), op.end());
-  RegisterOp(SPIRVIterator(spirv, it.offs()));
+  op.insertInto(spirv, it.offs());
+  RegisterOp(rdcspv::Iter(spirv, it.offs()));
   addWords(it.offs(), op.size());
 }
 
-void SPIRVEditor::AddDecoration(const SPIRVOperation &op)
+void SPIRVEditor::AddDecoration(const rdcspv::Operation &op)
 {
-  size_t offs = sections[SPIRVSection::Annotations].endOffset;
-
-  spirv.insert(spirv.begin() + offs, op.begin(), op.end());
-  RegisterOp(SPIRVIterator(spirv, offs));
-  addWords(offs, op.size());
+  size_t offset = sections[SPIRVSection::Annotations].endOffset;
+  op.insertInto(spirv, offset);
+  RegisterOp(rdcspv::Iter(spirv, offset));
+  addWords(offset, op.size());
 }
 
 void SPIRVEditor::AddCapability(spv::Capability cap)
@@ -746,9 +318,9 @@ void SPIRVEditor::AddCapability(spv::Capability cap)
     return;
 
   // insert the operation at the very start
-  SPIRVOperation op(spv::OpCapability, {(uint32_t)cap});
-  spirv.insert(spirv.begin() + FirstRealWord, op.begin(), op.end());
-  RegisterOp(SPIRVIterator(spirv, FirstRealWord));
+  rdcspv::Operation op(spv::OpCapability, {(uint32_t)cap});
+  op.insertInto(spirv, FirstRealWord);
+  RegisterOp(rdcspv::Iter(spirv, FirstRealWord));
   addWords(FirstRealWord, op.size());
 }
 
@@ -759,7 +331,7 @@ void SPIRVEditor::AddExtension(const std::string &extension)
     return;
 
   // start at the beginning
-  SPIRVIterator it(spirv, FirstRealWord);
+  rdcspv::Iter it(spirv, FirstRealWord);
 
   // skip past any capabilities
   while(it.opcode() == spv::OpCapability)
@@ -770,35 +342,35 @@ void SPIRVEditor::AddExtension(const std::string &extension)
   std::vector<uint32_t> uintName((sz / 4) + 1);
   memcpy(&uintName[0], extension.c_str(), sz);
 
-  SPIRVOperation op(spv::OpExtension, uintName);
-  spirv.insert(spirv.begin() + it.offset, op.begin(), op.end());
+  rdcspv::Operation op(spv::OpExtension, uintName);
+  op.insertInto(spirv, it.offs());
   RegisterOp(it);
-  addWords(it.offset, op.size());
+  addWords(it.offs(), op.size());
 }
 
-void SPIRVEditor::AddExecutionMode(SPIRVId entry, spv::ExecutionMode mode,
+void SPIRVEditor::AddExecutionMode(rdcspv::Id entry, spv::ExecutionMode mode,
                                    std::vector<uint32_t> params)
 {
   size_t offset = sections[SPIRVSection::ExecutionMode].endOffset;
 
   params.insert(params.begin(), (uint32_t)mode);
-  params.insert(params.begin(), (uint32_t)entry);
+  params.insert(params.begin(), entry.value());
 
-  SPIRVOperation op(spv::OpExecutionMode, params);
-  spirv.insert(spirv.begin() + offset, op.begin(), op.end());
-  RegisterOp(SPIRVIterator(spirv, offset));
+  rdcspv::Operation op(spv::OpExecutionMode, params);
+  op.insertInto(spirv, offset);
+  RegisterOp(rdcspv::Iter(spirv, offset));
   addWords(offset, op.size());
 }
 
-SPIRVId SPIRVEditor::ImportExtInst(const char *setname)
+rdcspv::Id SPIRVEditor::ImportExtInst(const char *setname)
 {
-  SPIRVId ret = extSets[setname];
+  rdcspv::Id ret = extSets[setname];
 
   if(ret)
     return ret;
 
   // start at the beginning
-  SPIRVIterator it(spirv, FirstRealWord);
+  rdcspv::Iter it(spirv, FirstRealWord);
 
   // skip past any capabilities and extensions
   while(it.opcode() == spv::OpCapability || it.opcode() == spv::OpExtension)
@@ -811,136 +383,112 @@ SPIRVId SPIRVEditor::ImportExtInst(const char *setname)
   std::vector<uint32_t> uintName((sz / 4) + 1);
   memcpy(&uintName[0], setname, sz);
 
-  uintName.insert(uintName.begin(), ret);
+  uintName.insert(uintName.begin(), ret.value());
 
-  SPIRVOperation op(spv::OpExtInstImport, uintName);
-  spirv.insert(spirv.begin() + it.offset, op.begin(), op.end());
+  rdcspv::Operation op(spv::OpExtInstImport, uintName);
+  op.insertInto(spirv, it.offs());
   RegisterOp(it);
-  addWords(it.offset, op.size());
+  addWords(it.offs(), op.size());
 
   extSets[setname] = ret;
 
   return ret;
 }
 
-SPIRVId SPIRVEditor::AddType(const SPIRVOperation &op)
+rdcspv::Id SPIRVEditor::AddType(const rdcspv::Operation &op)
 {
   size_t offset = sections[SPIRVSection::Types].endOffset;
 
-  SPIRVId id = op[1];
-  idOffsets[id] = offset;
-  spirv.insert(spirv.begin() + offset, op.begin(), op.end());
-  RegisterOp(SPIRVIterator(spirv, offset));
+  rdcspv::Id id = rdcspv::Id::fromWord(op[1]);
+  idOffsets[id.value()] = offset;
+  op.insertInto(spirv, offset);
+  RegisterOp(rdcspv::Iter(spirv, offset));
   addWords(offset, op.size());
   return id;
 }
 
-SPIRVId SPIRVEditor::AddVariable(const SPIRVOperation &op)
+rdcspv::Id SPIRVEditor::AddVariable(const rdcspv::Operation &op)
 {
   size_t offset = sections[SPIRVSection::Variables].endOffset;
 
-  SPIRVId id = op[2];
-  idOffsets[id] = offset;
-  spirv.insert(spirv.begin() + offset, op.begin(), op.end());
-  RegisterOp(SPIRVIterator(spirv, offset));
+  rdcspv::Id id = rdcspv::Id::fromWord(op[2]);
+  idOffsets[id.value()] = offset;
+  op.insertInto(spirv, offset);
+  RegisterOp(rdcspv::Iter(spirv, offset));
   addWords(offset, op.size());
   return id;
 }
 
-SPIRVId SPIRVEditor::AddConstant(const SPIRVOperation &op)
+rdcspv::Id SPIRVEditor::AddConstant(const rdcspv::Operation &op)
 {
   size_t offset = sections[SPIRVSection::Constants].endOffset;
 
-  SPIRVId id = op[2];
-  idOffsets[id] = offset;
-  spirv.insert(spirv.begin() + offset, op.begin(), op.end());
-  RegisterOp(SPIRVIterator(spirv, offset));
+  rdcspv::Id id = rdcspv::Id::fromWord(op[2]);
+  idOffsets[id.value()] = offset;
+  op.insertInto(spirv, offset);
+  RegisterOp(rdcspv::Iter(spirv, offset));
   addWords(offset, op.size());
   return id;
 }
 
-void SPIRVEditor::AddFunction(const SPIRVOperation *ops, size_t count)
+void SPIRVEditor::AddFunction(const rdcspv::Operation *ops, size_t count)
 {
   idOffsets[ops[0][2]] = spirv.size();
 
   for(size_t i = 0; i < count; i++)
-    spirv.insert(spirv.end(), ops[i].begin(), ops[i].end());
+    ops[i].appendTo(spirv);
 
-  RegisterOp(SPIRVIterator(spirv, idOffsets[ops[0][2]]));
+  RegisterOp(rdcspv::Iter(spirv, idOffsets[ops[0][2]]));
 }
 
-SPIRVIterator SPIRVEditor::GetID(SPIRVId id)
+rdcspv::Iter SPIRVEditor::GetID(rdcspv::Id id)
 {
-  size_t offs = idOffsets[id];
+  size_t offs = idOffsets[id.value()];
 
   if(offs)
-    return SPIRVIterator(spirv, offs);
+    return rdcspv::Iter(spirv, offs);
 
-  return SPIRVIterator();
+  return rdcspv::Iter();
 }
 
-SPIRVIterator SPIRVEditor::GetEntry(SPIRVId id)
+rdcspv::Iter SPIRVEditor::GetEntry(rdcspv::Id id)
 {
-  SPIRVIterator it(spirv, sections[SPIRVSection::EntryPoints].startOffset);
-  SPIRVIterator end(spirv, sections[SPIRVSection::EntryPoints].endOffset);
+  rdcspv::Iter it(spirv, sections[SPIRVSection::EntryPoints].startOffset);
+  rdcspv::Iter end(spirv, sections[SPIRVSection::EntryPoints].endOffset);
 
   while(it && it < end)
   {
-    if(it.word(2) == id)
+    if(it.word(2) == id.value())
       return it;
     it++;
   }
 
-  return SPIRVIterator();
+  return rdcspv::Iter();
 }
 
-SPIRVId SPIRVEditor::DeclareStructType(std::vector<uint32_t> members)
+rdcspv::Id SPIRVEditor::DeclareStructType(const std::vector<rdcspv::Id> &members)
 {
-  SPIRVId typeId = MakeId();
-  members.insert(members.begin(), typeId);
-  AddType(SPIRVOperation(spv::OpTypeStruct, members));
+  std::vector<uint32_t> words(members.size());
+  memcpy(words.data(), members.data(), words.size() * sizeof(uint32_t));
+  rdcspv::Id typeId = MakeId();
+  words.insert(words.begin(), typeId.value());
+  AddType(rdcspv::Operation(spv::OpTypeStruct, words));
   return typeId;
 }
 
-void SPIRVEditor::AddWord(SPIRVIterator iter, uint32_t word)
+void SPIRVEditor::AddOperation(rdcspv::Iter iter, const rdcspv::Operation &op)
 {
   if(!iter)
-    return;
-
-  // if it's just pointing at a SPIRVOperation, we can just push_back immediately
-  if(iter.words != &spirv)
-  {
-    iter.words->push_back(word);
-    return;
-  }
-
-  // add word
-  spirv.insert(spirv.begin() + iter.offset + iter.size(), word);
-
-  // fix up header
-  iter.word(0) = SPIRVOperation::MakeHeader(iter.opcode(), iter.size() + 1);
-
-  // update offsets
-  addWords(iter.offset + iter.size(), 1);
-}
-
-void SPIRVEditor::AddOperation(SPIRVIterator iter, const SPIRVOperation &op)
-{
-  if(!iter)
-    return;
-
-  // if it's just pointing at a SPIRVOperation, this is invalid
-  if(iter.words != &spirv)
     return;
 
   // add op
-  spirv.insert(spirv.begin() + iter.offset, op.begin(), op.end());
+  op.insertInto(spirv, iter.offs());
 
   // update offsets
-  addWords(iter.offset, op.size());
+  addWords(iter.offs(), op.size());
 }
 
-void SPIRVEditor::RegisterOp(SPIRVIterator it)
+void SPIRVEditor::RegisterOp(rdcspv::Iter it)
 {
   spv::Op opcode = it.opcode();
 
@@ -951,14 +499,14 @@ void SPIRVEditor::RegisterOp(SPIRVIterator it)
     if(hasResult && hasResultType)
     {
       RDCASSERT(it.word(2) < idTypes.size());
-      idTypes[it.word(2)] = it.word(1);
+      idTypes[it.word(2)] = rdcspv::Id::fromWord(it.word(1));
     }
   }
 
   if(opcode == spv::OpEntryPoint)
   {
     SPIRVEntry entry;
-    entry.id = it.word(2);
+    entry.id = rdcspv::Id::fromWord(it.word(2));
     entry.name = (const char *)&it.word(3);
 
     entries.push_back(entry);
@@ -979,32 +527,32 @@ void SPIRVEditor::RegisterOp(SPIRVIterator it)
   }
   else if(opcode == spv::OpExtInstImport)
   {
-    SPIRVId id = it.word(1);
+    rdcspv::Id id = rdcspv::Id::fromWord(it.word(1));
     const char *name = (const char *)&it.word(2);
     extSets[name] = id;
   }
   else if(opcode == spv::OpFunction)
   {
-    SPIRVId id = it.word(2);
-    idOffsets[id] = it.offset;
+    rdcspv::Id id = rdcspv::Id::fromWord(it.word(2));
+    idOffsets[id.value()] = it.offs();
 
     functions.push_back(id);
   }
   else if(opcode == spv::OpVariable)
   {
     SPIRVVariable var;
-    var.type = it.word(1);
-    var.id = it.word(2);
+    var.type = rdcspv::Id::fromWord(it.word(1));
+    var.id = rdcspv::Id::fromWord(it.word(2));
     var.storageClass = (spv::StorageClass)it.word(3);
     if(it.size() > 4)
-      var.init = it.word(4);
+      var.init = rdcspv::Id::fromWord(it.word(4));
 
     variables.push_back(var);
   }
   else if(opcode == spv::OpDecorate)
   {
     SPIRVDecoration decoration;
-    decoration.id = it.word(1);
+    decoration.id = rdcspv::Id::fromWord(it.word(1));
     decoration.dec = (spv::Decoration)it.word(2);
 
     RDCASSERTMSG("Too many parameters in decoration", it.size() <= 7, it.size());
@@ -1023,18 +571,18 @@ void SPIRVEditor::RegisterOp(SPIRVIterator it)
   else if(opcode == spv::OpTypeVoid || opcode == spv::OpTypeBool || opcode == spv::OpTypeInt ||
           opcode == spv::OpTypeFloat)
   {
-    SPIRVId id = it.word(1);
-    idOffsets[id] = it.offset;
+    rdcspv::Id id = rdcspv::Id::fromWord(it.word(1));
+    idOffsets[id.value()] = it.offs();
 
     SPIRVScalar scalar(it);
     scalarTypes[scalar] = id;
   }
   else if(opcode == spv::OpTypeVector)
   {
-    SPIRVId id = it.word(1);
-    idOffsets[id] = it.offset;
+    rdcspv::Id id = rdcspv::Id::fromWord(it.word(1));
+    idOffsets[id.value()] = it.offs();
 
-    SPIRVIterator scalarIt = GetID(it.word(2));
+    rdcspv::Iter scalarIt = GetID(rdcspv::Id::fromWord(it.word(2)));
 
     if(!scalarIt)
     {
@@ -1046,10 +594,10 @@ void SPIRVEditor::RegisterOp(SPIRVIterator it)
   }
   else if(opcode == spv::OpTypeMatrix)
   {
-    SPIRVId id = it.word(1);
-    idOffsets[id] = it.offset;
+    rdcspv::Id id = rdcspv::Id::fromWord(it.word(1));
+    idOffsets[id.value()] = it.offs();
 
-    SPIRVIterator vectorIt = GetID(it.word(2));
+    rdcspv::Iter vectorIt = GetID(rdcspv::Id::fromWord(it.word(2)));
 
     if(!vectorIt)
     {
@@ -1057,17 +605,17 @@ void SPIRVEditor::RegisterOp(SPIRVIterator it)
       return;
     }
 
-    SPIRVIterator scalarIt = GetID(vectorIt.word(2));
+    rdcspv::Iter scalarIt = GetID(rdcspv::Id::fromWord(vectorIt.word(2)));
     uint32_t vectorDim = vectorIt.word(3);
 
     matrixTypes[SPIRVMatrix(SPIRVVector(scalarIt, vectorDim), it.word(3))] = id;
   }
   else if(opcode == spv::OpTypeImage)
   {
-    SPIRVId id = it.word(1);
-    idOffsets[id] = it.offset;
+    rdcspv::Id id = rdcspv::Id::fromWord(it.word(1));
+    idOffsets[id.value()] = it.offs();
 
-    SPIRVIterator scalarIt = GetID(it.word(2));
+    rdcspv::Iter scalarIt = GetID(rdcspv::Id::fromWord(it.word(2)));
 
     if(!scalarIt)
     {
@@ -1080,49 +628,49 @@ void SPIRVEditor::RegisterOp(SPIRVIterator it)
   }
   else if(opcode == spv::OpTypeSampler)
   {
-    SPIRVId id = it.word(1);
-    idOffsets[id] = it.offset;
+    rdcspv::Id id = rdcspv::Id::fromWord(it.word(1));
+    idOffsets[id.value()] = it.offs();
 
     samplerTypes[SPIRVSampler()] = id;
   }
   else if(opcode == spv::OpTypeSampledImage)
   {
-    SPIRVId id = it.word(1);
-    idOffsets[id] = it.offset;
+    rdcspv::Id id = rdcspv::Id::fromWord(it.word(1));
+    idOffsets[id.value()] = it.offs();
 
-    SPIRVId base = it.word(2);
+    rdcspv::Id base = rdcspv::Id::fromWord(it.word(2));
 
     sampledImageTypes[SPIRVSampledImage(base)] = id;
   }
   else if(opcode == spv::OpTypePointer)
   {
-    SPIRVId id = it.word(1);
-    idOffsets[id] = it.offset;
+    rdcspv::Id id = rdcspv::Id::fromWord(it.word(1));
+    idOffsets[id.value()] = it.offs();
 
-    pointerTypes[SPIRVPointer(it.word(3), (spv::StorageClass)it.word(2))] = id;
+    pointerTypes[SPIRVPointer(rdcspv::Id::fromWord(it.word(3)), (spv::StorageClass)it.word(2))] = id;
   }
   else if(opcode == spv::OpTypeStruct)
   {
-    SPIRVId id = it.word(1);
-    idOffsets[id] = it.offset;
+    rdcspv::Id id = rdcspv::Id::fromWord(it.word(1));
+    idOffsets[id.value()] = it.offs();
 
     structTypes.insert(id);
   }
   else if(opcode == spv::OpTypeFunction)
   {
-    SPIRVId id = it.word(1);
-    idOffsets[id] = it.offset;
+    rdcspv::Id id = rdcspv::Id::fromWord(it.word(1));
+    idOffsets[id.value()] = it.offs();
 
-    std::vector<SPIRVId> args;
+    std::vector<rdcspv::Id> args;
 
     for(size_t i = 3; i < it.size(); i++)
-      args.push_back(it.word(i));
+      args.push_back(rdcspv::Id::fromWord(it.word(i)));
 
-    functionTypes[SPIRVFunction(it.word(2), args)] = id;
+    functionTypes[SPIRVFunction(rdcspv::Id::fromWord(it.word(2)), args)] = id;
   }
 }
 
-void SPIRVEditor::UnregisterOp(SPIRVIterator it)
+void SPIRVEditor::UnregisterOp(rdcspv::Iter it)
 {
   spv::Op opcode = it.opcode();
 
@@ -1131,10 +679,10 @@ void SPIRVEditor::UnregisterOp(SPIRVIterator it)
     spv::HasResultAndType(opcode, &hasResult, &hasResultType);
 
     if(hasResult && hasResultType)
-      idTypes[it.word(2)] = 0;
+      idTypes[it.word(2)] = rdcspv::Id();
   }
 
-  SPIRVId id;
+  rdcspv::Id id;
 
   if(opcode == spv::OpEntryPoint)
   {
@@ -1149,7 +697,7 @@ void SPIRVEditor::UnregisterOp(SPIRVIterator it)
   }
   else if(opcode == spv::OpFunction)
   {
-    id = it.word(2);
+    id = rdcspv::Id::fromWord(it.word(2));
     for(auto funcIt = functions.begin(); funcIt != functions.end(); ++funcIt)
     {
       if(*funcIt == id)
@@ -1161,7 +709,7 @@ void SPIRVEditor::UnregisterOp(SPIRVIterator it)
   }
   else if(opcode == spv::OpVariable)
   {
-    id = it.word(2);
+    id = rdcspv::Id::fromWord(it.word(2));
     for(auto varIt = variables.begin(); varIt != variables.end(); ++varIt)
     {
       if(varIt->id == id)
@@ -1174,7 +722,7 @@ void SPIRVEditor::UnregisterOp(SPIRVIterator it)
   else if(opcode == spv::OpDecorate)
   {
     SPIRVDecoration decoration;
-    decoration.id = it.word(1);
+    decoration.id = rdcspv::Id::fromWord(it.word(1));
     decoration.dec = (spv::Decoration)it.word(2);
 
     RDCASSERTMSG("Too many parameters in decoration", it.size() <= 7, it.size());
@@ -1208,16 +756,16 @@ void SPIRVEditor::UnregisterOp(SPIRVIterator it)
   else if(opcode == spv::OpTypeVoid || opcode == spv::OpTypeBool || opcode == spv::OpTypeInt ||
           opcode == spv::OpTypeFloat)
   {
-    id = it.word(1);
+    id = rdcspv::Id::fromWord(it.word(1));
 
     SPIRVScalar scalar(it);
     scalarTypes.erase(scalar);
   }
   else if(opcode == spv::OpTypeVector)
   {
-    id = it.word(1);
+    id = rdcspv::Id::fromWord(it.word(1));
 
-    SPIRVIterator scalarIt = GetID(it.word(2));
+    rdcspv::Iter scalarIt = GetID(rdcspv::Id::fromWord(it.word(2)));
 
     if(!scalarIt)
     {
@@ -1229,9 +777,9 @@ void SPIRVEditor::UnregisterOp(SPIRVIterator it)
   }
   else if(opcode == spv::OpTypeMatrix)
   {
-    id = it.word(1);
+    id = rdcspv::Id::fromWord(it.word(1));
 
-    SPIRVIterator vectorIt = GetID(it.word(2));
+    rdcspv::Iter vectorIt = GetID(rdcspv::Id::fromWord(it.word(2)));
 
     if(!vectorIt)
     {
@@ -1239,16 +787,16 @@ void SPIRVEditor::UnregisterOp(SPIRVIterator it)
       return;
     }
 
-    SPIRVIterator scalarIt = GetID(vectorIt.word(2));
+    rdcspv::Iter scalarIt = GetID(rdcspv::Id::fromWord(vectorIt.word(2)));
     uint32_t vectorDim = vectorIt.word(3);
 
     matrixTypes.erase(SPIRVMatrix(SPIRVVector(scalarIt, vectorDim), it.word(3)));
   }
   else if(opcode == spv::OpTypeImage)
   {
-    id = it.word(1);
+    id = rdcspv::Id::fromWord(it.word(1));
 
-    SPIRVIterator scalarIt = GetID(it.word(2));
+    rdcspv::Iter scalarIt = GetID(rdcspv::Id::fromWord(it.word(2)));
 
     if(!scalarIt)
     {
@@ -1261,44 +809,44 @@ void SPIRVEditor::UnregisterOp(SPIRVIterator it)
   }
   else if(opcode == spv::OpTypeSampler)
   {
-    id = it.word(1);
+    id = rdcspv::Id::fromWord(it.word(1));
 
     samplerTypes.erase(SPIRVSampler());
   }
   else if(opcode == spv::OpTypeSampledImage)
   {
-    id = it.word(1);
+    id = rdcspv::Id::fromWord(it.word(1));
 
-    SPIRVId base = it.word(2);
+    rdcspv::Id base = rdcspv::Id::fromWord(it.word(2));
 
     sampledImageTypes.erase(SPIRVSampledImage(base));
   }
   else if(opcode == spv::OpTypePointer)
   {
-    id = it.word(1);
+    id = rdcspv::Id::fromWord(it.word(1));
 
-    pointerTypes.erase(SPIRVPointer(it.word(3), (spv::StorageClass)it.word(2)));
+    pointerTypes.erase(SPIRVPointer(rdcspv::Id::fromWord(it.word(3)), (spv::StorageClass)it.word(2)));
   }
   else if(opcode == spv::OpTypeStruct)
   {
-    id = it.word(1);
+    id = rdcspv::Id::fromWord(it.word(1));
 
     structTypes.erase(id);
   }
   else if(opcode == spv::OpTypeFunction)
   {
-    id = it.word(1);
+    id = rdcspv::Id::fromWord(it.word(1));
 
-    std::vector<SPIRVId> args;
+    std::vector<rdcspv::Id> args;
 
     for(size_t i = 3; i < it.size(); i++)
-      args.push_back(it.word(i));
+      args.push_back(rdcspv::Id::fromWord(it.word(i)));
 
-    functionTypes.erase(SPIRVFunction(it.word(2), args));
+    functionTypes.erase(SPIRVFunction(rdcspv::Id::fromWord(it.word(2)), args));
   }
 
   if(id)
-    idOffsets[id] = 0;
+    idOffsets[id.value()] = 0;
 }
 
 void SPIRVEditor::addWords(size_t offs, int32_t num)
@@ -1342,16 +890,16 @@ void SPIRVEditor::addWords(size_t offs, int32_t num)
       o += num;
 }
 
-#define TYPETABLE(StructType, variable)                                          \
-  template <>                                                                    \
-  std::map<StructType, SPIRVId> &SPIRVEditor::GetTable<StructType>()             \
-  {                                                                              \
-    return variable;                                                             \
-  }                                                                              \
-  template <>                                                                    \
-  const std::map<StructType, SPIRVId> &SPIRVEditor::GetTable<StructType>() const \
-  {                                                                              \
-    return variable;                                                             \
+#define TYPETABLE(StructType, variable)                                             \
+  template <>                                                                       \
+  std::map<StructType, rdcspv::Id> &SPIRVEditor::GetTable<StructType>()             \
+  {                                                                                 \
+    return variable;                                                                \
+  }                                                                                 \
+  template <>                                                                       \
+  const std::map<StructType, rdcspv::Id> &SPIRVEditor::GetTable<StructType>() const \
+  {                                                                                 \
+    return variable;                                                                \
   }
 
 TYPETABLE(SPIRVScalar, scalarTypes);
@@ -1368,13 +916,14 @@ TYPETABLE(SPIRVFunction, functionTypes);
 #include "3rdparty/catch/catch.hpp"
 #include "core/core.h"
 #include "spirv_common.h"
+#include "spirv_compile.h"
 
 static void RemoveSection(std::vector<uint32_t> &spirv, size_t offsets[SPIRVSection::Count][2],
                           SPIRVSection::Type section)
 {
   SPIRVEditor ed(spirv);
 
-  for(SPIRVIterator it = ed.Begin(section), end = ed.End(section); it < end; it++)
+  for(rdcspv::Iter it = ed.Begin(section), end = ed.End(section); it < end; it++)
     ed.Remove(it);
 
   size_t oldLength = offsets[section][1] - offsets[section][0];
@@ -1405,7 +954,7 @@ static void CheckSPIRV(SPIRVEditor &ed, size_t offsets[SPIRVSection::Count][2])
   // should only be one entry point
   REQUIRE(ed.GetEntries().size() == 1);
 
-  SPIRVId entryId = ed.GetEntries()[0].id;
+  rdcspv::Id entryId = ed.GetEntries()[0].id;
 
   // check that the iterator places us precisely at the start of the functions section
   CHECK(ed.GetID(entryId).offs() == ed.Begin(SPIRVSection::Functions).offs());

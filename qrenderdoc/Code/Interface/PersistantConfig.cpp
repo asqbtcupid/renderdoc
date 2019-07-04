@@ -31,7 +31,7 @@
 #include "QRDInterface.h"
 
 template <>
-std::string DoStringise(const TimeUnit &el)
+rdcstr DoStringise(const TimeUnit &el)
 {
   BEGIN_ENUM_STRINGISE(TimeUnit)
   {
@@ -102,7 +102,7 @@ rdcstrpairs convertFromVariant(const QVariantMap &val)
   rdcstrpairs ret;
   for(const QString &k : val.keys())
   {
-    ret.push_back(make_rdcpair<rdcstr, rdcstr>(k, val[k].toString()));
+    ret.push_back({k, val[k].toString()});
   }
   return ret;
 }
@@ -238,7 +238,7 @@ void PersistantConfig::AddAndroidHosts()
   SetConfigSetting("MaxConnectTimeout", QString::number(Android_MaxConnectTimeout));
 
   rdcstr androidHosts;
-  RENDERDOC_EnumerateAndroidDevices(&androidHosts);
+  RENDERDOC_EnumerateAndroidDevices(androidHosts);
   for(const QString &hostName :
       QString(androidHosts).split(QLatin1Char(','), QString::SkipEmptyParts))
   {
@@ -557,6 +557,8 @@ rdcstr ShaderProcessingTool::DefaultArguments() const
     return "-D -g -V -o {output_file} {input_file} -S {glsl_stage4} -e {entry_point}";
   else if(tool == KnownShaderTool::spirv_as)
     return "-o {output_file} {input_file}";
+  else if(tool == KnownShaderTool::dxc)
+    return "-T {hlsl_stage2}_6_0 -E {entry_point} -Fo {output_file} {input_file} -spirv";
 
   return args;
 }

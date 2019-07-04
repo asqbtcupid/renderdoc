@@ -420,10 +420,10 @@ struct D3D12ResourceRecord;
 
 struct CmdListRecordingInfo
 {
-  vector<D3D12_RESOURCE_BARRIER> barriers;
+  std::vector<D3D12_RESOURCE_BARRIER> barriers;
 
   // a list of all resources dirtied by this command list
-  set<ResourceId> dirtied;
+  std::set<ResourceId> dirtied;
 
   // a list of descriptors that are bound at any point in this command list
   // used to look up all the frame refs per-descriptor and apply them on queue
@@ -432,10 +432,10 @@ struct CmdListRecordingInfo
   // expand a bit more to contain duplicates and then deal with it during frame
   // capture, than to constantly be deduplicating during record (e.g. with a
   // set or sorted vector).
-  vector<D3D12Descriptor *> boundDescs;
+  std::vector<D3D12Descriptor *> boundDescs;
 
   // bundles executed
-  vector<D3D12ResourceRecord *> bundles;
+  std::vector<D3D12ResourceRecord *> bundles;
 };
 
 class WrappedID3D12Resource1;
@@ -563,24 +563,6 @@ struct D3D12ResourceRecord : public ResourceRecord
     cmdInfo->bundles.swap(bakedCommands->cmdInfo->bundles);
   }
 
-  void Insert(map<int32_t, Chunk *> &recordlist)
-  {
-    bool dataWritten = DataWritten;
-
-    DataWritten = true;
-
-    for(auto it = Parents.begin(); it != Parents.end(); ++it)
-    {
-      if(!(*it)->DataWritten)
-      {
-        (*it)->Insert(recordlist);
-      }
-    }
-
-    if(!dataWritten)
-      recordlist.insert(m_Chunks.begin(), m_Chunks.end());
-  }
-
   D3D12ResourceType type;
   bool ContainsExecuteIndirect;
   D3D12ResourceRecord *bakedCommands;
@@ -589,16 +571,17 @@ struct D3D12ResourceRecord : public ResourceRecord
   struct MapData
   {
     MapData() : refcount(0), realPtr(NULL), shadowPtr(NULL) {}
-    volatile int32_t refcount;
+    int32_t refcount;
     byte *realPtr;
     byte *shadowPtr;
   };
 
   MapData *m_Maps;
   size_t m_MapsCount;
+  Threading::CriticalSection m_MapLock;
 };
 
-typedef vector<D3D12_RESOURCE_STATES> SubresourceStateVector;
+typedef std::vector<D3D12_RESOURCE_STATES> SubresourceStateVector;
 
 struct D3D12InitialContents
 {
@@ -615,7 +598,8 @@ struct D3D12InitialContents
         descriptors(d),
         numDescriptors(n),
         resource(NULL),
-        srcData(NULL)
+        srcData(NULL),
+        dataSize(0)
   {
   }
   D3D12InitialContents(ID3D12DescriptorHeap *r)
@@ -624,25 +608,38 @@ struct D3D12InitialContents
         descriptors(NULL),
         numDescriptors(0),
         resource(r),
-        srcData(NULL)
+        srcData(NULL),
+        dataSize(0)
   {
   }
   D3D12InitialContents(ID3D12Resource *r)
       : tag(Copy),
-        resourceType(Resource_DescriptorHeap),
+        resourceType(Resource_Resource),
         descriptors(NULL),
         numDescriptors(0),
         resource(r),
-        srcData(NULL)
+        srcData(NULL),
+        dataSize(0)
   {
   }
-  D3D12InitialContents(Tag tg)
-      : tag(tg),
-        resourceType(Resource_DescriptorHeap),
+  D3D12InitialContents(byte *data, size_t size)
+      : tag(MapDirect),
+        resourceType(Resource_Resource),
         descriptors(NULL),
         numDescriptors(0),
         resource(NULL),
-        srcData(NULL)
+        srcData(data),
+        dataSize(size)
+  {
+  }
+  D3D12InitialContents(Tag tg, D3D12ResourceType type)
+      : tag(tg),
+        resourceType(type),
+        descriptors(NULL),
+        numDescriptors(0),
+        resource(NULL),
+        srcData(NULL),
+        dataSize(0)
   {
   }
   D3D12InitialContents()
@@ -651,7 +648,8 @@ struct D3D12InitialContents
         descriptors(NULL),
         numDescriptors(0),
         resource(NULL),
-        srcData(NULL)
+        srcData(NULL),
+        dataSize(0)
   {
   }
   template <typename Configuration>
@@ -667,6 +665,7 @@ struct D3D12InitialContents
   uint32_t numDescriptors;
   ID3D12DeviceChild *resource;
   byte *srcData;
+  size_t dataSize;
 };
 
 struct D3D12ResourceManagerConfiguration
@@ -696,15 +695,16 @@ public:
     return (T *)GetCurrentResource(id);
   }
 
-  void ApplyBarriers(vector<D3D12_RESOURCE_BARRIER> &barriers,
-                     map<ResourceId, SubresourceStateVector> &states);
+  void ApplyBarriers(std::vector<D3D12_RESOURCE_BARRIER> &barriers,
+                     std::map<ResourceId, SubresourceStateVector> &states);
 
   template <typename SerialiserType>
   void SerialiseResourceStates(SerialiserType &ser, std::vector<D3D12_RESOURCE_BARRIER> &barriers,
                                std::map<ResourceId, SubresourceStateVector> &states);
 
   template <typename SerialiserType>
-  bool Serialise_InitialState(SerialiserType &ser, ResourceId resid, ID3D12DeviceChild *res);
+  bool Serialise_InitialState(SerialiserType &ser, ResourceId id, D3D12ResourceRecord *record,
+                              const D3D12InitialContents *initial);
 
   void SetInternalResource(ID3D12DeviceChild *res);
 
@@ -713,16 +713,15 @@ private:
 
   bool ResourceTypeRelease(ID3D12DeviceChild *res);
 
-  bool Force_InitialState(ID3D12DeviceChild *res, bool prepare);
-  bool Need_InitialStateChunk(ID3D12DeviceChild *res);
   bool Prepare_InitialState(ID3D12DeviceChild *res);
-  uint32_t GetSize_InitialState(ResourceId id, ID3D12DeviceChild *res);
-  bool Serialise_InitialState(WriteSerialiser &ser, ResourceId resid, ID3D12DeviceChild *res)
+  uint64_t GetSize_InitialState(ResourceId id, const D3D12InitialContents &data);
+  bool Serialise_InitialState(WriteSerialiser &ser, ResourceId id, D3D12ResourceRecord *record,
+                              const D3D12InitialContents *initial)
   {
-    return Serialise_InitialState<WriteSerialiser>(ser, resid, res);
+    return Serialise_InitialState<WriteSerialiser>(ser, id, record, initial);
   }
   void Create_InitialState(ResourceId id, ID3D12DeviceChild *live, bool hasData);
-  void Apply_InitialState(ID3D12DeviceChild *live, D3D12InitialContents data);
+  void Apply_InitialState(ID3D12DeviceChild *live, const D3D12InitialContents &data);
 
   CaptureState m_State;
   WrappedID3D12Device *m_Device;

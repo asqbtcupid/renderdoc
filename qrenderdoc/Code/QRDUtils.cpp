@@ -55,14 +55,14 @@
 // so we implement it here using QString. It's inefficient, but this is a very uncommon path -
 // either for invalid values or for when a new enum is added and the code isn't updated
 template <>
-std::string DoStringise(const uint32_t &el)
+rdcstr DoStringise(const uint32_t &el)
 {
   return QString::number(el).toStdString();
 }
 
 // this one we do by hand as it requires formatting
 template <>
-std::string DoStringise(const ResourceId &el)
+rdcstr DoStringise(const ResourceId &el)
 {
   uint64_t num;
   memcpy(&num, &el, sizeof(num));
@@ -800,6 +800,36 @@ QString ToQStr(const ShaderStage stage, const GraphicsAPI apitype)
       case ShaderStage::Geometry: return lit("Geometry");
       case ShaderStage::Fragment: return lit("Fragment");
       case ShaderStage::Compute: return lit("Compute");
+      default: break;
+    }
+  }
+
+  return lit("Unknown");
+}
+
+QString ToQStr(const AddressMode addr, const GraphicsAPI apitype)
+{
+  if(IsD3D(apitype))
+  {
+    switch(addr)
+    {
+      case AddressMode::Wrap: return lit("Wrap");
+      case AddressMode::Mirror: return lit("Mirror");
+      case AddressMode::MirrorOnce: return lit("MirrorOnce");
+      case AddressMode::ClampEdge: return lit("ClampEdge");
+      case AddressMode::ClampBorder: return lit("ClampBorder");
+      default: break;
+    }
+  }
+  else
+  {
+    switch(addr)
+    {
+      case AddressMode::Repeat: return lit("Repeat");
+      case AddressMode::MirrorRepeat: return lit("MirrorRepeat");
+      case AddressMode::MirrorClamp: return lit("MirrorClamp");
+      case AddressMode::ClampEdge: return lit("ClampEdge");
+      case AddressMode::ClampBorder: return lit("ClampBorder");
       default: break;
     }
   }

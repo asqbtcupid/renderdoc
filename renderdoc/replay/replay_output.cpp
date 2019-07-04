@@ -116,17 +116,6 @@ ReplayOutput::ReplayOutput(ReplayController *parent, WindowingData window, Repla
     RenderDoc::Inst().GetCrashHandler()->RegisterMemoryRegion(this, sizeof(ReplayController));
 }
 
-void ReplayOutput::SetDimensions(int32_t width, int32_t height)
-{
-  CHECK_REPLAY_THREAD();
-
-  if(m_MainOutput.outputID == 0)
-  {
-    m_Width = width;
-    m_Height = height;
-  }
-}
-
 ReplayOutput::~ReplayOutput()
 {
   CHECK_REPLAY_THREAD();
@@ -144,6 +133,31 @@ void ReplayOutput::Shutdown()
   CHECK_REPLAY_THREAD();
 
   m_pRenderer->ShutdownOutput(this);
+}
+
+void ReplayOutput::SetDimensions(int32_t width, int32_t height)
+{
+  CHECK_REPLAY_THREAD();
+
+  m_pDevice->SetOutputWindowDimensions(m_MainOutput.outputID, width > 0 ? width : 1,
+                                       height > 0 ? height : 1);
+  m_pDevice->GetOutputWindowDimensions(m_MainOutput.outputID, m_Width, m_Height);
+}
+
+bytebuf ReplayOutput::ReadbackOutputTexture()
+{
+  CHECK_REPLAY_THREAD();
+
+  bytebuf data;
+  m_pDevice->GetOutputWindowData(m_MainOutput.outputID, data);
+  return data;
+}
+
+rdcpair<int32_t, int32_t> ReplayOutput::GetDimensions()
+{
+  CHECK_REPLAY_THREAD();
+
+  return make_rdcpair(m_Width, m_Height);
 }
 
 void ReplayOutput::SetTextureDisplay(const TextureDisplay &o)
@@ -294,13 +308,14 @@ bool ReplayOutput::SetPixelContext(WindowingData window)
   return m_PixelContext.outputID != 0;
 }
 
-bool ReplayOutput::AddThumbnail(WindowingData window, ResourceId texID, CompType typeHint)
+bool ReplayOutput::AddThumbnail(WindowingData window, ResourceId texID, CompType typeHint,
+                                uint32_t mip, uint32_t slice)
 {
   CHECK_REPLAY_THREAD();
 
   OutputPair p;
 
-  RDCASSERT(window.system != WindowingSystem::Unknown);
+  RDCASSERT(window.system != WindowingSystem::Unknown && window.system != WindowingSystem::Headless);
 
   bool depthMode = false;
 
@@ -319,11 +334,10 @@ bool ReplayOutput::AddThumbnail(WindowingData window, ResourceId texID, CompType
     if(m_Thumbnails[i].wndHandle == GetHandle(window))
     {
       m_Thumbnails[i].texture = texID;
-
       m_Thumbnails[i].depthMode = depthMode;
-
       m_Thumbnails[i].typeHint = typeHint;
-
+      m_Thumbnails[i].mip = mip;
+      m_Thumbnails[i].slice = slice;
       m_Thumbnails[i].dirty = true;
 
       return true;
@@ -335,6 +349,8 @@ bool ReplayOutput::AddThumbnail(WindowingData window, ResourceId texID, CompType
   p.texture = texID;
   p.depthMode = depthMode;
   p.typeHint = typeHint;
+  p.mip = mip;
+  p.slice = slice;
   p.dirty = true;
 
   RDCASSERT(p.outputID > 0);
@@ -377,7 +393,7 @@ rdcarray<uint32_t> ReplayOutput::GetHistogram(float minval, float maxval, bool c
 {
   CHECK_REPLAY_THREAD();
 
-  vector<uint32_t> hist;
+  std::vector<uint32_t> hist;
 
   ResourceId tex = m_pDevice->GetLiveID(m_RenderData.texDisplay.resourceId);
 
@@ -444,7 +460,7 @@ rdcpair<uint32_t, uint32_t> ReplayOutput::PickVertex(uint32_t eventId, uint32_t 
 
   DrawcallDescription *draw = m_pRenderer->GetDrawcallByEID(eventId);
 
-  const rdcpair<uint32_t, uint32_t> errorReturn = make_rdcpair(~0U, ~0U);
+  const rdcpair<uint32_t, uint32_t> errorReturn = {~0U, ~0U};
 
   if(!draw)
     return errorReturn;
@@ -691,7 +707,7 @@ void ReplayOutput::Display()
     disp.hdrMultiplier = -1.0f;
     disp.linearDisplayAsGamma = true;
     disp.flipY = false;
-    disp.mip = 0;
+    disp.mip = m_Thumbnails[i].mip;
     disp.sampleIdx = ~0U;
     disp.customShaderId = ResourceId();
     disp.resourceId = m_pDevice->GetLiveID(m_Thumbnails[i].texture);
@@ -699,7 +715,7 @@ void ReplayOutput::Display()
     disp.scale = -1.0f;
     disp.rangeMin = 0.0f;
     disp.rangeMax = 1.0f;
-    disp.sliceFace = 0;
+    disp.sliceFace = m_Thumbnails[i].slice;
     disp.xOffset = 0.0f;
     disp.yOffset = 0.0f;
     disp.rawOutput = false;
@@ -844,7 +860,7 @@ void ReplayOutput::DisplayMesh()
   mesh.second.vertexResourceId = m_pDevice->GetLiveID(mesh.second.vertexResourceId);
   mesh.second.indexResourceId = m_pDevice->GetLiveID(mesh.second.indexResourceId);
 
-  vector<MeshFormat> secondaryDraws;
+  std::vector<MeshFormat> secondaryDraws;
 
   // we choose a pallette here so that the colours stay consistent (i.e the
   // current draw is always the same colour), but also to indicate somewhat

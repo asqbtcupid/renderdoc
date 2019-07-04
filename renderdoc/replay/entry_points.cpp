@@ -251,6 +251,11 @@ extern "C" RENDERDOC_API const char *RENDERDOC_CC RENDERDOC_GetLogFile()
   return RDCGETLOGFILE();
 }
 
+extern "C" RENDERDOC_API void RENDERDOC_CC RENDERDOC_GetLogFileContents(rdcstr &logfile)
+{
+  logfile = FileIO::logfile_readall(RDCGETLOGFILE());
+}
+
 extern "C" RENDERDOC_API void RENDERDOC_CC RENDERDOC_InitGlobalEnv(GlobalEnvironment env,
                                                                    const rdcarray<rdcstr> &args)
 {
@@ -374,7 +379,7 @@ extern "C" RENDERDOC_API void *RENDERDOC_CC RENDERDOC_AllocArrayMem(uint64_t sz)
 extern "C" RENDERDOC_API uint32_t RENDERDOC_CC RENDERDOC_EnumerateRemoteTargets(const char *host,
                                                                                 uint32_t nextIdent)
 {
-  string s = "localhost";
+  std::string s = "localhost";
   if(host != NULL && host[0] != '\0')
     s = host;
 
@@ -704,6 +709,7 @@ static std::string ResourceFormatName(const ResourceFormat &fmt)
       case ResourceFormatType::D32S8:
         return fmt.compType == CompType::Typeless ? "D32S8_TYPELESS" : "D32S8";
       case ResourceFormatType::S8: return "S8";
+      case ResourceFormatType::A8: return "A8_UNORM";
       case ResourceFormatType::YUV8:
       case ResourceFormatType::YUV10:
       case ResourceFormatType::YUV12:

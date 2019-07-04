@@ -32,7 +32,7 @@
 // so we implement it here using ostringstream. It's not great, but this is a very uncommon path -
 // either for invalid values or for when a new enum is added and the code isn't updated
 template <>
-std::string DoStringise(const uint32_t &el)
+rdcstr DoStringise(const uint32_t &el)
 {
   std::ostringstream oss;
   oss << el;
@@ -40,9 +40,6 @@ std::string DoStringise(const uint32_t &el)
 }
 
 #include <replay/renderdoc_tostr.inl>
-
-using std::string;
-using std::wstring;
 
 bool usingKillSignal = false;
 volatile bool killSignal = false;
@@ -174,7 +171,8 @@ struct VersionCommand : public Command
   virtual int Execute(cmdline::parser &parser, const CaptureOptions &)
   {
     std::cout << "renderdoccmd " << (sizeof(uintptr_t) == sizeof(uint64_t) ? "x64" : "x86")
-              << " v" MAJOR_MINOR_VERSION_STRING << " built from " << GitVersionHash << std::endl;
+              << " v" MAJOR_MINOR_VERSION_STRING << " built from " << RENDERDOC_GetCommitHash()
+              << std::endl;
 
 #if defined(DISTRIBUTION_VERSION)
     std::cout << "Packaged for " << DISTRIBUTION_NAME << " (" << DISTRIBUTION_VERSION << ") - "
@@ -215,10 +213,11 @@ struct ThumbCommand : public Command
   virtual void AddOptions(cmdline::parser &parser)
   {
     parser.set_footer("<filename.rdc>");
-    parser.add<string>("out", 'o', "The output filename to save the file to", true, "filename.jpg");
-    parser.add<string>("format", 'f',
-                       "The format of the output file. If empty, detected from filename", false, "",
-                       cmdline::oneof<string>("jpg", "png", "bmp", "tga"));
+    parser.add<std::string>("out", 'o', "The output filename to save the file to", true,
+                            "filename.jpg");
+    parser.add<std::string>("format", 'f',
+                            "The format of the output file. If empty, detected from filename",
+                            false, "", cmdline::oneof<std::string>("jpg", "png", "bmp", "tga"));
     parser.add<uint32_t>(
         "max-size", 's',
         "The maximum dimension of the thumbnail. Default is 0, which is unlimited.", false, 0);
@@ -237,15 +236,15 @@ struct ThumbCommand : public Command
       return 0;
     }
 
-    string filename = rest[0];
+    std::string filename = rest[0];
 
     rest.erase(rest.begin());
 
     RENDERDOC_InitGlobalEnv(m_Env, convertArgs(rest));
 
-    string outfile = parser.get<string>("out");
+    std::string outfile = parser.get<std::string>("out");
 
-    string format = parser.get<string>("format");
+    std::string format = parser.get<std::string>("format");
 
     uint32_t maxsize = parser.get<uint32_t>("max-size");
 
@@ -341,9 +340,9 @@ struct CaptureCommand : public Command
     }
 
     std::string executable = parser.rest()[0];
-    std::string workingDir = parser.get<string>("working-dir");
+    std::string workingDir = parser.get<std::string>("working-dir");
     std::string cmdLine;
-    std::string logFile = parser.get<string>("capture-file");
+    std::string logFile = parser.get<std::string>("capture-file");
 
     for(size_t i = 1; i < parser.rest().size(); i++)
     {
@@ -422,8 +421,8 @@ struct InjectCommand : public Command
   virtual int Execute(cmdline::parser &parser, const CaptureOptions &opts)
   {
     uint32_t PID = parser.get<uint32_t>("PID");
-    std::string workingDir = parser.get<string>("working-dir");
-    std::string logFile = parser.get<string>("capture-file");
+    std::string workingDir = parser.get<std::string>("working-dir");
+    std::string logFile = parser.get<std::string>("capture-file");
 
     std::cout << "Injecting into PID " << PID << std::endl;
 
@@ -460,7 +459,7 @@ struct RemoteServerCommand : public Command
   virtual void AddOptions(cmdline::parser &parser)
   {
     parser.add("daemon", 'd', "Go into the background.");
-    parser.add<string>(
+    parser.add<std::string>(
         "host", 'h', "The interface to listen on. By default listens on all interfaces", false, "");
     parser.add<uint32_t>("port", 'p', "The port to listen on.", false,
                          RENDERDOC_GetDefaultRemoteServerPort());
@@ -474,7 +473,7 @@ struct RemoteServerCommand : public Command
   virtual bool IsCaptureCommand() { return false; }
   virtual int Execute(cmdline::parser &parser, const CaptureOptions &)
   {
-    string host = parser.get<string>("host");
+    std::string host = parser.get<std::string>("host");
     uint32_t port = parser.get<uint32_t>("port");
 
     RENDERDOC_InitGlobalEnv(m_Env, convertArgs(parser.rest()));
@@ -520,8 +519,9 @@ struct ReplayCommand : public Command
     parser.add<uint32_t>("height", 'h', "The preview window height.", false, 720);
     parser.add<uint32_t>("loops", 'l', "How many times to loop the replay, or 0 for indefinite.",
                          false, 0);
-    parser.add<string>("remote-host", 0,
-                       "Instead of replaying locally, replay on this host over the network.", false);
+    parser.add<std::string>("remote-host", 0,
+                            "Instead of replaying locally, replay on this host over the network.",
+                            false);
     parser.add<uint32_t>("remote-port", 0, "If --remote-host is set, use this port.", false,
                          RENDERDOC_GetDefaultRemoteServerPort());
   }
@@ -542,7 +542,7 @@ struct ReplayCommand : public Command
       return 0;
     }
 
-    string filename = rest[0];
+    std::string filename = rest[0];
 
     rest.erase(rest.begin());
 
@@ -550,20 +550,21 @@ struct ReplayCommand : public Command
 
     if(parser.exist("remote-host"))
     {
-      std::cout << "Replaying '" << filename << "' on " << parser.get<string>("remote-host") << ":"
-                << parser.get<uint32_t>("remote-port") << "." << std::endl;
+      std::cout << "Replaying '" << filename << "' on " << parser.get<std::string>("remote-host")
+                << ":" << parser.get<uint32_t>("remote-port") << "." << std::endl;
 
       IRemoteServer *remote = NULL;
-      ReplayStatus status = RENDERDOC_CreateRemoteServerConnection(
-          parser.get<string>("remote-host").c_str(), parser.get<uint32_t>("remote-port"), &remote);
+      ReplayStatus status =
+          RENDERDOC_CreateRemoteServerConnection(parser.get<std::string>("remote-host").c_str(),
+                                                 parser.get<uint32_t>("remote-port"), &remote);
 
       if(remote == NULL || status != ReplayStatus::Succeeded)
       {
         std::cerr << "Error: " << ToStr(status) << " - Couldn't connect to "
-                  << parser.get<string>("remote-host") << ":" << parser.get<uint32_t>("remote-port")
-                  << "." << std::endl;
+                  << parser.get<std::string>("remote-host") << ":"
+                  << parser.get<uint32_t>("remote-port") << "." << std::endl;
         std::cerr << "       Have you run renderdoccmd remoteserver on '"
-                  << parser.get<string>("remote-host") << "'?" << std::endl;
+                  << parser.get<std::string>("remote-host") << "'?" << std::endl;
         return 1;
       }
 
@@ -572,7 +573,7 @@ struct ReplayCommand : public Command
       rdcstr remotePath = remote->CopyCaptureToRemote(filename.c_str(), NULL);
 
       IReplayController *renderer = NULL;
-      std::tie(status, renderer) = remote->OpenCapture(~0U, remotePath.c_str(), NULL);
+      rdctie(status, renderer) = remote->OpenCapture(~0U, remotePath.c_str(), NULL);
 
       if(status == ReplayStatus::Succeeded)
       {
@@ -602,7 +603,7 @@ struct ReplayCommand : public Command
 
       IReplayController *renderer = NULL;
       ReplayStatus status = ReplayStatus::InternalError;
-      std::tie(status, renderer) = file->OpenCapture(NULL);
+      rdctie(status, renderer) = file->OpenCapture(NULL);
 
       file->Shutdown();
 
@@ -671,12 +672,12 @@ struct ConvertCommand : public Command
 
   virtual void AddOptions(cmdline::parser &parser)
   {
-    parser.add<string>("filename", 'f', "The file to convert from.", false);
-    parser.add<string>("output", 'o', "The file to convert to.", false);
-    parser.add<string>("input-format", 'i', "The format of the input file.", false, "",
-                       formats_reader());
-    parser.add<string>("convert-format", 'c', "The format of the output file.", false, "",
-                       formats_reader());
+    parser.add<std::string>("filename", 'f', "The file to convert from.", false);
+    parser.add<std::string>("output", 'o', "The file to convert to.", false);
+    parser.add<std::string>("input-format", 'i', "The format of the input file.", false, "",
+                            formats_reader());
+    parser.add<std::string>("convert-format", 'c', "The format of the output file.", false, "",
+                            formats_reader());
     parser.add("list-formats", '\0', "Print a list of target formats.");
     parser.stop_at_rest(true);
   }
@@ -695,8 +696,8 @@ struct ConvertCommand : public Command
       return 0;
     }
 
-    std::string infile = parser.get<string>("filename");
-    std::string outfile = parser.get<string>("output");
+    std::string infile = parser.get<std::string>("filename");
+    std::string outfile = parser.get<std::string>("output");
 
     if(infile.empty())
     {
@@ -712,8 +713,8 @@ struct ConvertCommand : public Command
       return 1;
     }
 
-    std::string infmt = parser.get<string>("input-format");
-    std::string outfmt = parser.get<string>("convert-format");
+    std::string infmt = parser.get<std::string>("input-format");
+    std::string outfmt = parser.get<std::string>("convert-format");
 
     // sort the formats by the length of the extension, so we check the longest ones first. This
     // means that .zip.xml will get chosen before just .xml
@@ -727,10 +728,10 @@ struct ConvertCommand : public Command
       // try to guess the format by looking for the extension in the filename
       for(CaptureFileFormat f : m_Formats)
       {
-        string extension = ".";
+        std::string extension = ".";
         extension += f.extension;
 
-        if(infile.find(extension.c_str()) != string::npos)
+        if(infile.find(extension.c_str()) != std::string::npos)
         {
           infmt = f.extension;
           break;
@@ -750,10 +751,10 @@ struct ConvertCommand : public Command
       // try to guess the format by looking for the extension in the filename
       for(CaptureFileFormat f : m_Formats)
       {
-        string extension = ".";
+        std::string extension = ".";
         extension += f.extension;
 
-        if(outfile.find(extension.c_str()) != string::npos)
+        if(outfile.find(extension.c_str()) != std::string::npos)
         {
           outfmt = f.extension;
           break;
@@ -849,9 +850,9 @@ struct CapAltBitCommand : public Command
   virtual void AddOptions(cmdline::parser &parser)
   {
     parser.add<uint32_t>("pid", 0, "");
-    parser.add<string>("capfile", 0, "");
-    parser.add<string>("debuglog", 0, "");
-    parser.add<string>("capopts", 0, "");
+    parser.add<std::string>("capfile", 0, "");
+    parser.add<std::string>("debuglog", 0, "");
+    parser.add<std::string>("capopts", 0, "");
     parser.stop_at_rest(true);
   }
   virtual const char *Description() { return "Internal use only!"; }
@@ -860,7 +861,7 @@ struct CapAltBitCommand : public Command
   virtual int Execute(cmdline::parser &parser, const CaptureOptions &)
   {
     CaptureOptions cmdopts;
-    cmdopts.DecodeFromString(parser.get<string>("capopts"));
+    cmdopts.DecodeFromString(parser.get<std::string>("capopts"));
 
     RENDERDOC_InitGlobalEnv(m_Env, rdcarray<rdcstr>());
 
@@ -879,7 +880,7 @@ struct CapAltBitCommand : public Command
 
     for(int i = 0; i < numEnvs; i++)
     {
-      string typeString = rest[i * 3 + 0];
+      std::string typeString = rest[i * 3 + 0];
 
       EnvMod type = EnvMod::Set;
       EnvSep sep = EnvSep::NoSep;
@@ -939,12 +940,12 @@ struct CapAltBitCommand : public Command
           EnvironmentModification(type, sep, rest[i * 3 + 1].c_str(), rest[i * 3 + 2].c_str()));
     }
 
-    string debuglog = parser.get<string>("debuglog");
+    std::string debuglog = parser.get<std::string>("debuglog");
 
     RENDERDOC_SetDebugLogFile(debuglog.c_str());
 
     ExecuteResult result = RENDERDOC_InjectIntoProcess(
-        parser.get<uint32_t>("pid"), env, parser.get<string>("capfile").c_str(), cmdopts, false);
+        parser.get<uint32_t>("pid"), env, parser.get<std::string>("capfile").c_str(), cmdopts, false);
 
     if(result.status == ReplayStatus::Succeeded)
       return result.ident;
@@ -1248,12 +1249,12 @@ int renderdoccmd(const GlobalEnvironment &env, std::vector<std::string> &argv)
 
     if(it->second->IsCaptureCommand())
     {
-      cmd.add<string>("working-dir", 'd', "Set the working directory of the program, if launched.",
-                      false);
-      cmd.add<string>("capture-file", 'c',
-                      "Set the filename template for new captures. Frame number will be "
-                      "automatically appended.",
-                      false);
+      cmd.add<std::string>("working-dir", 'd',
+                           "Set the working directory of the program, if launched.", false);
+      cmd.add<std::string>("capture-file", 'c',
+                           "Set the filename template for new captures. Frame number will be "
+                           "automatically appended.",
+                           false);
       cmd.add("wait-for-exit", 'w', "Wait for the target program to exit, before returning.");
 
       // CaptureOptions

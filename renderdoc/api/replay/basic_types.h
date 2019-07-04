@@ -29,7 +29,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <string>
-#include <tuple>
 #include <type_traits>
 #include <vector>
 
@@ -124,6 +123,32 @@ struct rdcpair
   A first;
   B second;
 
+  rdcpair(const A &a, const B &b) : first(a), second(b) {}
+  rdcpair() = default;
+  rdcpair(const rdcpair<A, B> &o) = default;
+  rdcpair(rdcpair<A, B> &&o) = default;
+  ~rdcpair() = default;
+  inline void swap(rdcpair<A, B> &o)
+  {
+    std::swap(first, o.first);
+    std::swap(second, o.second);
+  }
+
+  template <typename A_, typename B_>
+  rdcpair<A, B> &operator=(const rdcpair<A_, B_> &o)
+  {
+    first = o.first;
+    second = o.second;
+    return *this;
+  }
+
+  rdcpair<A, B> &operator=(const rdcpair<A, B> &o)
+  {
+    first = o.first;
+    second = o.second;
+    return *this;
+  }
+
   bool operator==(const rdcpair<A, B> &o) const { return first == o.first && second == o.second; }
   bool operator<(const rdcpair<A, B> &o) const
   {
@@ -131,16 +156,18 @@ struct rdcpair
       return first < o.first;
     return second < o.second;
   }
-  operator std::tuple<A &, B &>() { return std::tie(first, second); }
 };
 
 template <typename A, typename B>
 rdcpair<A, B> make_rdcpair(const A &a, const B &b)
 {
-  rdcpair<A, B> ret;
-  ret.first = a;
-  ret.second = b;
-  return ret;
+  return rdcpair<A, B>(a, b);
+}
+
+template <typename A, typename B>
+rdcpair<A &, B &> rdctie(A &a, B &b)
+{
+  return rdcpair<A &, B &>(a, b);
 }
 
 // utility class that adds a NULL terminator to array operations only if T == char
@@ -767,57 +794,7 @@ public:
 #endif
 };
 
-DOCUMENT("");
-struct rdcstr : public rdcarray<char>
-{
-  // extra string constructors
-  rdcstr() : rdcarray<char>() {}
-  rdcstr(const rdcstr &in) : rdcarray<char>() { assign(in); }
-  rdcstr(const std::string &in) : rdcarray<char>() { assign(in.c_str(), in.size()); }
-  rdcstr(const char *const in) : rdcarray<char>() { assign(in, strlen(in)); }
-  // extra string assignment
-  rdcstr &operator=(const std::string &in)
-  {
-    assign(in.c_str(), in.size());
-    return *this;
-  }
-  rdcstr &operator=(const char *const in)
-  {
-    assign(in, strlen(in));
-    return *this;
-  }
-
-  // cast operators
-  operator std::string() const { return std::string(elems, elems + usedCount); }
-#if defined(RENDERDOC_QT_COMPAT)
-  rdcstr(const QString &in) : rdcarray<char>()
-  {
-    QByteArray arr = in.toUtf8();
-    assign(arr.data(), (size_t)arr.size());
-  }
-  operator QString() const { return QString::fromUtf8(elems, (int32_t)usedCount); }
-  operator QVariant() const { return QVariant(QString::fromUtf8(elems, (int32_t)usedCount)); }
-#endif
-
-  // conventional data accessor
-  DOCUMENT("");
-  const char *c_str() const { return elems ? elems : ""; }
-  // equality checks
-  bool operator==(const char *const o) const
-  {
-    if(!elems)
-      return o == NULL;
-    return !strcmp(elems, o);
-  }
-  bool operator==(const std::string &o) const { return o == elems; }
-  bool operator==(const rdcstr &o) const { return *this == (const char *)o.elems; }
-  bool operator!=(const char *const o) const { return !(*this == o); }
-  bool operator!=(const std::string &o) const { return !(*this == o); }
-  bool operator!=(const rdcstr &o) const { return !(*this == o); }
-  // define ordering operators
-  bool operator<(const rdcstr &o) const { return strcmp(elems, o.elems) < 0; }
-  bool operator>(const rdcstr &o) const { return strcmp(elems, o.elems) > 0; }
-};
+#include "rdcstr.h"
 
 DOCUMENT("");
 struct bytebuf : public rdcarray<byte>

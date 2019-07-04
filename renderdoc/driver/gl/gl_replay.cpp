@@ -103,9 +103,9 @@ const SDFile &GLReplay::GetStructuredFile()
   return m_pDriver->GetStructuredFile();
 }
 
-vector<uint32_t> GLReplay::GetPassEvents(uint32_t eventId)
+std::vector<uint32_t> GLReplay::GetPassEvents(uint32_t eventId)
 {
-  vector<uint32_t> passEvents;
+  std::vector<uint32_t> passEvents;
 
   const DrawcallDescription *draw = m_pDriver->GetDrawcall(eventId);
 
@@ -135,9 +135,9 @@ vector<uint32_t> GLReplay::GetPassEvents(uint32_t eventId)
   return passEvents;
 }
 
-vector<WindowingSystem> GLReplay::GetSupportedWindowSystems()
+std::vector<WindowingSystem> GLReplay::GetSupportedWindowSystems()
 {
-  vector<WindowingSystem> ret;
+  std::vector<WindowingSystem> ret;
 
 #if ENABLED(RDOC_LINUX)
   // only Xlib supported for GLX. We can't report XCB here since we need
@@ -445,10 +445,17 @@ void GLReplay::CacheTexture(ResourceId id)
     tex.msQual = 0;
     tex.msSamp = RDCMAX(1, res.samples);
 
-    tex.format = MakeResourceFormat(eGL_TEXTURE_2D, res.internalFormat);
+    if(res.internalFormat == eGL_NONE)
+    {
+      tex.format = ResourceFormat();
+    }
+    else
+    {
+      tex.format = MakeResourceFormat(eGL_TEXTURE_2D, res.internalFormat);
 
-    if(IsDepthStencilFormat(res.internalFormat))
-      tex.creationFlags |= TextureCategory::DepthTarget;
+      if(IsDepthStencilFormat(res.internalFormat))
+        tex.creationFlags |= TextureCategory::DepthTarget;
+    }
 
     tex.byteSize = (tex.width * tex.height) * (tex.format.compByteWidth * tex.format.compCount);
 
@@ -602,7 +609,14 @@ void GLReplay::CacheTexture(ResourceId id)
     return;
   }
 
-  tex.mips = GetNumMips(target, res.resource.name, tex.width, tex.height, tex.depth);
+  if(res.view)
+  {
+    tex.mips = Log2Floor(res.mipsValid + 1);
+  }
+  else
+  {
+    tex.mips = GetNumMips(target, res.resource.name, tex.width, tex.height, tex.depth);
+  }
 
   GLint compressed = 0;
   drv.glGetTextureLevelParameterivEXT(res.resource.name, levelQueryType, 0, eGL_TEXTURE_COMPRESSED,
@@ -691,7 +705,7 @@ BufferDescription GLReplay::GetBuffer(ResourceId id)
   return ret;
 }
 
-vector<DebugMessage> GLReplay::GetDebugMessages()
+std::vector<DebugMessage> GLReplay::GetDebugMessages()
 {
   return m_pDriver->GetDebugMessages();
 }
@@ -725,9 +739,9 @@ ShaderReflection *GLReplay::GetShader(ResourceId shader, ShaderEntryPoint entry)
   return &shaderDetails.reflection;
 }
 
-vector<string> GLReplay::GetDisassemblyTargets()
+std::vector<std::string> GLReplay::GetDisassemblyTargets()
 {
-  vector<string> ret;
+  std::vector<std::string> ret;
 
   // default is always first
   ret.insert(ret.begin(), SPIRVDisassemblyTarget);
@@ -735,8 +749,8 @@ vector<string> GLReplay::GetDisassemblyTargets()
   return ret;
 }
 
-string GLReplay::DisassembleShader(ResourceId pipeline, const ShaderReflection *refl,
-                                   const string &target)
+std::string GLReplay::DisassembleShader(ResourceId pipeline, const ShaderReflection *refl,
+                                        const std::string &target)
 {
   auto &shaderDetails =
       m_pDriver->m_Shaders[m_pDriver->GetResourceManager()->GetLiveID(refl->resourceId)];
@@ -2074,7 +2088,7 @@ void GLReplay::OpenGLFillCBufferVariables(GLuint prog, bool bufferBacked, std::s
         }
         else
         {
-          vector<ShaderVariable> elems;
+          std::vector<ShaderVariable> elems;
           for(uint32_t a = 0; a < desc.elements; a++)
           {
             ShaderVariable el = var;
@@ -2136,7 +2150,7 @@ void GLReplay::OpenGLFillCBufferVariables(GLuint prog, bool bufferBacked, std::s
   }
 }
 
-void GLReplay::FillCBufferVariables(ResourceId shader, string entryPoint, uint32_t cbufSlot,
+void GLReplay::FillCBufferVariables(ResourceId shader, std::string entryPoint, uint32_t cbufSlot,
                                     rdcarray<ShaderVariable> &outvars, const bytebuf &data)
 {
   WrappedOpenGL &drv = *m_pDriver;
@@ -2488,10 +2502,12 @@ void GLReplay::GetTextureData(ResourceId tex, uint32_t arrayIdx, uint32_t mip,
 
   // fetch and return data now
   {
-    PixelUnpackState unpack;
-    unpack.Fetch(true);
+    MakeCurrentReplayContext(m_DebugCtx);
 
-    ResetPixelUnpackState(true, 1);
+    PixelPackState pack;
+    pack.Fetch(true);
+
+    ResetPixelPackState(true, 1);
 
     if(texType == eGL_RENDERBUFFER)
     {
@@ -2709,7 +2725,7 @@ void GLReplay::GetTextureData(ResourceId tex, uint32_t arrayIdx, uint32_t mip,
       }
     }
 
-    unpack.Apply(true);
+    pack.Apply(true);
 
     drv.glBindTexture(texType, prevtex);
   }
@@ -2718,63 +2734,11 @@ void GLReplay::GetTextureData(ResourceId tex, uint32_t arrayIdx, uint32_t mip,
     drv.glDeleteTextures(1, &tempTex);
 }
 
-void GLReplay::BuildCustomShader(string source, string entry, const ShaderCompileFlags &compileFlags,
-                                 ShaderStage type, ResourceId *id, string *errors)
+void GLReplay::BuildCustomShader(ShaderEncoding sourceEncoding, bytebuf source,
+                                 const std::string &entry, const ShaderCompileFlags &compileFlags,
+                                 ShaderStage type, ResourceId *id, std::string *errors)
 {
-  if(id == NULL || errors == NULL)
-  {
-    if(id)
-      *id = ResourceId();
-    return;
-  }
-
-  WrappedOpenGL &drv = *m_pDriver;
-
-  MakeCurrentReplayContext(m_DebugCtx);
-
-  GLenum shtype = eGL_VERTEX_SHADER;
-  switch(type)
-  {
-    case ShaderStage::Vertex: shtype = eGL_VERTEX_SHADER; break;
-    case ShaderStage::Tess_Control: shtype = eGL_TESS_CONTROL_SHADER; break;
-    case ShaderStage::Tess_Eval: shtype = eGL_TESS_EVALUATION_SHADER; break;
-    case ShaderStage::Geometry: shtype = eGL_GEOMETRY_SHADER; break;
-    case ShaderStage::Fragment: shtype = eGL_FRAGMENT_SHADER; break;
-    case ShaderStage::Compute: shtype = eGL_COMPUTE_SHADER; break;
-    default:
-    {
-      RDCERR("Unknown shader type %u", type);
-      if(id)
-        *id = ResourceId();
-      return;
-    }
-  }
-
-  const char *src = source.c_str();
-  GLuint shader = drv.glCreateShader(shtype);
-
-  drv.glShaderSource(shader, 1, &src, NULL);
-
-  drv.glCompileShader(shader);
-
-  GLint status = 0;
-  drv.glGetShaderiv(shader, eGL_COMPILE_STATUS, &status);
-
-  if(errors)
-  {
-    GLint len = 1024;
-    drv.glGetShaderiv(shader, eGL_INFO_LOG_LENGTH, &len);
-    char *buffer = new char[len + 1];
-    drv.glGetShaderInfoLog(shader, len, NULL, buffer);
-    buffer[len] = 0;
-    *errors = buffer;
-    delete[] buffer;
-  }
-
-  if(status == 0)
-    *id = ResourceId();
-  else
-    *id = m_pDriver->GetResourceManager()->GetID(ShaderRes(m_pDriver->GetCtx(), shader));
+  BuildTargetShader(sourceEncoding, source, entry, compileFlags, type, id, errors);
 }
 
 ResourceId GLReplay::ApplyCustomShader(ResourceId shader, ResourceId texid, uint32_t mip,
@@ -2872,9 +2836,9 @@ void GLReplay::FreeCustomShader(ResourceId id)
   m_pDriver->glDeleteShader(m_pDriver->GetResourceManager()->GetCurrentResource(id).name);
 }
 
-void GLReplay::BuildTargetShader(ShaderEncoding sourceEncoding, bytebuf source, string entry,
-                                 const ShaderCompileFlags &compileFlags, ShaderStage type,
-                                 ResourceId *id, string *errors)
+void GLReplay::BuildTargetShader(ShaderEncoding sourceEncoding, bytebuf source,
+                                 const std::string &entry, const ShaderCompileFlags &compileFlags,
+                                 ShaderStage type, ResourceId *id, std::string *errors)
 {
   if(id == NULL || errors == NULL)
   {
@@ -3045,7 +3009,7 @@ ResourceId GLReplay::CreateProxyTexture(const TextureDescription &templateTex)
           {
             GLsizei compSize = (GLsizei)GetCompressedByteSize(w, h, d, intFormat);
 
-            vector<byte> dummy;
+            std::vector<byte> dummy;
             dummy.resize(compSize);
 
             if(dim == 1)
@@ -3331,17 +3295,18 @@ void GLReplay::SetProxyBufferData(ResourceId bufid, byte *data, size_t dataSize)
   m_pDriver->glNamedBufferSubDataEXT(buf, 0, dataSize, data);
 }
 
-vector<EventUsage> GLReplay::GetUsage(ResourceId id)
+std::vector<EventUsage> GLReplay::GetUsage(ResourceId id)
 {
   return m_pDriver->GetUsage(id);
 }
 
-vector<PixelModification> GLReplay::PixelHistory(vector<EventUsage> events, ResourceId target,
-                                                 uint32_t x, uint32_t y, uint32_t slice,
-                                                 uint32_t mip, uint32_t sampleIdx, CompType typeHint)
+std::vector<PixelModification> GLReplay::PixelHistory(std::vector<EventUsage> events,
+                                                      ResourceId target, uint32_t x, uint32_t y,
+                                                      uint32_t slice, uint32_t mip,
+                                                      uint32_t sampleIdx, CompType typeHint)
 {
   GLNOTIMP("GLReplay::PixelHistory");
-  return vector<PixelModification>();
+  return std::vector<PixelModification>();
 }
 
 ShaderDebugTrace GLReplay::DebugVertex(uint32_t eventId, uint32_t vertid, uint32_t instid,

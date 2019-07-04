@@ -24,16 +24,16 @@
 
 #include "d3d11_test.h"
 
-struct Counter_Query_Pred : D3D11GraphicsTest
+TEST(D3D11_Counter_Query_Pred, D3D11GraphicsTest)
 {
   static constexpr const char *Description =
       "Tests use of D3D11 counters, queries and predication. "
       "for any dead-simple tests that don't require any particular API use";
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create device, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     DefaultA2V vertData[] = {
@@ -286,4 +286,4 @@ struct Counter_Query_Pred : D3D11GraphicsTest
   }
 };
 
-REGISTER_TEST(Counter_Query_Pred);
+REGISTER_TEST();

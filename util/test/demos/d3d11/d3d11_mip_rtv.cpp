@@ -24,7 +24,7 @@
 
 #include "d3d11_test.h"
 
-struct Mip_RTV : D3D11GraphicsTest
+TEST(D3D11_Mip_RTV, D3D11GraphicsTest)
 {
   static constexpr const char *Description = "Test rendering into RTV mip levels";
 
@@ -42,10 +42,10 @@ float4 main() : SV_Target0
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create device, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     ID3DBlobPtr vsblob = Compile(D3DFullscreenQuadVertex, "main", "vs_5_0");
@@ -117,4 +117,4 @@ float4 main() : SV_Target0
   }
 };
 
-REGISTER_TEST(Mip_RTV);
+REGISTER_TEST();

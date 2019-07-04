@@ -24,14 +24,14 @@
 
 #include "d3d11_test.h"
 
-struct Empty_Drawcall : D3D11GraphicsTest
+TEST(D3D11_Empty_Drawcall, D3D11GraphicsTest)
 {
   static constexpr const char *Description = "Test a drawcall of 0 size";
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create device, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     ID3DBlobPtr vsblob = Compile(D3DDefaultVertex, "main", "vs_5_0");
@@ -68,4 +68,4 @@ struct Empty_Drawcall : D3D11GraphicsTest
   }
 };
 
-REGISTER_TEST(Empty_Drawcall);
+REGISTER_TEST();

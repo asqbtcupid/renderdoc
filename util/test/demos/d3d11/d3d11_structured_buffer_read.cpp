@@ -24,7 +24,7 @@
 
 #include "d3d11_test.h"
 
-struct Structured_Buffer_Read : D3D11GraphicsTest
+TEST(D3D11_Structured_Buffer_Read, D3D11GraphicsTest)
 {
   static constexpr const char *Description =
       "Test reading from structured buffers, with and without offsets";
@@ -51,10 +51,10 @@ float4 main() : SV_Target0
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create device, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     ID3DBlobPtr vsblob = Compile(D3DDefaultVertex, "main", "vs_5_0");
@@ -103,4 +103,4 @@ float4 main() : SV_Target0
   }
 };
 
-REGISTER_TEST(Structured_Buffer_Read);
+REGISTER_TEST();

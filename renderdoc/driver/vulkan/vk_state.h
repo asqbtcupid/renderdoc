@@ -39,9 +39,9 @@ struct VulkanStatePipeline
   struct DescriptorAndOffsets
   {
     ResourceId descSet;
-    vector<uint32_t> offsets;
+    std::vector<uint32_t> offsets;
   };
-  vector<DescriptorAndOffsets> descSets;
+  std::vector<DescriptorAndOffsets> descSets;
 };
 
 struct VulkanRenderState
@@ -54,7 +54,6 @@ struct VulkanRenderState
   };
 
   VulkanRenderState(WrappedVulkan *driver, VulkanCreationInfo *createInfo);
-  VulkanRenderState &operator=(const VulkanRenderState &o);
   void BeginRenderPassAndApplyState(VkCommandBuffer cmd, PipelineBinding binding);
   void EndRenderPass(VkCommandBuffer cmd);
 
@@ -70,8 +69,8 @@ struct VulkanRenderState
   bool IsConditionalRenderingEnabled();
 
   // dynamic state
-  vector<VkViewport> views;
-  vector<VkRect2D> scissors;
+  std::vector<VkViewport> views;
+  std::vector<VkRect2D> scissors;
   float lineWidth;
   struct
   {
@@ -118,7 +117,7 @@ struct VulkanRenderState
     ResourceId buf;
     VkDeviceSize offs;
   };
-  vector<VertBuffer> vbuffers;
+  std::vector<VertBuffer> vbuffers;
 
   struct XFBBuffer
   {
@@ -126,7 +125,7 @@ struct VulkanRenderState
     VkDeviceSize offs;
     VkDeviceSize size;
   };
-  vector<XFBBuffer> xfbbuffers;
+  std::vector<XFBBuffer> xfbbuffers;
 
   struct XFBCounter
   {
@@ -134,7 +133,7 @@ struct VulkanRenderState
     VkDeviceSize offs;
   };
   uint32_t firstxfbcounter = 0;
-  vector<XFBCounter> xfbcounters;
+  std::vector<XFBCounter> xfbcounters;
 
   struct ConditionalRendering
   {
@@ -148,6 +147,4 @@ struct VulkanRenderState
   VulkanResourceManager *GetResourceManager();
   VulkanCreationInfo *m_CreationInfo;
   WrappedVulkan *m_pDriver;
-
-  std::vector<VkImageMemoryBarrier> rpBarriers;
 };

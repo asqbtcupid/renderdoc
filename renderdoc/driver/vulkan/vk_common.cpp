@@ -134,10 +134,13 @@ void GPUBuffer::Create(WrappedVulkan *driver, VkDevice dev, VkDeviceSize size, u
 
   align = (VkDeviceSize)driver->GetDeviceProps().limits.minUniformBufferOffsetAlignment;
 
+  // for simplicity, consider the non-coherent atom size also an alignment requirement
+  align = AlignUp(align, driver->GetDeviceProps().limits.nonCoherentAtomSize);
+
   sz = size;
   // offset must be aligned, so ensure we have at least ringSize
   // copies accounting for that
-  totalsize = ringSize == 1 ? size : AlignUp(size, align) * ringSize;
+  totalsize = AlignUp(size, align) * RDCMAX(1U, ringSize);
   curoffset = 0;
 
   ringCount = ringSize;
@@ -208,11 +211,16 @@ void *GPUBuffer::Map(uint32_t *bindoffset, VkDeviceSize usedsize)
   VkDeviceSize offset = bindoffset ? curoffset : 0;
   VkDeviceSize size = usedsize > 0 ? usedsize : sz;
 
-  // wrap around the ring, assuming the ring is large enough
-  // that this memory is now free
+  // align the size so we always consume coherent atoms
+  size = AlignUp(size, align);
+
+  // wrap around the ring as soon as the 'sz' would overflow. This is because if we're using dynamic
+  // offsets in the descriptor the range is still set to that fixed size and the validation
+  // complains if we go off the end (even if it's unused). Rather than constantly update the
+  // descriptor, we just conservatively wrap and waste the last bit of space.
   if(offset + sz > totalsize)
     offset = 0;
-  RDCASSERT(offset + sz <= totalsize);
+  RDCASSERT(offset + size <= totalsize);
 
   // offset must be aligned
   curoffset = AlignUp(offset + size, align);
@@ -270,6 +278,11 @@ bool VkInitParams::IsSupportedVersion(uint64_t ver)
   if(ver == CurrentVersion)
     return true;
 
+  // 0xF -> 0x10 - added serialisation of VkPhysicalDeviceDriverPropertiesKHR into enumerated
+  // physical devices
+  if(ver == 0xF)
+    return true;
+
   // 0xE -> 0xF - serialisation of VkPhysicalDeviceVulkanMemoryModelFeaturesKHR changed in vulkan
   // 1.1.99, adding a new field
   if(ver == 0xE)
@@ -315,9 +328,32 @@ VkAccessFlags MakeAccessMask(VkImageLayout layout)
   return VkAccessFlags(0);
 }
 
-void ReplacePresentableImageLayout(VkImageLayout &layout)
+void SanitiseOldImageLayout(VkImageLayout &layout)
 {
+  // we don't replay with present layouts since we don't create actual swapchains. So change any
+  // present layouts to general layouts
   if(layout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR || layout == VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR)
+    layout = VK_IMAGE_LAYOUT_GENERAL;
+
+  // we can't transition to PREINITIALIZED, so instead use GENERAL. This allows host access so we
+  // can still replay maps of the image's memory. In theory we can still transition from
+  // PREINITIALIZED on replay, but consider that we need to be able to reset layouts and suddenly we
+  // have a problem transitioning from PREINITIALIZED more than once - so for that reason we
+  // instantly promote any images that are PREINITIALIZED to GENERAL at the start of the frame
+  // capture, and from then on treat it as the same
+  if(layout == VK_IMAGE_LAYOUT_PREINITIALIZED)
+    layout = VK_IMAGE_LAYOUT_GENERAL;
+}
+
+void SanitiseNewImageLayout(VkImageLayout &layout)
+{
+  // apply any general image layout sanitisation
+  SanitiseOldImageLayout(layout);
+
+  // we also can't transition to UNDEFINED, so go to GENERAL instead. This is safe since if the
+  // layout was supposed to be undefined before then the only valid transition *from* the state is
+  // UNDEFINED, which will work silently.
+  if(layout == VK_IMAGE_LAYOUT_UNDEFINED)
     layout = VK_IMAGE_LAYOUT_GENERAL;
 }
 
@@ -371,7 +407,7 @@ int StageIndex(VkShaderStageFlagBits stageFlag)
   return 0;
 }
 
-void DoPipelineBarrier(VkCommandBuffer cmd, uint32_t count, VkImageMemoryBarrier *barriers)
+void DoPipelineBarrier(VkCommandBuffer cmd, uint32_t count, const VkImageMemoryBarrier *barriers)
 {
   RDCASSERT(cmd != VK_NULL_HANDLE);
   ObjDisp(cmd)->CmdPipelineBarrier(Unwrap(cmd), VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
@@ -381,7 +417,7 @@ void DoPipelineBarrier(VkCommandBuffer cmd, uint32_t count, VkImageMemoryBarrier
                                    count, barriers);    // image memory barriers
 }
 
-void DoPipelineBarrier(VkCommandBuffer cmd, uint32_t count, VkBufferMemoryBarrier *barriers)
+void DoPipelineBarrier(VkCommandBuffer cmd, uint32_t count, const VkBufferMemoryBarrier *barriers)
 {
   RDCASSERT(cmd != VK_NULL_HANDLE);
   ObjDisp(cmd)->CmdPipelineBarrier(Unwrap(cmd), VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
@@ -391,7 +427,7 @@ void DoPipelineBarrier(VkCommandBuffer cmd, uint32_t count, VkBufferMemoryBarrie
                                    0, NULL);           // image memory barriers
 }
 
-void DoPipelineBarrier(VkCommandBuffer cmd, uint32_t count, VkMemoryBarrier *barriers)
+void DoPipelineBarrier(VkCommandBuffer cmd, uint32_t count, const VkMemoryBarrier *barriers)
 {
   RDCASSERT(cmd != VK_NULL_HANDLE);
   ObjDisp(cmd)->CmdPipelineBarrier(Unwrap(cmd), VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
@@ -684,6 +720,10 @@ StencilOperation MakeStencilOp(VkStencilOp op)
   return StencilOperation::Keep;
 }
 
+BASIC_TYPE_SERIALISE_STRINGIFY(VkPackedVersion, (uint32_t &)el, SDBasic::UnsignedInteger, 4);
+
+INSTANTIATE_SERIALISE_TYPE(VkPackedVersion);
+
 template <typename SerialiserType>
 void DoSerialise(SerialiserType &ser, VkInitParams &el)
 {
@@ -691,10 +731,10 @@ void DoSerialise(SerialiserType &ser, VkInitParams &el)
   SERIALISE_MEMBER(EngineName);
   SERIALISE_MEMBER(AppVersion);
   SERIALISE_MEMBER(EngineVersion);
-  SERIALISE_MEMBER(APIVersion);
+  SERIALISE_MEMBER(APIVersion).TypedAs("uint32_t"_lit);
   SERIALISE_MEMBER(Layers);
   SERIALISE_MEMBER(Extensions);
-  SERIALISE_MEMBER(InstanceID).TypedAs("VkInstance");
+  SERIALISE_MEMBER(InstanceID).TypedAs("VkInstance"_lit);
 }
 
 INSTANTIATE_SERIALISE_TYPE(VkInitParams);
@@ -832,7 +872,7 @@ bool IsValid(const VkWriteDescriptorSet &write, uint32_t arrayElement)
   return false;
 }
 
-void DescriptorSetSlot::RemoveBindRefs(VkResourceRecord *record)
+void DescriptorSetBindingElement::RemoveBindRefs(VkResourceRecord *record)
 {
   SCOPED_LOCK(record->descInfo->refLock);
 
@@ -877,14 +917,15 @@ void DescriptorSetSlot::RemoveBindRefs(VkResourceRecord *record)
   imageInfo.sampler = VK_NULL_HANDLE;
 }
 
-void DescriptorSetSlot::AddBindRefs(VkResourceRecord *record, FrameRefType ref)
+void DescriptorSetBindingElement::AddBindRefs(VkResourceRecord *record, FrameRefType ref)
 {
   SCOPED_LOCK(record->descInfo->refLock);
 
   if(texelBufferView != VK_NULL_HANDLE)
   {
     VkResourceRecord *bufView = GetRecord(texelBufferView);
-    record->AddBindFrameRef(bufView->GetResourceID(), eFrameRef_Read, bufView->resInfo != NULL);
+    record->AddBindFrameRef(bufView->GetResourceID(), eFrameRef_Read,
+                            bufView->resInfo && bufView->resInfo->IsSparse());
     if(bufView->baseResource != ResourceId())
       record->AddBindFrameRef(bufView->baseResource, eFrameRef_Read);
     if(bufView->baseResourceMem != ResourceId())
@@ -892,11 +933,8 @@ void DescriptorSetSlot::AddBindRefs(VkResourceRecord *record, FrameRefType ref)
   }
   if(imageInfo.imageView != VK_NULL_HANDLE)
   {
-    record->AddBindFrameRef(GetResID(imageInfo.imageView), eFrameRef_Read,
-                            GetRecord(imageInfo.imageView)->resInfo != NULL);
-    record->AddBindFrameRef(GetRecord(imageInfo.imageView)->baseResource, ref);
-    if(GetRecord(imageInfo.imageView)->baseResourceMem != ResourceId())
-      record->AddBindFrameRef(GetRecord(imageInfo.imageView)->baseResourceMem, eFrameRef_Read);
+    VkResourceRecord *view = GetRecord(imageInfo.imageView);
+    record->AddImgFrameRef(view, ref);
   }
   if(imageInfo.sampler != VK_NULL_HANDLE)
   {
@@ -905,8 +943,22 @@ void DescriptorSetSlot::AddBindRefs(VkResourceRecord *record, FrameRefType ref)
   if(bufferInfo.buffer != VK_NULL_HANDLE)
   {
     VkResourceRecord *buf = GetRecord(bufferInfo.buffer);
-    record->AddBindFrameRef(GetResID(bufferInfo.buffer), eFrameRef_Read, buf->resInfo != NULL);
+    record->AddBindFrameRef(GetResID(bufferInfo.buffer), eFrameRef_Read,
+                            buf->resInfo && buf->resInfo->IsSparse());
     if(buf->baseResource != ResourceId())
       record->AddMemFrameRef(buf->baseResource, buf->memOffset, buf->memSize, ref);
   }
+}
+
+void DescriptorSetSlot::CreateFrom(const DescriptorSetBindingElement &slot)
+{
+  bufferInfo.buffer = GetResID(slot.bufferInfo.buffer);
+  bufferInfo.offset = slot.bufferInfo.offset;
+  bufferInfo.range = slot.bufferInfo.range;
+
+  imageInfo.sampler = GetResID(slot.imageInfo.sampler);
+  imageInfo.imageView = GetResID(slot.imageInfo.imageView);
+  imageInfo.imageLayout = slot.imageInfo.imageLayout;
+
+  texelBufferView = GetResID(slot.texelBufferView);
 }

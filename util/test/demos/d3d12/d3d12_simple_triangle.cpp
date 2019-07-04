@@ -24,16 +24,16 @@
 
 #include "d3d12_test.h"
 
-struct D3D12_Simple_Triangle : D3D12GraphicsTest
+TEST(D3D12_Simple_Triangle, D3D12GraphicsTest)
 {
   static constexpr const char *Description =
       "Just draws a simple triangle, using normal pipeline. Basic test that can be used "
       "for any dead-simple tests that don't require any particular API use";
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create device, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     ID3DBlobPtr vsblob = Compile(D3DDefaultVertex, "main", "vs_4_0");
@@ -86,4 +86,4 @@ struct D3D12_Simple_Triangle : D3D12GraphicsTest
   }
 };
 
-REGISTER_TEST(D3D12_Simple_Triangle);
+REGISTER_TEST();

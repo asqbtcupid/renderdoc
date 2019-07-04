@@ -272,7 +272,7 @@ rdcarray<rdcstr> ReplayController::GetDisassemblyTargets()
 
   rdcarray<rdcstr> ret;
 
-  vector<string> targets = m_pDevice->GetDisassemblyTargets();
+  std::vector<std::string> targets = m_pDevice->GetDisassemblyTargets();
 
   ret.reserve(targets.size());
   for(const std::string &t : targets)
@@ -833,7 +833,7 @@ bool ReplayController::SaveTexture(const TextureSave &saveData, const char *path
     // otherwise take all mips, as by default
   }
 
-  vector<byte *> subdata;
+  std::vector<byte *> subdata;
 
   bool downcast = false;
 
@@ -918,7 +918,8 @@ bool ReplayController::SaveTexture(const TextureSave &saveData, const char *path
   {
     switch(td.format.type)
     {
-      case ResourceFormatType::S8: bytesPerPixel = 1; break;
+      case ResourceFormatType::S8:
+      case ResourceFormatType::A8: bytesPerPixel = 1; break;
       case ResourceFormatType::R10G10B10A2:
       case ResourceFormatType::R9G9B9E5:
       case ResourceFormatType::R11G11B10:
@@ -1587,7 +1588,7 @@ rdcarray<PixelModification> ReplayController::PixelHistory(ResourceId target, ui
 
   std::vector<EventUsage> usage = m_pDevice->GetUsage(id);
 
-  vector<EventUsage> events;
+  std::vector<EventUsage> events;
 
   for(size_t i = 0; i < usage.size(); i++)
   {
@@ -1908,6 +1909,13 @@ void ReplayController::Shutdown()
   delete this;
 }
 
+rdcarray<ShaderEncoding> ReplayController::GetCustomShaderEncodings()
+{
+  CHECK_REPLAY_THREAD();
+
+  return m_pDevice->GetCustomShaderEncodings();
+}
+
 rdcarray<ShaderEncoding> ReplayController::GetTargetShaderEncodings()
 {
   CHECK_REPLAY_THREAD();
@@ -1924,12 +1932,12 @@ rdcpair<ResourceId, rdcstr> ReplayController::BuildTargetShader(
   rdcarray<ShaderEncoding> encodings = m_pDevice->GetTargetShaderEncodings();
 
   if(encodings.indexOf(sourceEncoding) == -1)
-    return make_rdcpair<ResourceId, rdcstr>(
+    return rdcpair<ResourceId, rdcstr>(
         ResourceId(),
         StringFormat::Fmt("Shader Encoding '%s' is not supported", ToStr(sourceEncoding).c_str()));
 
   ResourceId id;
-  string errs;
+  std::string errs;
 
   switch(type)
   {
@@ -1947,16 +1955,17 @@ rdcpair<ResourceId, rdcstr> ReplayController::BuildTargetShader(
   if(id != ResourceId())
     m_TargetResources.insert(id);
 
-  return make_rdcpair<ResourceId, rdcstr>(id, errs);
+  return rdcpair<ResourceId, rdcstr>(id, errs);
 }
 
 rdcpair<ResourceId, rdcstr> ReplayController::BuildCustomShader(
-    const char *entry, const char *source, const ShaderCompileFlags &compileFlags, ShaderStage type)
+    const char *entry, ShaderEncoding sourceEncoding, bytebuf source,
+    const ShaderCompileFlags &compileFlags, ShaderStage type)
 {
   CHECK_REPLAY_THREAD();
 
   ResourceId id;
-  string errs;
+  std::string errs;
 
   switch(type)
   {
@@ -1969,12 +1978,21 @@ rdcpair<ResourceId, rdcstr> ReplayController::BuildCustomShader(
     default: RDCERR("Unexpected type in BuildShader!"); return rdcpair<ResourceId, rdcstr>();
   }
 
-  m_pDevice->BuildCustomShader(source, entry, compileFlags, type, &id, &errs);
+  RDCLOG("Building custom shader");
+
+  m_pDevice->BuildCustomShader(sourceEncoding, source, entry, compileFlags, type, &id, &errs);
 
   if(id != ResourceId())
+  {
+    RDCLOG("Successfully built custom shader");
     m_CustomShaders.insert(id);
+  }
+  else
+  {
+    RDCLOG("Failed to build custom shader");
+  }
 
-  return make_rdcpair<ResourceId, rdcstr>(id, errs);
+  return rdcpair<ResourceId, rdcstr>(id, errs);
 }
 
 void ReplayController::FreeTargetResource(ResourceId id)

@@ -24,7 +24,7 @@
 
 #include "gl_test.h"
 
-struct GL_Map_Overrun : OpenGLGraphicsTest
+TEST(GL_Map_Overrun, OpenGLGraphicsTest)
 {
   static constexpr const char *Description = "Test overrunning the bounds of a Map() call";
 
@@ -72,10 +72,10 @@ void main()
 
 )EOSHADER";
 
-  int main(int argc, char **argv)
+  int main()
   {
     // initialise, create window, create context, etc
-    if(!Init(argc, argv))
+    if(!Init())
       return 3;
 
     GLuint vao = MakeVAO();
@@ -101,7 +101,6 @@ void main()
     glEnableVertexAttribArray(2);
 
     GLuint program = MakeProgram(common + vertex, common + pixel);
-    glObjectLabel(GL_PROGRAM, program, -1, "Full program");
 
     while(Running())
     {
@@ -123,4 +122,4 @@ void main()
   }
 };
 
-REGISTER_TEST(GL_Map_Overrun);
+REGISTER_TEST();

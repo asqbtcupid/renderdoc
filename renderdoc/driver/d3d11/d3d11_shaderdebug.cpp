@@ -74,7 +74,7 @@ struct DebugHit
 
 bool PromptDebugTimeout(DXBC::ProgramType prog, uint32_t cycleCounter)
 {
-  string msg = StringFormat::Fmt(
+  std::string msg = StringFormat::Fmt(
       "RenderDoc's shader debugging has been running for over %u cycles, which indicates either a "
       "very long-running loop, or possibly an infinite loop. Continuing could lead to extreme "
       "memory allocations, slow UI or even crashes. Would you like to abort debugging to see what "
@@ -772,9 +772,9 @@ ShaderDebugTrace D3D11Replay::DebugVertex(uint32_t eventId, uint32_t vertid, uin
 
   D3D11RenderState *rs = m_pImmediateContext->GetCurrentPipelineState();
 
-  vector<D3D11_INPUT_ELEMENT_DESC> inputlayout = m_pDevice->GetLayoutDesc(rs->IA.Layout);
+  std::vector<D3D11_INPUT_ELEMENT_DESC> inputlayout = m_pDevice->GetLayoutDesc(rs->IA.Layout);
 
-  set<UINT> vertexbuffers;
+  std::set<UINT> vertexbuffers;
   uint32_t trackingOffs[32] = {0};
 
   UINT MaxStepRate = 1U;
@@ -1088,7 +1088,7 @@ ShaderDebugTrace D3D11Replay::DebugVertex(uint32_t eventId, uint32_t vertid, uin
 
   State last;
 
-  vector<ShaderDebugState> states;
+  std::vector<ShaderDebugState> states;
 
   if(dxbc->m_DebugInfo)
     dxbc->m_DebugInfo->GetLocals(0, dxbc->GetInstruction(0).offset, initialState.locals);
@@ -1197,9 +1197,9 @@ ShaderDebugTrace D3D11Replay::DebugPixel(uint32_t eventId, uint32_t x, uint32_t 
   if(prevdxbc == NULL && vs != NULL)
     prevdxbc = vs->GetDXBC();
 
-  vector<DataOutput> initialValues;
+  std::vector<DataOutput> initialValues;
 
-  string extractHlsl = "struct PSInput\n{\n";
+  std::string extractHlsl = "struct PSInput\n{\n";
 
   int structureStride = 0;
 
@@ -1212,9 +1212,9 @@ ShaderDebugTrace D3D11Replay::DebugPixel(uint32_t eventId, uint32_t x, uint32_t 
     structureStride += 4;
   }
 
-  vector<string> floatInputs;
-  vector<pair<string, pair<uint32_t, uint32_t>>>
-      arrays;    // name, pair<start semantic index, end semantic index>
+  std::vector<std::string> floatInputs;
+  // name, pair<start semantic index, end semantic index>
+  std::vector<rdcpair<rdcstr, rdcpair<uint32_t, uint32_t>>> arrays;
   std::vector<std::string> inputVarNames;
 
   uint32_t nextreg = 0;
@@ -1294,7 +1294,7 @@ ShaderDebugTrace D3D11Replay::DebugPixel(uint32_t eventId, uint32_t x, uint32_t 
 
       if(!filled)
       {
-        string dummy_reg = "dummy_register";
+        std::string dummy_reg = "dummy_register";
         dummy_reg += ToStr((uint32_t)nextreg + dummy);
         extractHlsl += "float4 var_" + dummy_reg + " : semantic_" + dummy_reg + ";\n";
 
@@ -1394,9 +1394,8 @@ ShaderDebugTrace D3D11Replay::DebugPixel(uint32_t eventId, uint32_t x, uint32_t 
       }
 
       if(arrayLength > 0)
-        arrays.push_back(
-            std::make_pair(dxbc->m_InputSig[i].semanticName,
-                           std::make_pair(dxbc->m_InputSig[i].semanticIndex, nextIdx - 1)));
+        arrays.push_back(make_rdcpair(dxbc->m_InputSig[i].semanticName,
+                                      make_rdcpair(dxbc->m_InputSig[i].semanticIndex, nextIdx - 1)));
     }
 
     // as another side effect of the above, an element declared as a 1-length array won't be
@@ -1740,7 +1739,7 @@ void ExtractInputsPS(PSInput IN, float4 debug_pixelPos : SV_Position, uint prim 
 
   for(size_t i = 0; i < floatInputs.size(); i++)
   {
-    const string &name = floatInputs[i];
+    const std::string &name = floatInputs[i];
     extractHlsl += "  PSInitialBuffer[idx].INddx." + name + " = ddx(IN." + name + ");\n";
     extractHlsl += "  PSInitialBuffer[idx].INddy." + name + " = ddy(IN." + name + ");\n";
     extractHlsl += "  PSInitialBuffer[idx].INddxfine." + name + " = ddx_fine(IN." + name + ");\n";
@@ -2029,6 +2028,8 @@ void ExtractInputsPS(PSInput IN, float4 debug_pixelPos : SV_Position, uint prim 
 
   ShaderDebugTrace traces[4];
 
+  tracker.State().ApplyState(m_pImmediateContext);
+
   GlobalState global;
   GetDebugManager()->CreateShaderGlobalState(global, dxbc, rs->OM.UAVStartSlot, rs->OM.UAVs,
                                              rs->PS.SRVs);
@@ -2262,7 +2263,7 @@ void ExtractInputsPS(PSInput IN, float4 debug_pixelPos : SV_Position, uint prim 
   SAFE_DELETE_ARRAY(initialData);
   SAFE_DELETE_ARRAY(evalData);
 
-  vector<ShaderDebugState> states;
+  std::vector<ShaderDebugState> states;
 
   if(dxbc->m_DebugInfo)
     dxbc->m_DebugInfo->GetLocals(0, dxbc->GetInstruction(0).offset, quad[destIdx].locals);
@@ -2468,7 +2469,7 @@ ShaderDebugTrace D3D11Replay::DebugThread(uint32_t eventId, const uint32_t group
     initialState.semantics.ThreadID[i] = threadid[i];
   }
 
-  vector<ShaderDebugState> states;
+  std::vector<ShaderDebugState> states;
 
   if(dxbc->m_DebugInfo)
     dxbc->m_DebugInfo->GetLocals(0, dxbc->GetInstruction(0).offset, initialState.locals);

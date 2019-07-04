@@ -44,8 +44,6 @@ class D3D11ShaderCache;
 #define D3D11_1_UAV_SLOT_COUNT 64
 #endif
 
-using std::map;
-
 enum TextureDisplayType
 {
   TEXDISPLAY_UNKNOWN = 0,
@@ -316,7 +314,7 @@ private:
   D3D11ShaderCache *m_ShaderCache = NULL;
   D3D11ResourceManager *m_ResourceManager = NULL;
 
-  vector<string> m_ShaderSearchPaths;
+  std::vector<std::string> m_ShaderSearchPaths;
 
   D3D11InitParams m_InitParams;
   uint64_t m_SectionVersion;
@@ -350,7 +348,7 @@ private:
 
   ReplayStatus m_FailedReplayStatus = ReplayStatus::APIReplayFailed;
 
-  set<ID3D11DeviceChild *> m_CachedStateObjects;
+  std::set<ID3D11DeviceChild *> m_CachedStateObjects;
 
   // This function will check if m_CachedStateObjects is growing too large, and if so
   // go through m_CachedStateObjects and release any state objects that are purely
@@ -367,13 +365,13 @@ private:
   // Must be called while m_D3DLock is held.
   void CachedObjectsGarbageCollect();
 
-  set<WrappedID3D11DeviceContext *> m_DeferredContexts;
-  map<ID3D11InputLayout *, vector<D3D11_INPUT_ELEMENT_DESC> > m_LayoutDescs;
-  map<ID3D11InputLayout *, WrappedShader *> m_LayoutShaders;
+  std::set<WrappedID3D11DeviceContext *> m_DeferredContexts;
+  std::map<ID3D11InputLayout *, std::vector<D3D11_INPUT_ELEMENT_DESC> > m_LayoutDescs;
+  std::map<ID3D11InputLayout *, WrappedShader *> m_LayoutShaders;
 
   static WrappedID3D11Device *m_pCurrentWrappedDevice;
 
-  map<WrappedIDXGISwapChain4 *, ID3D11RenderTargetView *> m_SwapChains;
+  std::map<WrappedIDXGISwapChain4 *, ID3D11RenderTargetView *> m_SwapChains;
 
   uint32_t m_FrameCounter;
   uint32_t m_FailedFrame;
@@ -383,11 +381,11 @@ private:
   SDFile *m_StructuredFile = NULL;
   SDFile m_StoredStructuredData;
 
-  vector<DebugMessage> m_DebugMessages;
+  std::vector<DebugMessage> m_DebugMessages;
 
-  vector<FrameDescription> m_CapturedFrames;
+  std::vector<FrameDescription> m_CapturedFrames;
   FrameRecord m_FrameRecord;
-  vector<DrawcallDescription *> m_Drawcalls;
+  std::vector<DrawcallDescription *> m_Drawcalls;
 
 public:
   static const int AllocPoolCount = 4;
@@ -447,12 +445,12 @@ public:
   std::vector<DebugMessage> GetDebugMessages();
   void AddDebugMessage(DebugMessage msg);
   void AddDebugMessage(MessageCategory c, MessageSeverity sv, MessageSource src, std::string d);
-  const vector<D3D11_INPUT_ELEMENT_DESC> &GetLayoutDesc(ID3D11InputLayout *layout)
+  const std::vector<D3D11_INPUT_ELEMENT_DESC> &GetLayoutDesc(ID3D11InputLayout *layout)
   {
     return m_LayoutDescs[layout];
   }
 
-  vector<string> *GetShaderDebugInfoSearchPaths() { return &m_ShaderSearchPaths; }
+  std::vector<std::string> *GetShaderDebugInfoSearchPaths() { return &m_ShaderSearchPaths; }
   template <typename SerialiserType>
   bool Serialise_CaptureScope(SerialiserType &ser);
 
@@ -494,12 +492,13 @@ public:
   // log replaying
 
   bool Prepare_InitialState(ID3D11DeviceChild *res);
-  uint32_t GetSize_InitialState(ResourceId id, ID3D11DeviceChild *res);
+  uint64_t GetSize_InitialState(ResourceId id, const D3D11InitialContents &initial);
   template <typename SerialiserType>
-  bool Serialise_InitialState(SerialiserType &ser, ResourceId resid, ID3D11DeviceChild *res);
+  bool Serialise_InitialState(SerialiserType &ser, ResourceId resid, D3D11ResourceRecord *record,
+                              const D3D11InitialContents *initial);
 
   void Create_InitialState(ResourceId id, ID3D11DeviceChild *live, bool hasData);
-  void Apply_InitialState(ID3D11DeviceChild *live, D3D11InitialContents initial);
+  void Apply_InitialState(ID3D11DeviceChild *live, const D3D11InitialContents &initial);
 
   void SetStructuredExport(uint64_t sectionVersion)
   {
