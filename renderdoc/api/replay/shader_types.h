@@ -764,6 +764,8 @@ some other API-specific method, such as direct function calls or they may be com
 specialisation constants.
 )");
   bool bufferBacked;
+
+  int32_t bindSlot;
 };
 
 DECLARE_REFLECTION_STRUCT(ConstantBlock);
@@ -799,6 +801,8 @@ struct ShaderSampler
 :data:`ShaderBindpointMapping.samplers` list.
 )");
   int32_t bindPoint;
+
+  int32_t bindSlot;
 };
 
 DECLARE_REFLECTION_STRUCT(ShaderSampler);
@@ -857,6 +861,8 @@ struct ShaderResource
 able to be read from and written to arbitrarily.
 )");
   bool isReadOnly;
+
+  int32_t bindSlot;
 };
 
 DECLARE_REFLECTION_STRUCT(ShaderResource);

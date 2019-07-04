@@ -946,7 +946,7 @@ QString PipelineStateViewer::GenerateHLSLStub(const ShaderReflection *shaderDeta
     hlsl += lit("//SamplerComparisonState %1 : register(s%2); // can't disambiguate\n"
                 "SamplerState %1 : register(s%2); // can't disambiguate\n")
                 .arg(samp.name)
-                .arg(samp.bindPoint);
+                .arg(samp.bindSlot);
   }
 
   for(int i = 0; i < 2; i++)
@@ -970,7 +970,7 @@ QString PipelineStateViewer::GenerateHLSLStub(const ShaderReflection *shaderDeta
                     .arg(res.variableType.descriptor.name)
                     .arg(res.name)
                     .arg(QLatin1Char(regChar))
-                    .arg(res.bindPoint);
+                    .arg(res.bindSlot);
       }
       else
       {
@@ -987,7 +987,7 @@ QString PipelineStateViewer::GenerateHLSLStub(const ShaderReflection *shaderDeta
                     .arg(res.variableType.descriptor.name)
                     .arg(res.name)
                     .arg(QLatin1Char(regChar))
-                    .arg(res.bindPoint);
+                    .arg(res.bindSlot);
       }
     }
   }
@@ -1004,7 +1004,7 @@ QString PipelineStateViewer::GenerateHLSLStub(const ShaderReflection *shaderDeta
       QString cbufName = cbuf.name;
       if(cbufName == lit("$Globals"))
         cbufName = lit("_Globals");
-      cbuffers += lit("cbuffer %1 : register(b%2) {\n").arg(cbufName).arg(cbuf.bindPoint);
+      cbuffers += lit("cbuffer %1 : register(b%2) {\n").arg(cbufName).arg(cbuf.bindSlot);
       MakeShaderVariablesHLSL(true, cbuf.variables, cbuffers, hlsl);
       cbuffers += lit("};\n\n");
     }
