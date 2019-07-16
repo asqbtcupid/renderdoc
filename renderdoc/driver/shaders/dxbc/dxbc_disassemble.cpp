@@ -2667,21 +2667,21 @@ std::string toString(const uint32_t values[], uint32_t numComps)
 
   for(uint32_t i = 0; i < numComps; i++)
   {
-    float *vf = (float *)&values[i];
+//     float *vf = (float *)&values[i];
     int32_t *vi = (int32_t *)&values[i];
 
     char buf[64] = {0};
 
-    if(!floatOutput)
-    {
-      // print small ints straight up, otherwise as hex
-      if(vi[0] <= 10000 && vi[0] >= -10000)
-        StringFormat::snprintf(buf, 63, "%d", vi[0]);
-      else
+//     if(!floatOutput)
+//     {
+//       // print small ints straight up, otherwise as hex
+//       if(vi[0] <= 10000 && vi[0] >= -10000)
+//         StringFormat::snprintf(buf, 63, "%d", vi[0]);
+//       else
         StringFormat::snprintf(buf, 63, "0x%08x", vi[0]);
-    }
-    else
-      StringFormat::snprintf(buf, 63, "%.20f", vf[0]);
+//     }
+//     else
+//       StringFormat::snprintf(buf, 63, "%.20f", vf[0]);
 
     str += buf;
 

@@ -977,14 +977,22 @@ QString PipelineStateViewer::GenerateHLSLStub(const ShaderReflection *shaderDeta
         if(res.variableType.descriptor.rows > 1)
           hlsl += lit("Structured");
 
-		if (res.variableType.descriptor.arrayByteStride > 16)
+		rdcstr structName = res.variableType.descriptor.name;
+		if (res.variableType.descriptor.arrayByteStride > 0)
 		{
 			int floatcount = res.variableType.descriptor.arrayByteStride / 4;
-			hlsl += lit("struct %1{ float value[%2];};\n").arg(res.variableType.descriptor.name).arg(floatcount);
+			if (structName == "uint" || structName == "float" || structName == "int")
+			{
+				static uint structIndex = 0;
+				structIndex++;
+				structName = lit("tempStruct_%1").arg(structIndex);
+			}
+			hlsl += lit("struct %1{ uint value[%2];};\n").arg(structName).arg(floatcount);
 			hlsl += lit("Structured");
 		}
+
         hlsl += lit("Buffer<%1> %2 : register(%3%4);\n")
-                    .arg(res.variableType.descriptor.name)
+                    .arg(structName)
                     .arg(res.name)
                     .arg(QLatin1Char(regChar))
                     .arg(res.bindSlot);
