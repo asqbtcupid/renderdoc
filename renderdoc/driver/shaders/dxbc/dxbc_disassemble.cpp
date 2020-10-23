@@ -1071,7 +1071,7 @@ rdcstr Operand::toString(const DXBC::Reflection *reflection, ToString flags) con
           }
         }
 
-        if(cbuffer)
+        if(cbuffer&&false)
         {
           // if the second index is constant then this is easy enough, we just find the matching
           // cbuffer variable and use its name, possibly rebasing the swizzle.
@@ -2443,22 +2443,8 @@ rdcstr toString(const uint32_t values[], uint32_t numComps)
 
   for(uint32_t i = 0; i < numComps; i++)
   {
-    float *vf = (float *)&values[i];
     int32_t *vi = (int32_t *)&values[i];
-
-    if(floatOutput)
-    {
-      str += ToStr(vf[0]);
-    }
-    else
-    {
-      // print small ints straight up, otherwise as hex
-      if(vi[0] <= 10000 && vi[0] >= -10000)
-        str += ToStr(vi[0]);
-      else
-        str += StringFormat::Fmt("0x%08x", vi[0]);
-    }
-
+    str += StringFormat::Fmt("0x%08x", vi[0]);
     if(i + 1 < numComps)
       str += ", ";
   }

@@ -611,6 +611,19 @@ void PipelineStateViewer::MakeShaderVariablesHLSL(bool cbufferContents,
         struct_defs += def + contents + lit("};\n\n");
       }
     }
+    else
+    {
+      if(v.type.descriptor.name != "float" && v.type.descriptor.name != "float2" &&
+         v.type.descriptor.name != "float3" && v.type.descriptor.name != "float4" &&
+         v.type.descriptor.name != "float4x4" && v.type.descriptor.name != "int" &&
+         v.type.descriptor.name != "int2" && v.type.descriptor.name != "int3" &&
+         v.type.descriptor.name != "int4" && v.type.descriptor.name != "uint" &&
+         v.type.descriptor.name != "uint2" && v.type.descriptor.name != "uint3" &&
+         v.type.descriptor.name != "uint4")
+      {
+        continue;
+      }
+    }
 
     if(v.type.descriptor.elements > 1)
     {
@@ -740,7 +753,14 @@ QString PipelineStateViewer::GenerateHLSLStub(const ShaderBindpointMapping &bind
       {
         if(res.variableType.descriptor.rows > 1)
           hlsl += lit("Structured");
-
+        // dxbctohlsl begin
+        if(res.variableType.descriptor.arrayByteStride > 16)
+        {
+          int floatcount = res.variableType.descriptor.arrayByteStride / 4;
+          hlsl += lit("struct %1{ float value[%2];};\n").arg(res.variableType.descriptor.name).arg(floatcount);
+          hlsl += lit("Structured");
+        }
+        // dxbctohlsl end
         hlsl += lit("Buffer<%1> %2 : register(%3%4);\n")
                     .arg(res.variableType.descriptor.name)
                     .arg(res.name)
@@ -786,10 +806,7 @@ QString PipelineStateViewer::GenerateHLSLStub(const ShaderBindpointMapping &bind
   hlsl += lit("struct InputStruct {\n");
   for(const SigParameter &sig : shaderDetails->inputSignature)
   {
-    QString name = !sig.varName.isEmpty() ? QString(sig.varName) : lit("param%1").arg(sig.regIndex);
-
-    if(sig.varName.isEmpty() && sig.systemValue != ShaderBuiltin::Undefined)
-      name = D3DSemanticString(sig).replace(lit("SV_"), QString());
+    QString name = lit("param%1").arg(sig.regIndex);
 
     hlsl += lit("\t%1 %2 : %3;\n").arg(TypeString(sig)).arg(name).arg(D3DSemanticString(sig));
   }
@@ -798,10 +815,7 @@ QString PipelineStateViewer::GenerateHLSLStub(const ShaderBindpointMapping &bind
   hlsl += lit("struct OutputStruct {\n");
   for(const SigParameter &sig : shaderDetails->outputSignature)
   {
-    QString name = !sig.varName.isEmpty() ? QString(sig.varName) : lit("param%1").arg(sig.regIndex);
-
-    if(sig.varName.isEmpty() && sig.systemValue != ShaderBuiltin::Undefined)
-      name = D3DSemanticString(sig).replace(lit("SV_"), QString());
+    QString name = lit("param%1").arg(sig.regIndex);
 
     hlsl += lit("\t%1 %2 : %3;\n").arg(TypeString(sig)).arg(name).arg(D3DSemanticString(sig));
   }

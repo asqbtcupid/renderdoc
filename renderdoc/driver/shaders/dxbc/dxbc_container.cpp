@@ -431,7 +431,8 @@ CBufferVariableType DXBCContainer::ParseRDEFType(const RDEFHeader *h, const byte
       v.name = (const char *)(chunkContents + members[j].nameOffset);
       v.type = ParseRDEFType(h, chunkContents, members[j].typeOffset);
       v.offset = members[j].memberOffset;
-
+      if(int32_t(v.offset) < 0)
+        continue;
       ret.descriptor.bytesize = v.offset + v.type.descriptor.bytesize;
 
       ret.members.push_back(v);
@@ -1159,7 +1160,14 @@ DXBCContainer::DXBCContainer(bytebuf &ByteCode, const rdcstr &debugInfoPath)
 
           v.type = ParseRDEFType(h, chunkContents, var->typeOffset);
 
-          cb.variables.push_back(v);
+          if((int32_t)(v.offset) >= 0)
+          {
+            cb.variables.push_back(v);
+          }
+          else
+          {
+            RDCASSERT(false);
+          }
         }
 
         rdcstr cname = cb.name;
